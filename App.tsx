@@ -493,6 +493,21 @@ const App: React.FC = () => {
     }
   };
 
+  const handleDeleteUser = async (userId: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Remover Solicitação',
+      message: 'Tem certeza que deseja apagar os dados desta solicitação de acesso pendente?',
+      onConfirm: async () => {
+        try {
+          await deleteDoc(doc(db, 'users', userId));
+        } catch (error) {
+          handleFirestoreError(error, OperationType.DELETE, `users/${userId}`);
+        }
+      }
+    });
+  };
+
   const handleBannerUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -774,7 +789,7 @@ const App: React.FC = () => {
               )}
               {view === 'RANKINGS' && <Rankings rankings={rankings} />}
               {view === 'POST' && <PostSubmit user={user} />}
-              {view === 'HISTORY' && <HistoryView posts={posts} onDelete={setPostToDelete} />}
+              {view === 'HISTORY' && <HistoryView posts={posts} onDelete={setPostToDelete} isAdmin={user.role === 'admin'} />}
               {view === 'ADMIN' && user.role === 'admin' && (
                 <AdminPanel 
                   posts={posts} 
@@ -788,8 +803,10 @@ const App: React.FC = () => {
                   editingCompId={editingCompId}
                   setEditingCompId={setEditingCompId}
                   setCompToDelete={setCompToDelete}
+                  setPostToDelete={setPostToDelete}
                   handlePostStatus={handlePostStatus}
                   handleUserApproval={handleUserApproval}
+                  handleDeleteUser={handleDeleteUser}
                   handleRegistrationStatus={handleRegistrationStatus}
                   toggleCompetitionStatus={toggleCompetitionStatus}
                   handleBannerUpload={handleBannerUpload}
@@ -1714,7 +1731,7 @@ const PostSubmit = ({ user }: { user: User }) => {
   );
 };
 
-const HistoryView = ({ posts, onDelete }: { posts: Post[], onDelete: (id: string) => void }) => (
+const HistoryView = ({ posts, onDelete, isAdmin }: { posts: Post[], onDelete: (id: string) => void, isAdmin: boolean }) => (
   <div className="space-y-8">
     <h2 className="text-3xl font-black tracking-tight">Meus Protocolos</h2>
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -1735,13 +1752,15 @@ const HistoryView = ({ posts, onDelete }: { posts: Post[], onDelete: (id: string
             </div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] text-zinc-500 font-bold">{new Date(post.timestamp).toLocaleDateString()}</span>
-              <button 
-                onClick={() => onDelete(post.id)}
-                className="p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-black transition-all"
-                title="Excluir vídeo"
-              >
-                <Trash2 className="w-3 h-3" />
-              </button>
+              {isAdmin && (
+                <button 
+                  onClick={() => onDelete(post.id)}
+                  className="p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-black transition-all"
+                  title="Excluir vídeo"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              )}
             </div>
           </div>
           <p className="text-sm font-bold truncate text-zinc-400">{post.url}</p>
@@ -1951,8 +1970,10 @@ const AdminPanel = ({
   editingCompId,
   setEditingCompId,
   setCompToDelete,
+  setPostToDelete,
   handlePostStatus,
   handleUserApproval,
+  handleDeleteUser,
   handleRegistrationStatus,
   toggleCompetitionStatus,
   handleBannerUpload,
@@ -1989,8 +2010,10 @@ const AdminPanel = ({
   editingCompId: string | null,
   setEditingCompId: (val: string | null) => void,
   setCompToDelete: (val: string | null) => void,
+  setPostToDelete: (id: string | null) => void,
   handlePostStatus: (postId: string, status: PostStatus) => void,
   handleUserApproval: (userId: string, isApproved: boolean) => void,
+  handleDeleteUser: (userId: string) => void,
   handleRegistrationStatus: (regId: string, status: 'approved' | 'rejected') => void,
   toggleCompetitionStatus: (id: string, isActive: boolean) => void,
   handleBannerUpload: (e: React.ChangeEvent<HTMLInputElement>) => void,
@@ -2269,6 +2292,14 @@ const AdminPanel = ({
                     <a href={post.url} target="_blank" rel="noreferrer" className="px-6 py-3 rounded-xl bg-zinc-900 text-zinc-400 font-bold text-sm hover:text-zinc-100 transition-colors">
                       Ver Link
                     </a>
+                    <button 
+                      onClick={() => setPostToDelete(post.id)}
+                      className="flex items-center gap-2 px-6 py-3 rounded-xl bg-red-500/10 text-red-500 font-black text-xs hover:bg-red-500 hover:text-black transition-all"
+                      title="Excluir vídeo aprovado"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      EXCLUIR
+                    </button>
                   </div>
                 </div>
               ))}
@@ -2370,7 +2401,13 @@ const AdminPanel = ({
                     onClick={() => handleUserApproval(u.uid, true)}
                     className="px-8 py-3 rounded-xl bg-emerald-500 text-black font-black text-sm hover:scale-[1.02] transition-all"
                   >
-                    APROVAR ACESSO
+                    APROVAR
+                  </button>
+                  <button 
+                    onClick={() => handleDeleteUser(u.uid)}
+                    className="px-8 py-3 rounded-xl bg-red-500/10 text-red-500 font-black text-sm hover:bg-red-500 hover:text-black transition-all"
+                  >
+                    REMOVER SOLICITAÇÃO
                   </button>
                 </div>
               </div>
