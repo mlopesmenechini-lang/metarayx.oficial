@@ -508,6 +508,32 @@ const App: React.FC = () => {
     });
   };
 
+  const handleResetDailyRanking = async () => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Zerar Ranking Diário',
+      message: 'Tem certeza que deseja zerar TODAS as pontuações e views DIÁRIAS de todos os usuários aprovados? O ranking total mensal será mantido.',
+      onConfirm: async () => {
+        try {
+          await Promise.all(
+            approvedUsers.map(u => 
+              updateDoc(doc(db, 'users', u.uid), {
+                dailyViews: 0,
+                dailyLikes: 0,
+                dailyComments: 0,
+                dailyShares: 0,
+                dailySaves: 0,
+                dailyPosts: 0
+              })
+            )
+          );
+        } catch (error) {
+          handleFirestoreError(error, OperationType.UPDATE, 'users/daily_reset');
+        }
+      }
+    });
+  };
+
   const handleBannerUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -808,6 +834,7 @@ const App: React.FC = () => {
                   handleUserApproval={handleUserApproval}
                   handleDeleteUser={handleDeleteUser}
                   handleRegistrationStatus={handleRegistrationStatus}
+                  handleResetDailyRanking={handleResetDailyRanking}
                   toggleCompetitionStatus={toggleCompetitionStatus}
                   handleBannerUpload={handleBannerUpload}
                   handleCreateCompetition={handleCreateCompetition}
@@ -1627,25 +1654,35 @@ const PostSubmit = ({ user }: { user: User }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!url) return;
+    if (!url.trim()) return;
     setSubmitting(true);
     try {
-      const postId = Math.random().toString(36).substr(2, 9);
-      const newPost: Post = {
-        id: postId,
-        userId: user.uid,
-        userName: user.displayName,
-        url,
-        platform,
-        status: 'pending',
-        views: 0,
-        likes: 0,
-        comments: 0,
-        shares: 0,
-        saves: 0,
-        timestamp: Date.now()
-      };
-      await setDoc(doc(db, 'posts', postId), newPost);
+      const urls = url.split(/[\n,]+/).map(u => u.trim()).filter(u => u.length > 5);
+
+      if (urls.length === 0) {
+        setSubmitting(false);
+        return;
+      }
+
+      await Promise.all(urls.map(async (singleUrl) => {
+        const postId = Math.random().toString(36).substr(2, 9);
+        const newPost: Post = {
+          id: postId,
+          userId: user.uid,
+          userName: user.displayName,
+          url: singleUrl,
+          platform,
+          status: 'pending',
+          views: 0,
+          likes: 0,
+          comments: 0,
+          shares: 0,
+          saves: 0,
+          timestamp: Date.now()
+        };
+        await setDoc(doc(db, 'posts', postId), newPost);
+      }));
+
       setSuccess(true);
       setUrl('');
       setTimeout(() => setSuccess(false), 3000);
@@ -1692,12 +1729,12 @@ const PostSubmit = ({ user }: { user: User }) => {
         </div>
 
         <div className="space-y-2">
-          <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest">URL do Vídeo</label>
-          <input 
+          <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest">URLs dos Vídeos (um por linha)</label>
+          <textarea 
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://..."
-            className="w-full bg-zinc-900 border-2 border-zinc-800 rounded-2xl px-6 py-4 font-bold focus:border-amber-500 outline-none transition-colors"
+            placeholder="https://...&#10;https://..."
+            className="w-full bg-zinc-900 border-2 border-zinc-800 rounded-2xl px-6 py-4 font-bold focus:border-amber-500 outline-none transition-colors min-h-[120px] resize-y"
           />
         </div>
 
@@ -1975,6 +2012,7 @@ const AdminPanel = ({
   handleUserApproval,
   handleDeleteUser,
   handleRegistrationStatus,
+  handleResetDailyRanking,
   toggleCompetitionStatus,
   handleBannerUpload,
   handleCreateCompetition,
@@ -2015,6 +2053,7 @@ const AdminPanel = ({
   handleUserApproval: (userId: string, isApproved: boolean) => void,
   handleDeleteUser: (userId: string) => void,
   handleRegistrationStatus: (regId: string, status: 'approved' | 'rejected') => void,
+  handleResetDailyRanking: () => void,
   toggleCompetitionStatus: (id: string, isActive: boolean) => void,
   handleBannerUpload: (e: React.ChangeEvent<HTMLInputElement>) => void,
   handleCreateCompetition: () => void,
@@ -2142,6 +2181,13 @@ const AdminPanel = ({
           >
             {syncing ? <RefreshCw className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
             SINCRONIZAR AGORA
+          </button>
+          <button 
+            onClick={handleResetDailyRanking}
+            className="flex items-center justify-center gap-2 px-8 py-3 bg-red-500/10 text-red-500 font-black rounded-xl hover:bg-red-500 hover:text-black transition-all shadow-lg shadow-red-500/10"
+          >
+            <Trash2 className="w-5 h-5" />
+            ZERAR DIÁRIO
           </button>
         </div>
       </div>
