@@ -1,0 +1,152 @@
+{
+  "entities": {
+    "users": {
+      "title": "User",
+      "description": "User profile and stats",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "password": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "user"] },
+        "isApproved": { "type": "boolean" },
+        "balance": { "type": "number" },
+        "totalViews": { "type": "number" },
+        "totalLikes": { "type": "number" },
+        "totalComments": { "type": "number" },
+        "totalShares": { "type": "number" },
+        "totalSaves": { "type": "number" },
+        "totalPosts": { "type": "number" },
+        "dailyViews": { "type": "number" },
+        "dailyLikes": { "type": "number" },
+        "dailyComments": { "type": "number" },
+        "dailyShares": { "type": "number" },
+        "dailySaves": { "type": "number" },
+        "dailyPosts": { "type": "number" },
+        "photoURL": { "type": "string" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "posts": {
+      "title": "Post",
+      "description": "Short video post submission",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "url": { "type": "string" },
+        "platform": { "type": "string", "enum": ["tiktok", "youtube"] },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "views": { "type": "number" },
+        "likes": { "type": "number" },
+        "comments": { "type": "number" },
+        "shares": { "type": "number" },
+        "saves": { "type": "number" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["userId", "url", "platform", "status", "timestamp"]
+    },
+    "seasons": {
+      "title": "Season",
+      "description": "Competition season",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "startDate": { "type": "number" },
+        "endDate": { "type": "number" },
+        "rules": { "type": "string" }
+      },
+      "required": ["name", "isActive"]
+    },
+    "announcements": {
+      "title": "Announcement",
+      "description": "Global announcement",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["message", "isActive", "timestamp"]
+    },
+    "competitions": {
+      "title": "Competition",
+      "description": "Active competition with prizes",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "rules": { "type": "string" },
+        "hashtags": { "type": "string" },
+        "mentions": { "type": "string" },
+        "bonuses": { "type": "string" },
+        "bannerUrl": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "startDate": { "type": "number" },
+        "endDate": { "type": "number" },
+        "prizes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "position": { "type": "number" },
+              "value": { "type": "number" },
+              "label": { "type": "string" }
+            }
+          }
+        },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["title", "bannerUrl", "isActive", "prizes", "timestamp"]
+    },
+    "competition_registrations": {
+      "title": "Competition Registration",
+      "description": "User registration for a competition",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "competitionId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "acceptedRules": { "type": "boolean" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["competitionId", "userId", "userName", "status", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "users",
+      "description": "User profile data"
+    },
+    "/posts/{postId}": {
+      "schema": "posts",
+      "description": "Video submissions"
+    },
+    "/seasons/{seasonId}": {
+      "schema": "seasons",
+      "description": "Active and past seasons"
+    },
+    "/announcements/{announcementId}": {
+      "schema": "announcements",
+      "description": "Global system announcements"
+    },
+    "/competitions/{competitionId}": {
+      "schema": "competitions",
+      "description": "Active competitions"
+    },
+    "/competition_registrations/{registrationId}": {
+      "schema": "competition_registrations",
+      "description": "User registrations for competitions"
+    }
+  }
+}
