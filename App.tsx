@@ -1839,11 +1839,16 @@ const Rankings = ({ rankings }: { rankings: User[] }) => {
   const [timeframe, setTimeframe] = useState<'DAILY' | 'MONTHLY'>('MONTHLY');
 
   const sortedRankings = useMemo(() => {
-    return [...rankings].sort((a, b) => {
-      const viewsA = timeframe === 'MONTHLY' ? (a.totalViews || 0) : (a.dailyViews || 0);
-      const viewsB = timeframe === 'MONTHLY' ? (b.totalViews || 0) : (b.dailyViews || 0);
-      return viewsB - viewsA;
-    }).slice(0, 10);
+    return [...rankings]
+      .filter(user => {
+        const views = timeframe === 'MONTHLY' ? (user.totalViews || 0) : (user.dailyViews || 0);
+        return views > 0;
+      })
+      .sort((a, b) => {
+        const viewsA = timeframe === 'MONTHLY' ? (a.totalViews || 0) : (a.dailyViews || 0);
+        const viewsB = timeframe === 'MONTHLY' ? (b.totalViews || 0) : (b.dailyViews || 0);
+        return viewsB - viewsA;
+      }).slice(0, 10);
   }, [rankings, timeframe]);
 
   const getPrize = (index: number) => {
@@ -1896,6 +1901,11 @@ const Rankings = ({ rankings }: { rankings: User[] }) => {
       </div>
 
       <div className="space-y-3">
+        {sortedRankings.length === 0 && (
+          <div className="p-12 text-center text-zinc-500 font-bold glass rounded-2xl border border-zinc-800/50">
+            Aguardando inserção de dados. O painel deste ranking está vazio no momento.
+          </div>
+        )}
         {sortedRankings.map((player, i) => {
           const stats = calculateStats(player);
           return (
