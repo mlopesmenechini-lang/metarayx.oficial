@@ -2577,33 +2577,35 @@ const AdminPanel = ({
           <p className="text-zinc-500 font-bold text-xs uppercase tracking-widest">Controle de Acesso e Sincronização</p>
         </div>
         
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 bg-zinc-900/50 p-4 rounded-3xl border border-zinc-800/50">
-          <div className="relative flex-1 sm:w-64">
-            <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-            <input 
-              type="password"
-              value={apifyKey}
-              onChange={(e) => setApifyKey(e.target.value)}
-              placeholder="Chave Apify API"
-              className="w-full bg-black border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-xs font-bold focus:border-amber-500 outline-none transition-all"
-            />
+        {userRole === 'admin' && (
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 bg-zinc-900/50 p-4 rounded-3xl border border-zinc-800/50">
+            <div className="relative flex-1 sm:w-64">
+              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+              <input 
+                type="password"
+                value={apifyKey}
+                onChange={(e) => setApifyKey(e.target.value)}
+                placeholder="Chave Apify API"
+                className="w-full bg-black border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-xs font-bold focus:border-amber-500 outline-none transition-all"
+              />
+            </div>
+            <button 
+              onClick={handleSync}
+              disabled={syncing}
+              className="flex items-center justify-center gap-2 px-8 py-3 gold-bg text-black font-black rounded-xl hover:scale-[1.02] transition-all disabled:opacity-50 shadow-lg shadow-amber-500/10"
+            >
+              {syncing ? <RefreshCw className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
+              SINCRONIZAR AGORA
+            </button>
+            <button 
+              onClick={handleResetDailyRanking}
+              className="flex items-center justify-center gap-2 px-8 py-3 bg-red-500/10 text-red-500 font-black rounded-xl hover:bg-red-500 hover:text-black transition-all shadow-lg shadow-red-500/10"
+            >
+              <Trash2 className="w-5 h-5" />
+              ZERAR DIÁRIO
+            </button>
           </div>
-          <button 
-            onClick={handleSync}
-            disabled={syncing}
-            className="flex items-center justify-center gap-2 px-8 py-3 gold-bg text-black font-black rounded-xl hover:scale-[1.02] transition-all disabled:opacity-50 shadow-lg shadow-amber-500/10"
-          >
-            {syncing ? <RefreshCw className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
-            SINCRONIZAR AGORA
-          </button>
-          <button 
-            onClick={handleResetDailyRanking}
-            className="flex items-center justify-center gap-2 px-8 py-3 bg-red-500/10 text-red-500 font-black rounded-xl hover:bg-red-500 hover:text-black transition-all shadow-lg shadow-red-500/10"
-          >
-            <Trash2 className="w-5 h-5" />
-            ZERAR DIÁRIO
-          </button>
-        </div>
+        )}
       </div>
 
       <div className="flex flex-wrap p-1 bg-zinc-900 rounded-2xl w-fit gap-1">
@@ -2643,8 +2645,8 @@ const AdminPanel = ({
             COMPETIÇÕES ({competitions.length})
           </button>
         )}
-        {/* SINCRONIA - visível para admin e auditor */}
-        {(userRole === 'admin' || userRole === 'auditor') && (
+        {/* SINCRONIA - visível apenas para admin */}
+        {userRole === 'admin' && (
           <button 
             onClick={() => { setTab('SYNC'); setAuditUserId(null); setSelectedCompId(null); }}
             className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'SYNC' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
