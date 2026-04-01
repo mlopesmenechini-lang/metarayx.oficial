@@ -21,6 +21,7 @@ export interface User {
   dailyShares: number;
   dailySaves: number;
   dailyPosts: number;
+  dailyInstaPosts?: number;
   photoURL?: string;
   password?: string; // Added for administrative management
 }

@@ -523,7 +523,8 @@ const App: React.FC = () => {
                 dailyComments: 0,
                 dailyShares: 0,
                 dailySaves: 0,
-                dailyPosts: 0
+                dailyPosts: 0,
+                dailyInstaPosts: 0
               })
             )
           );
@@ -1683,6 +1684,12 @@ const PostSubmit = ({ user }: { user: User }) => {
         await setDoc(doc(db, 'posts', postId), newPost);
       }));
 
+      if (platform === 'instagram') {
+        const uDoc = await getDoc(doc(db, 'users', user.uid));
+        const currentCount = uDoc.data()?.dailyInstaPosts || 0;
+        await updateDoc(doc(db, 'users', user.uid), { dailyInstaPosts: currentCount + urls.length });
+      }
+
       setSuccess(true);
       setUrl('');
       setTimeout(() => setSuccess(false), 3000);
@@ -1836,19 +1843,23 @@ const HistoryView = ({ posts, onDelete, isAdmin }: { posts: Post[], onDelete: (i
 );
 
 const Rankings = ({ rankings }: { rankings: User[] }) => {
-  const [timeframe, setTimeframe] = useState<'DAILY' | 'MONTHLY'>('MONTHLY');
+  const [timeframe, setTimeframe] = useState<'DAILY' | 'MONTHLY' | 'INSTAGRAM'>('MONTHLY');
 
   const sortedRankings = useMemo(() => {
     return [...rankings]
       .filter(user => {
+        if (timeframe === 'INSTAGRAM') return (user.dailyInstaPosts || 0) > 0;
         const views = timeframe === 'MONTHLY' ? (user.totalViews || 0) : (user.dailyViews || 0);
         return views > 0;
       })
       .sort((a, b) => {
+        if (timeframe === 'INSTAGRAM') {
+          return (b.dailyInstaPosts || 0) - (a.dailyInstaPosts || 0);
+        }
         const viewsA = timeframe === 'MONTHLY' ? (a.totalViews || 0) : (a.dailyViews || 0);
         const viewsB = timeframe === 'MONTHLY' ? (b.totalViews || 0) : (b.dailyViews || 0);
         return viewsB - viewsA;
-      }).slice(0, 10);
+      }).slice(0, timeframe === 'INSTAGRAM' ? 3 : 10);
   }, [rankings, timeframe]);
 
   const getPrize = (index: number) => {
@@ -1878,10 +1889,12 @@ const Rankings = ({ rankings }: { rankings: User[] }) => {
           <div className="flex items-center gap-3 mb-2">
             <Trophy className="w-6 h-6 text-amber-500" />
             <h2 className="text-2xl font-black tracking-tight uppercase">
-              {timeframe === 'MONTHLY' ? 'Ranking Mensal' : 'Ranking Diário'}
+              {timeframe === 'MONTHLY' ? 'Ranking Mensal' : timeframe === 'DAILY' ? 'Ranking Diário' : 'Top 3 Instagram'}
             </h2>
           </div>
-          <p className="text-zinc-500 font-bold text-[10px] uppercase tracking-widest">Ranking baseado no total de visualizações (Views)</p>
+          <p className="text-zinc-500 font-bold text-[10px] uppercase tracking-widest">
+            {timeframe === 'INSTAGRAM' ? 'Ranking baseado na quantidade de vídeos de Instagram enviados hoje' : 'Ranking baseado no total de visualizações (Views)'}
+          </p>
         </div>
 
         <div className="flex p-1 bg-zinc-900 rounded-xl border border-zinc-800">
@@ -1890,6 +1903,12 @@ const Rankings = ({ rankings }: { rankings: User[] }) => {
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-black transition-all ${timeframe === 'DAILY' ? 'bg-zinc-800 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
           >
             <Zap className="w-3 h-3" /> DIA
+          </button>
+          <button 
+            onClick={() => setTimeframe('INSTAGRAM')} 
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-black transition-all ${timeframe === 'INSTAGRAM' ? 'bg-zinc-800 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
+          >
+            <Camera className="w-3 h-3" /> INSTA
           </button>
           <button 
             onClick={() => setTimeframe('MONTHLY')} 
@@ -1985,9 +2004,11 @@ const Rankings = ({ rankings }: { rankings: User[] }) => {
               {/* Views & Prize */}
               <div className="flex items-center gap-8 md:gap-12 relative z-10">
                 <div className="flex flex-col items-end">
-                  <span className="text-[10px] text-zinc-500 uppercase font-black tracking-widest">Views</span>
+                  <span className="text-[10px] text-zinc-500 uppercase font-black tracking-widest">
+                    {timeframe === 'INSTAGRAM' ? 'Vídeos' : 'Views'}
+                  </span>
                   <span className="text-2xl md:text-3xl font-black text-cyan-400">
-                    {stats.views.toLocaleString()}
+                    {timeframe === 'INSTAGRAM' ? (player.dailyInstaPosts || 0).toLocaleString() : stats.views.toLocaleString()}
                   </span>
                 </div>
                 <div className="flex flex-col items-end min-w-[140px]">
