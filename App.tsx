@@ -83,6 +83,8 @@ const App: React.FC = () => {
   const [compMentions, setCompMentions] = useState('');
   const [compBonuses, setCompBonuses] = useState('');
   const [compInstaBonus, setCompInstaBonus] = useState('');
+  const [compStartDate, setCompStartDate] = useState('');
+  const [compEndDate, setCompEndDate] = useState('');
   const [compBanner, setCompBanner] = useState('');
   const [compPositions, setCompPositions] = useState(3);
   const [compPrizes, setCompPrizes] = useState<{ position: number; value: number; label: string; }[]>([
@@ -512,22 +514,51 @@ const App: React.FC = () => {
   const handleResetDailyRanking = async () => {
     setConfirmModal({
       isOpen: true,
-      title: 'Zerar Ranking Diário',
-      message: 'Tem certeza que deseja zerar TODAS as pontuações e views DIÁRIAS de todos os usuários aprovados? O ranking total mensal será mantido.',
+      title: 'Zerar Ranking Diário e Pagar Vencedores',
+      message: 'Isso calculará os 10 vencedores do Dia e o Top 1 Insta, injetará o prêmio direto no Saldo deles, e zerará as estatísticas diárias de todos. Confirmar o pagamento e o repasse?',
       onConfirm: async () => {
         try {
+          const activeCompetition = competitions.find(c => c.isActive);
+          const getPrize = (index: number) => {
+            const prizes = [7000, 4000, 3000, 2000, 1000, 800, 700, 600, 500, 400];
+            return prizes[index] || 0;
+          };
+
+          const dailyViewWinners = [...approvedUsers]
+            .filter(u => u.dailyViews > 0)
+            .sort((a,b) => b.dailyViews - a.dailyViews)
+            .slice(0, 10);
+            
+          const instaWinner = [...approvedUsers]
+            .filter(u => (u.dailyInstaPosts || 0) > 0)
+            .sort((a,b) => (b.dailyInstaPosts || 0) - (a.dailyInstaPosts || 0))[0];
+
+          const balanceIncrements: Record<string, number> = {};
+          
+          dailyViewWinners.forEach((u, i) => {
+             balanceIncrements[u.uid] = (balanceIncrements[u.uid] || 0) + getPrize(i);
+          });
+          
+          if (instaWinner && activeCompetition?.instaBonusPrize) {
+             balanceIncrements[instaWinner.uid] = (balanceIncrements[instaWinner.uid] || 0) + activeCompetition.instaBonusPrize;
+          }
+
           await Promise.all(
-            approvedUsers.map(u => 
-              updateDoc(doc(db, 'users', u.uid), {
+            approvedUsers.map(u => {
+              const currentBalance = u.balance || 0;
+              const increment = balanceIncrements[u.uid] || 0;
+              const dataToUpdate: any = {
                 dailyViews: 0,
                 dailyLikes: 0,
                 dailyComments: 0,
                 dailyShares: 0,
                 dailySaves: 0,
                 dailyPosts: 0,
-                dailyInstaPosts: 0
-              })
-            )
+                dailyInstaPosts: 0,
+              };
+              if (increment > 0) dataToUpdate.balance = currentBalance + increment;
+              return updateDoc(doc(db, 'users', u.uid), dataToUpdate);
+            })
           );
         } catch (error) {
           handleFirestoreError(error, OperationType.UPDATE, 'users/daily_reset');
@@ -564,8 +595,8 @@ const App: React.FC = () => {
         instaBonusPrize: compInstaBonus ? Number(compInstaBonus) : 0,
         bannerUrl: compBanner,
         isActive: true,
-        startDate: Date.now(),
-        endDate: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days default
+        startDate: compStartDate ? new Date(compStartDate + 'T00:00:00').getTime() : Date.now(),
+        endDate: compEndDate ? new Date(compEndDate + 'T23:59:59').getTime() : Date.now() + 7 * 24 * 60 * 60 * 1000,
         prizes: compPrizes.slice(0, compPositions),
         timestamp: Date.now()
       };
@@ -587,6 +618,8 @@ const App: React.FC = () => {
       setCompMentions('');
       setCompBonuses('');
       setCompInstaBonus('');
+      setCompStartDate('');
+      setCompEndDate('');
       setCompBanner('');
     } catch (error) {
       console.error('Error saving competition:', error);
@@ -603,6 +636,16 @@ const App: React.FC = () => {
     setCompMentions(comp.mentions || '');
     setCompBonuses(comp.bonuses || '');
     setCompInstaBonus(comp.instaBonusPrize?.toString() || '');
+    
+    const formatDate = (ms: number) => {
+      const d = new Date(ms);
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return `${d.getFullYear()}-${mm}-${dd}`;
+    };
+    setCompStartDate(comp.startDate ? formatDate(comp.startDate) : formatDate(Date.now()));
+    setCompEndDate(comp.endDate ? formatDate(comp.endDate) : formatDate(Date.now()));
+    
     setCompBanner(comp.bannerUrl);
     setCompPositions(comp.prizes.length);
     setCompPrizes(comp.prizes);
@@ -853,6 +896,8 @@ const App: React.FC = () => {
                   compMentions={compMentions} setCompMentions={setCompMentions}
                   compBonuses={compBonuses} setCompBonuses={setCompBonuses}
                   compInstaBonus={compInstaBonus} setCompInstaBonus={setCompInstaBonus}
+                  compStartDate={compStartDate} setCompStartDate={setCompStartDate}
+                  compEndDate={compEndDate} setCompEndDate={setCompEndDate}
                   compBanner={compBanner} setCompBanner={setCompBanner}
                   compPositions={compPositions} setCompPositions={setCompPositions}
                   compPrizes={compPrizes} setCompPrizes={setCompPrizes}
@@ -1850,6 +1895,10 @@ const HistoryView = ({ posts, onDelete, isAdmin }: { posts: Post[], onDelete: (i
 const Rankings = ({ rankings, competitions }: { rankings: User[], competitions: Competition[] }) => {
   const [timeframe, setTimeframe] = useState<'DAILY' | 'MONTHLY' | 'INSTAGRAM'>('MONTHLY');
 
+  const activeCompetition = competitions?.find(c => c.isActive);
+  const timeLeft = activeCompetition ? activeCompetition.endDate - Date.now() : 0;
+  const daysLeft = Math.ceil(timeLeft / (1000 * 60 * 60 * 24));
+
   const sortedRankings = useMemo(() => {
     return [...rankings]
       .filter(user => {
@@ -1889,7 +1938,23 @@ const Rankings = ({ rankings, competitions }: { rankings: User[], competitions: 
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
+      {activeCompetition && daysLeft >= 0 && (
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 flex items-center justify-between text-amber-500 shadow-xl shadow-amber-500/5 mb-8">
+           <div className="flex items-center gap-3">
+              <Clock className="w-8 h-8 animate-pulse text-amber-500" />
+              <div className="flex flex-col">
+                 <span className="font-black text-sm uppercase md:text-md tracking-tight">{activeCompetition.title}</span>
+                 <span className="text-[10px] font-bold opacity-80 uppercase tracking-widest">A competição encerra em breve</span>
+              </div>
+           </div>
+           <div className="flex flex-col items-end">
+              <span className="text-3xl font-black">{daysLeft}</span>
+              <span className="text-[10px] uppercase font-black tracking-widest leading-none">Dias Restantes</span>
+           </div>
+        </div>
+      )}
+      
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8 mt-4">
         <div className="space-y-1">
           <div className="flex items-center gap-3 mb-2">
             <Trophy className="w-6 h-6 text-amber-500" />
@@ -2036,6 +2101,53 @@ const Rankings = ({ rankings, competitions }: { rankings: User[], competitions: 
   );
 };
 
+const FinancialRow = ({ user }: { user: User }) => {
+  const [val, setVal] = useState(user.balance?.toString() || '0');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setVal(user.balance?.toString() || '0');
+  }, [user.balance]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await updateDoc(doc(db, 'users', user.uid), { balance: Number(val) });
+    } catch(e) {
+      console.error(e);
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div className="flex items-center gap-4 bg-zinc-900 border border-zinc-800 p-4 rounded-2xl shadow-xl justify-between flex-wrap">
+       <div className="flex flex-col gap-1 w-full sm:w-auto">
+          <span className="text-amber-500 font-bold tracking-widest uppercase text-[10px]">@{user.displayName?.toLowerCase().replace(/\s+/g, '_')}</span>
+          <span className="font-black text-lg text-white truncate max-w-[200px]">{user.displayName}</span>
+       </div>
+       <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto justify-between sm:justify-end">
+          {Number(val) > 0 ? (
+            <span className="px-3 py-1 rounded bg-amber-500/20 text-amber-500 text-[10px] font-black uppercase tracking-widest">Pendente</span>
+          ) : (
+            <span className="px-3 py-1 rounded bg-emerald-500/20 text-emerald-500 text-[10px] font-black uppercase tracking-widest">Pago</span>
+          )}
+          <div className="flex items-center gap-2">
+            <span className="text-zinc-500 font-bold text-sm">R$</span>
+            <input 
+              type="number" 
+              value={val} 
+              onChange={e => setVal(e.target.value)}
+              className="w-24 bg-black border border-zinc-700 py-3 px-4 text-right rounded-xl font-mono text-sm font-bold focus:border-amber-500 outline-none"
+            />
+            <button onClick={handleSave} disabled={saving} className="gold-bg text-black px-4 py-3 font-black rounded-xl text-xs hover:scale-105 transition-all">
+              {saving ? '...' : 'Salvar'}
+            </button>
+          </div>
+       </div>
+    </div>
+  );
+};
+
 const AdminPanel = ({ 
   posts, 
   pendingUsers, 
@@ -2068,6 +2180,8 @@ const AdminPanel = ({
   compMentions, setCompMentions,
   compBonuses, setCompBonuses,
   compInstaBonus, setCompInstaBonus,
+  compStartDate, setCompStartDate,
+  compEndDate, setCompEndDate,
   compBanner, setCompBanner,
   compPositions, setCompPositions,
   compPrizes, setCompPrizes,
@@ -2110,6 +2224,8 @@ const AdminPanel = ({
   compMentions: string, setCompMentions: (v: string) => void,
   compBonuses: string, setCompBonuses: (v: string) => void,
   compInstaBonus: string, setCompInstaBonus: (v: string) => void,
+  compStartDate: string, setCompStartDate: (v: string) => void,
+  compEndDate: string, setCompEndDate: (v: string) => void,
   compBanner: string, setCompBanner: (v: string) => void,
   compPositions: number, setCompPositions: (v: number) => void,
   compPrizes: { position: number, value: number, label: string }[], setCompPrizes: (v: { position: number, value: number, label: string }[]) => void,
@@ -2121,7 +2237,7 @@ const AdminPanel = ({
   annMsg: string, setAnnMsg: (v: string) => void,
   isCreatingAnn: boolean, setIsCreatingAnn: (v: boolean) => void
 }) => {
-  const [tab, setTab] = useState<'POSTS' | 'USERS' | 'USERS_APPROVED' | 'COMPETITIONS' | 'REGISTROS' | 'SYNC' | 'AVISOS'>('POSTS');
+  const [tab, setTab] = useState<'POSTS' | 'USERS' | 'USERS_APPROVED' | 'COMPETITIONS' | 'REGISTROS' | 'SYNC' | 'AVISOS' | 'FINANCEIRO'>('POSTS');
   const [syncing, setSyncing] = useState(false);
   const [syncingPostId, setSyncingPostId] = useState<string | null>(null);
   const [apifyKey, setApifyKey] = useState(settings.apifyKey);
@@ -2278,9 +2394,34 @@ const AdminPanel = ({
         >
           AVISOS
         </button>
+        <button 
+          onClick={() => setTab('FINANCEIRO')}
+          className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'FINANCEIRO' ? 'gold-bg text-black' : 'text-zinc-500'}`}
+        >
+          FINANCEIRO
+        </button>
       </div>
 
       <div className="grid grid-cols-1 gap-4">
+        {tab === 'FINANCEIRO' && (
+          <div className="space-y-6">
+            <div className="flex flex-col gap-2 mb-4">
+              <h3 className="text-xl font-black uppercase tracking-tight">Gestão Financeira e Premiações</h3>
+              <p className="text-zinc-500 font-bold text-xs">Monitore saldos a pagar. Atualize o valor após fechar o pix e ele marcará como Pago.</p>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {approvedUsers.map(u => (
+                 <FinancialRow key={u.uid} user={u} />
+              ))}
+              {approvedUsers.length === 0 && (
+                <div className="col-span-full py-12 text-center border-2 border-dashed border-zinc-800 rounded-3xl">
+                  <p className="text-zinc-500 font-bold">Nenhum usuário aprovado para gerir finanças.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {tab === 'POSTS' ? (
           <>
             {pendingPosts.map(post => (
@@ -2624,6 +2765,27 @@ const AdminPanel = ({
                       value={compInstaBonus}
                       onChange={(e) => setCompInstaBonus(e.target.value)}
                       placeholder="Ex: 500"
+                      className="w-full bg-black border border-zinc-800 rounded-2xl py-4 px-6 text-sm font-bold focus:border-amber-500 outline-none transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Início da Competição</label>
+                    <input 
+                      type="date"
+                      value={compStartDate}
+                      onChange={(e) => setCompStartDate(e.target.value)}
+                      className="w-full bg-black border border-zinc-800 rounded-2xl py-4 px-6 text-sm font-bold focus:border-amber-500 outline-none transition-all"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Fim da Competição</label>
+                    <input 
+                      type="date"
+                      value={compEndDate}
+                      onChange={(e) => setCompEndDate(e.target.value)}
                       className="w-full bg-black border border-zinc-800 rounded-2xl py-4 px-6 text-sm font-bold focus:border-amber-500 outline-none transition-all"
                     />
                   </div>
