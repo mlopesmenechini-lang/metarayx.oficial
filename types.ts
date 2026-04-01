@@ -114,3 +114,13 @@ export interface CompetitionRegistration {
   timestamp: number;
   acceptedRules?: boolean;
 }
+
+export interface Suggestion {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  message: string;
+  timestamp: number;
+  status: 'pending' | 'read' | 'implemented';
+}

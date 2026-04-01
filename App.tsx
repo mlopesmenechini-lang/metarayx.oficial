@@ -4,7 +4,7 @@ import {
   onSnapshot, collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, query, where, orderBy, limit,
   OperationType, handleFirestoreError, createUserWithEmailAndPassword, signInWithEmailAndPassword, addDoc, serverTimestamp
 } from './firebase';
-import { User, Post, Season, Announcement, Platform, PostStatus, Competition, CompetitionRegistration, UserRole, Transaction } from './types';
+import { User, Post, Season, Announcement, Platform, PostStatus, Competition, CompetitionRegistration, UserRole, Transaction, Suggestion } from './types';
 import { 
   LayoutDashboard, Trophy, Send, History, Settings, LogOut, 
   ShieldCheck, AlertCircle, CheckCircle2, XCircle, Clock, 
@@ -178,7 +178,7 @@ const WalletView = ({ user }: { user: User }) => {
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<'DASHBOARD' | 'RANKINGS' | 'POST' | 'HISTORY' | 'ADMIN' | 'SETTINGS' | 'WALLET'>('RANKINGS');
+  const [view, setView] = useState<'DASHBOARD' | 'RANKINGS' | 'POST' | 'HISTORY' | 'ADMIN' | 'SETTINGS' | 'WALLET' | 'SUGGESTIONS'>('RANKINGS');
   const [posts, setPosts] = useState<Post[]>([]);
   const [rankings, setRankings] = useState<User[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
@@ -187,6 +187,7 @@ const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [pendingUsers, setPendingUsers] = useState<User[]>([]);
   const [approvedUsers, setApprovedUsers] = useState<User[]>([]);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [globalSyncing, setGlobalSyncing] = useState(false);
   const [settings, setSettings] = useState<{ apifyKey: string }>({ apifyKey: '' });
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -235,9 +236,11 @@ const App: React.FC = () => {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editName, setEditName] = useState('');
   const [editPass, setEditPass] = useState('');
+  const [editRole, setEditRole] = useState<'user'|'auditor'|'administrativo'|'admin'>('user');
   const [annTitle, setAnnTitle] = useState('');
   const [annMsg, setAnnMsg] = useState('');
   const [isCreatingAnn, setIsCreatingAnn] = useState(false);
+  const [suggestionMsg, setSuggestionMsg] = useState('');
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -369,7 +372,9 @@ const App: React.FC = () => {
 
   // Real-time Data Listeners
   useEffect(() => {
-    if (!user || !user.isApproved && user.role !== 'admin') return;
+    if (!user) return;
+    const isStaff = user.role === 'admin' || user.role === 'auditor' || user.role === 'administrativo';
+    if (!user.isApproved && !isStaff) return;
 
     // Posts Listener (My Posts or All for Admin)
     const postsQuery = user.role === 'admin' 
@@ -407,10 +412,12 @@ const App: React.FC = () => {
       setRegistrations(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CompetitionRegistration)));
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'competition_registrations'));
 
-    // Admin: Users Listeners
+    // Admin/Staff: Users & Suggestions Listeners
     let unsubPendingUsers = () => {};
     let unsubApprovedUsers = () => {};
-    if (user.role === 'admin') {
+    let unsubSuggestions = () => {};
+
+    if (isStaff) {
       const pendingUsersQuery = query(collection(db, 'users'), where('isApproved', '==', false));
       unsubPendingUsers = onSnapshot(pendingUsersQuery, (snapshot) => {
         const users = snapshot.docs.map(doc => doc.data() as User);
@@ -421,6 +428,11 @@ const App: React.FC = () => {
       unsubApprovedUsers = onSnapshot(approvedUsersQuery, (snapshot) => {
         setApprovedUsers(snapshot.docs.map(doc => doc.data() as User));
       }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
+
+      const suggestionsQuery = query(collection(db, 'suggestions'), orderBy('timestamp', 'desc'));
+      unsubSuggestions = onSnapshot(suggestionsQuery, (snapshot) => {
+        setSuggestions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Suggestion)));
+      }, (error) => handleFirestoreError(error, OperationType.LIST, 'suggestions'));
     }
 
     return () => { 
@@ -431,6 +443,7 @@ const App: React.FC = () => {
       unsubReg();
       unsubPendingUsers();
       unsubApprovedUsers();
+      unsubSuggestions();
     };
   }, [user]);
 
@@ -839,7 +852,7 @@ const App: React.FC = () => {
   const handleEditUser = async () => {
     if (!editingUser) return;
     try {
-      const updates: any = { displayName: editName };
+      const updates: any = { displayName: editName, role: editRole };
       if (editPass) updates.password = editPass;
       
       await updateDoc(doc(db, 'users', editingUser.uid), updates);
@@ -882,6 +895,42 @@ const App: React.FC = () => {
         } catch (error) {
           console.error('Error deleting announcement:', error);
           alert('Erro ao remover aviso.');
+        }
+      }
+    });
+  };
+
+  const handleSendSuggestion = async () => {
+    if (!user || !suggestionMsg.trim()) return;
+    try {
+      await addDoc(collection(db, 'suggestions'), {
+        userId: user.uid,
+        userName: user.displayName,
+        userEmail: user.email,
+        message: suggestionMsg,
+        timestamp: Date.now(),
+        status: 'pending'
+      });
+      setSuggestionMsg('');
+      alert('Sua sugestão foi enviada com sucesso! Obrigado por nos ajudar a melhorar.');
+    } catch (error) {
+      console.error('Error sending suggestion:', error);
+      alert('Erro ao enviar sugestão. Tente novamente mais tarde.');
+    }
+  };
+
+  const handleDeleteSuggestion = async (id: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Remover Sugestão',
+      message: 'Tem certeza que deseja remover esta sugestão?',
+      onConfirm: async () => {
+        try {
+          await deleteDoc(doc(db, 'suggestions', id));
+          alert('Sugestão removida!');
+        } catch (error) {
+          console.error('Error deleting suggestion:', error);
+          alert('Erro ao remover sugestão.');
         }
       }
     });
@@ -968,15 +1017,20 @@ const App: React.FC = () => {
               )}
               <NavItem active={view === 'SETTINGS'} onClick={() => setView('SETTINGS')} icon={<Settings />} label="Configurações" />
               
-              <div className="pt-4 mt-4 border-t border-zinc-800/50">
-                <button 
-                  onClick={handleGlobalSync}
-                  disabled={globalSyncing}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-zinc-400 hover:text-amber-400 hover:bg-amber-400/10 rounded-xl transition-all font-bold text-sm disabled:opacity-50"
-                >
-                  <RefreshCw className={`w-4 h-4 ${globalSyncing ? 'animate-spin' : ''}`} />
-                  RESSINCRONIZAR LINKS
-                </button>
+              {user.role === 'admin' && (
+                <div className="pt-4 mt-4 border-t border-zinc-800/50">
+                  <button 
+                    onClick={handleGlobalSync}
+                    disabled={globalSyncing}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-zinc-400 hover:text-amber-400 hover:bg-amber-400/10 rounded-xl transition-all font-bold text-sm disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${globalSyncing ? 'animate-spin' : ''}`} />
+                    RESSINCRONIZAR LINKS
+                  </button>
+                </div>
+              )}
+              <div className="pt-2">
+                <NavItem active={view === 'SUGGESTIONS'} onClick={() => setView('SUGGESTIONS')} icon={<MessageSquare />} label="Sugestões" />
               </div>
             </nav>
 
@@ -1079,6 +1133,9 @@ const App: React.FC = () => {
                   handleEditCompClick={handleEditCompClick}
                   handleEditUser={handleEditUser}
                   handleCreateAnnouncement={handleCreateAnnouncement}
+                  handleDeleteAnnouncement={handleDeleteAnnouncement}
+                  handleDeleteSuggestion={handleDeleteSuggestion}
+                  suggestions={suggestions}
                   compTitle={compTitle} setCompTitle={setCompTitle}
                   compDesc={compDesc} setCompDesc={setCompDesc}
                   compRules={compRules} setCompRules={setCompRules}
@@ -1105,7 +1162,7 @@ const App: React.FC = () => {
                   annTitle={annTitle} setAnnTitle={setAnnTitle}
                   annMsg={annMsg} setAnnMsg={setAnnMsg}
                   isCreatingAnn={isCreatingAnn} setIsCreatingAnn={setIsCreatingAnn}
-                  handleDeleteAnnouncement={handleDeleteAnnouncement}
+                  editRole={editRole} setEditRole={setEditRole}
                 />
               )}
               {view === 'SETTINGS' && user && (
@@ -1117,6 +1174,13 @@ const App: React.FC = () => {
                   handleProfilePhotoUpload={handleProfilePhotoUpload}
                   handleUpdateProfile={handleUpdateProfile}
                   isUpdatingProfile={isUpdatingProfile}
+                />
+              )}
+              {view === 'SUGGESTIONS' && user && (
+                <SuggestionsView 
+                  suggestionMsg={suggestionMsg}
+                  setSuggestionMsg={setSuggestionMsg}
+                  handleSendSuggestion={handleSendSuggestion}
                 />
               )}
             </motion.div>
@@ -2460,6 +2524,8 @@ const AdminPanel = ({
   handleEditUser,
   handleCreateAnnouncement,
   handleDeleteAnnouncement,
+  handleDeleteSuggestion,
+  suggestions,
   compTitle, setCompTitle,
   compDesc, setCompDesc,
   compRules, setCompRules,
@@ -2483,6 +2549,7 @@ const AdminPanel = ({
   editingUser, setEditingUser,
   editName, setEditName,
   editPass, setEditPass,
+  editRole, setEditRole,
   annTitle, setAnnTitle,
   annMsg, setAnnMsg,
   isCreatingAnn, setIsCreatingAnn
@@ -2512,6 +2579,8 @@ const AdminPanel = ({
   handleEditUser: () => void,
   handleCreateAnnouncement: () => void,
   handleDeleteAnnouncement: (id: string) => void,
+  handleDeleteSuggestion: (id: string) => void,
+  suggestions: Suggestion[],
   compTitle: string, setCompTitle: (v: string) => void,
   compDesc: string, setCompDesc: (v: string) => void,
   compRules: string, setCompRules: (v: string) => void,
@@ -2535,11 +2604,12 @@ const AdminPanel = ({
   editingUser: User | null, setEditingUser: (v: User | null) => void,
   editName: string, setEditName: (v: string) => void,
   editPass: string, setEditPass: (v: string) => void,
+  editRole: UserRole, setEditRole: (v: UserRole) => void,
   annTitle: string, setAnnTitle: (v: string) => void,
   annMsg: string, setAnnMsg: (v: string) => void,
   isCreatingAnn: boolean, setIsCreatingAnn: (v: boolean) => void
 }) => {
-  const [tab, setTab] = useState<'POSTS' | 'USERS' | 'USERS_APPROVED' | 'COMPETITIONS' | 'REGISTROS' | 'SYNC' | 'AVISOS' | 'FINANCEIRO' | 'ACESSOS'>(
+  const [tab, setTab] = useState<'POSTS' | 'USERS' | 'USERS_APPROVED' | 'COMPETITIONS' | 'REGISTROS' | 'SYNC' | 'AVISOS' | 'FINANCEIRO' | 'ACESSOS' | 'SUGESTOES'>(
     userRole === 'administrativo' ? 'FINANCEIRO' : 'POSTS'
   );
   const [auditUserId, setAuditUserId] = useState<string | null>(null);
@@ -2818,6 +2888,15 @@ const AdminPanel = ({
             className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'ACESSOS' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
           >
             CRIAR ACESSO
+          </button>
+        )}
+        {/* SUGESTÕES - visível para admin e auditor */}
+        {(userRole === 'admin' || userRole === 'auditor') && (
+          <button 
+            onClick={() => setTab('SUGESTOES')}
+            className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'SUGESTOES' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
+          >
+            SUGESTÕES ({suggestions.length})
           </button>
         )}
       </div>
@@ -3155,6 +3234,14 @@ const AdminPanel = ({
                     <div className="flex-1 min-w-0 text-center md:text-left">
                       <p className="text-lg font-black">{u.displayName}</p>
                       <p className="text-sm font-bold text-zinc-500">{u.email}</p>
+                      <span className={`inline-flex items-center gap-1 mt-1 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest w-fit ${
+                        u.role === 'admin' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
+                        u.role === 'administrativo' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' :
+                        u.role === 'auditor' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
+                        'bg-zinc-800 text-zinc-400 border border-zinc-700'
+                      }`}>
+                        {u.role === 'admin' ? '👑 Admin' : u.role === 'administrativo' ? '🏢 Administrativo' : u.role === 'auditor' ? '🔍 Auditor' : '👤 Usuário'}
+                      </span>
                       {u.password && <p className="text-[10px] font-mono text-zinc-600 mt-1">Senha: {u.password}</p>}
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
@@ -3169,6 +3256,7 @@ const AdminPanel = ({
                           setEditingUser(u);
                           setEditName(u.displayName);
                           setEditPass('');
+                          setEditRole(u.role as any);
                         }}
                         className="px-6 py-3 rounded-xl bg-zinc-800 text-zinc-300 font-black text-xs hover:bg-zinc-700 transition-all"
                       >
@@ -3204,6 +3292,20 @@ const AdminPanel = ({
                         onChange={(e) => setEditName(e.target.value)}
                         className="w-full bg-black border border-zinc-800 rounded-2xl py-4 px-6 text-sm font-bold focus:border-amber-500 outline-none transition-all"
                       />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Função / Cargo</label>
+                      <select
+                        value={editRole}
+                        onChange={(e) => setEditRole(e.target.value as any)}
+                        className="w-full bg-black border border-zinc-800 rounded-2xl py-4 px-6 text-sm font-bold focus:border-amber-500 outline-none transition-all text-zinc-300 cursor-pointer"
+                      >
+                        <option value="user">👤 Usuário Comum (Criador de Conteúdo)</option>
+                        <option value="auditor">🔍 Auditor — Revisa vídeos postados</option>
+                        <option value="administrativo">🏢 Administrativo — Financeiro + Competições</option>
+                        <option value="admin">👑 Administrador (Diretoria) — Acesso total</option>
+                      </select>
+                      <p className="text-[9px] text-zinc-600 font-bold ml-1">⚠️ Alterar a função afeta imediatamente o acesso do usuário</p>
                     </div>
                     <div className="space-y-2">
                       <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Nova Senha (opcional)</label>
@@ -3988,6 +4090,36 @@ const AdminPanel = ({
               </div>
             </div>
           </div>
+        ) : tab === 'SUGESTOES' ? (
+          <div className="space-y-6">
+            <h3 className="text-xl font-black uppercase tracking-tight">Sugestões dos Usuários</h3>
+            <div className="grid grid-cols-1 gap-4">
+              {suggestions.map(s => (
+                <div key={s.id} className="p-6 rounded-3xl glass border border-zinc-800 flex items-center justify-between gap-6">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                       <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest">@{s.userName}</span>
+                       <span className="text-[10px] text-zinc-600 font-black">{new Date(s.timestamp).toLocaleString()}</span>
+                    </div>
+                    <p className="text-zinc-300 font-bold leading-relaxed">{s.message}</p>
+                    <p className="text-[10px] text-zinc-500 font-black mt-2 uppercase">{s.userEmail}</p>
+                  </div>
+                  <button 
+                    onClick={() => handleDeleteSuggestion(s.id)}
+                    className="p-3 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-black transition-all"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                </div>
+              ))}
+              {suggestions.length === 0 && (
+                <div className="py-20 text-center space-y-4">
+                  <MessageSquare className="w-12 h-12 text-zinc-800 mx-auto" />
+                  <p className="text-zinc-500 font-bold">Nenhuma sugestão recebida.</p>
+                </div>
+              )}
+            </div>
+          </div>
         ) : null}
       </div>
     </div>
@@ -4086,6 +4218,56 @@ const SettingsView = ({
           Sua conta está vinculada ao sistema MetaRayx. Se precisar de suporte técnico, entre em contato com a diretoria no Discord oficial.
         </p>
       </div>
+    </div>
+  </div>
+);
+
+const SuggestionsView = ({ 
+  suggestionMsg, 
+  setSuggestionMsg, 
+  handleSendSuggestion 
+}: { 
+  suggestionMsg: string; 
+  setSuggestionMsg: (v: string) => void; 
+  handleSendSuggestion: () => void;
+}) => (
+  <div className="max-w-2xl mx-auto space-y-10">
+    <div className="space-y-2">
+      <h2 className="text-3xl font-black tracking-tight uppercase">Sugestões e Ideias</h2>
+      <p className="text-zinc-500 font-bold text-xs uppercase tracking-widest">Ajude-nos a construir o melhor HUB de criadores do Brasil</p>
+    </div>
+
+    <div className="p-8 rounded-[40px] glass border border-zinc-800 space-y-8">
+      <div className="space-y-4">
+        <div className="flex items-center gap-3 text-amber-500">
+           <Zap className="w-5 h-5" />
+           <span className="text-xs font-black uppercase tracking-widest">O que podemos melhorar?</span>
+        </div>
+        <textarea 
+          value={suggestionMsg}
+          onChange={(e) => setSuggestionMsg(e.target.value)}
+          placeholder="Descreva sua ideia, bug encontrado ou sugestão de nova funcionalidade..."
+          className="w-full bg-black border border-zinc-800 rounded-3xl py-6 px-8 text-sm font-bold focus:border-amber-500 outline-none transition-all h-48 resize-none shadow-inner"
+        />
+      </div>
+
+      <button 
+        onClick={handleSendSuggestion}
+        disabled={!suggestionMsg.trim()}
+        className="w-full py-5 gold-bg text-black font-black rounded-2xl hover:scale-[1.01] transition-all shadow-xl shadow-amber-500/10 disabled:opacity-50 flex items-center justify-center gap-3"
+      >
+        <Send className="w-5 h-5" />
+        ENVIAR MINHA SUGESTÃO
+      </button>
+    </div>
+
+    <div className="p-6 rounded-3xl bg-zinc-900/50 border border-zinc-800 flex items-start gap-4">
+      <div className="p-2 rounded-lg bg-zinc-800">
+        <Heart className="w-5 h-5 text-pink-500" />
+      </div>
+      <p className="text-xs text-zinc-500 leading-relaxed font-bold">
+        Todas as sugestões são lidas pela diretoria. Valorizamos cada feedback para tornar sua experiência no MetaRayx cada vez mais produtiva e rentável.
+      </p>
     </div>
   </div>
 );
