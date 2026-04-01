@@ -81,12 +81,27 @@ export interface Competition {
     value: number;
     label: string;
   }[];
+  prizesDaily: {
+    position: number;
+    value: number;
+    label: string;
+  }[];
+  prizesMonthly: {
+    position: number;
+    value: number;
+    label: string;
+  }[];
+  prizesInstagram: {
+    position: number;
+    value: number;
+    label: string;
+  }[];
   timestamp: number;
   rules?: string;
   hashtags?: string;
   mentions?: string;
   bonuses?: string;
-  instaBonusPrize?: number;
+  viewBonus?: number;
 }
 
 export interface CompetitionRegistration {

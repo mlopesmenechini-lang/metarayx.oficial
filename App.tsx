@@ -203,14 +203,33 @@ const App: React.FC = () => {
   const [compMentions, setCompMentions] = useState('');
   const [compBonuses, setCompBonuses] = useState('');
   const [compInstaBonus, setCompInstaBonus] = useState('');
+  const [compViewBonus, setCompViewBonus] = useState<number>(0);
   const [compStartDate, setCompStartDate] = useState('');
   const [compEndDate, setCompEndDate] = useState('');
   const [compBanner, setCompBanner] = useState('');
-  const [compPositions, setCompPositions] = useState(3);
   const [compPrizes, setCompPrizes] = useState<{ position: number; value: number; label: string; }[]>([
     { position: 1, value: 0, label: '1º Lugar' },
     { position: 2, value: 0, label: '2º Lugar' },
     { position: 3, value: 0, label: '3º Lugar' }
+  ]);
+  const [compPositions, setCompPositions] = useState(3);
+  const [compPositionsDaily, setCompPositionsDaily] = useState(3);
+  const [compPrizesDaily, setCompPrizesDaily] = useState<{ position: number; value: number; label: string; }[]>([
+    { position: 1, value: 0, label: '1º Diário' },
+    { position: 2, value: 0, label: '2º Diário' },
+    { position: 3, value: 0, label: '3º Diário' }
+  ]);
+  const [compPositionsMonthly, setCompPositionsMonthly] = useState(3);
+  const [compPrizesMonthly, setCompPrizesMonthly] = useState<{ position: number; value: number; label: string; }[]>([
+    { position: 1, value: 0, label: '1º Mensal' },
+    { position: 2, value: 0, label: '2º Mensal' },
+    { position: 3, value: 0, label: '3º Mensal' }
+  ]);
+  const [compPositionsInstagram, setCompPositionsInstagram] = useState(3);
+  const [compPrizesInstagram, setCompPrizesInstagram] = useState<{ position: number; value: number; label: string; }[]>([
+    { position: 1, value: 0, label: '1º Insta' },
+    { position: 2, value: 0, label: '2º Insta' },
+    { position: 3, value: 0, label: '3º Insta' }
   ]);
   const [isCreatingComp, setIsCreatingComp] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -652,15 +671,10 @@ const App: React.FC = () => {
       onConfirm: async () => {
         try {
           const activeCompetition = competitions.find(c => c.isActive);
-          const getPrize = (index: number) => {
-            const prizes = [7000, 4000, 3000, 2000, 1000, 800, 700, 600, 500, 400];
-            return prizes[index] || 0;
-          };
-
           const dailyViewWinners = [...approvedUsers]
             .filter(u => u.dailyViews > 0)
             .sort((a,b) => b.dailyViews - a.dailyViews)
-            .slice(0, 10);
+            .slice(0, activeCompetition?.prizesDaily?.length || 10);
             
           const instaWinner = [...approvedUsers]
             .filter(u => (u.dailyInstaPosts || 0) > 0)
@@ -669,11 +683,12 @@ const App: React.FC = () => {
           const balanceIncrements: Record<string, number> = {};
           
           dailyViewWinners.forEach((u, i) => {
-             balanceIncrements[u.uid] = (balanceIncrements[u.uid] || 0) + getPrize(i);
+             const prize = activeCompetition?.prizesDaily?.[i]?.value || 0;
+             balanceIncrements[u.uid] = (balanceIncrements[u.uid] || 0) + prize;
           });
           
-          if (instaWinner && activeCompetition?.instaBonusPrize) {
-             balanceIncrements[instaWinner.uid] = (balanceIncrements[instaWinner.uid] || 0) + activeCompetition.instaBonusPrize;
+          if (instaWinner && activeCompetition?.prizesInstagram?.[0]) {
+             balanceIncrements[instaWinner.uid] = (balanceIncrements[instaWinner.uid] || 0) + (activeCompetition.prizesInstagram[0].value || 0);
           }
 
           await Promise.all(
@@ -693,8 +708,10 @@ const App: React.FC = () => {
               return updateDoc(doc(db, 'users', u.uid), dataToUpdate);
             })
           );
+          alert('Ranking resetado e pagamentos realizados com sucesso!');
         } catch (error) {
-          handleFirestoreError(error, OperationType.UPDATE, 'users/daily_reset');
+          console.error('Error resetting rankings:', error);
+          alert('Erro ao resetar ranking.');
         }
       }
     });
@@ -725,12 +742,15 @@ const App: React.FC = () => {
         hashtags: compHashtags,
         mentions: compMentions,
         bonuses: compBonuses,
-        instaBonusPrize: compInstaBonus ? Number(compInstaBonus) : 0,
+        viewBonus: compViewBonus || 0,
         bannerUrl: compBanner,
         isActive: true,
         startDate: compStartDate ? new Date(compStartDate + 'T00:00:00').getTime() : Date.now(),
         endDate: compEndDate ? new Date(compEndDate + 'T23:59:59').getTime() : Date.now() + 7 * 24 * 60 * 60 * 1000,
         prizes: compPrizes.slice(0, compPositions),
+        prizesDaily: compPrizesDaily.slice(0, compPositionsDaily),
+        prizesMonthly: compPrizesMonthly.slice(0, compPositionsMonthly),
+        prizesInstagram: compPrizesInstagram.slice(0, compPositionsInstagram),
         timestamp: Date.now()
       };
 
@@ -751,9 +771,34 @@ const App: React.FC = () => {
       setCompMentions('');
       setCompBonuses('');
       setCompInstaBonus('');
+      setCompViewBonus(0);
       setCompStartDate('');
       setCompEndDate('');
       setCompBanner('');
+      setCompPositions(3);
+      setCompPositionsDaily(3);
+      setCompPositionsMonthly(3);
+      setCompPositionsInstagram(3);
+      setCompPrizes([
+        { position: 1, value: 0, label: '1º Lugar' },
+        { position: 2, value: 0, label: '2º Lugar' },
+        { position: 3, value: 0, label: '3º Lugar' }
+      ]);
+      setCompPrizesDaily([
+        { position: 1, value: 0, label: '1º Diário' },
+        { position: 2, value: 0, label: '2º Diário' },
+        { position: 3, value: 0, label: '3º Diário' }
+      ]);
+      setCompPrizesMonthly([
+        { position: 1, value: 0, label: '1º Mensal' },
+        { position: 2, value: 0, label: '2º Mensal' },
+        { position: 3, value: 0, label: '3º Mensal' }
+      ]);
+      setCompPrizesInstagram([
+        { position: 1, value: 0, label: '1º Insta' },
+        { position: 2, value: 0, label: '2º Insta' },
+        { position: 3, value: 0, label: '3º Insta' }
+      ]);
     } catch (error) {
       console.error('Error saving competition:', error);
       alert('Erro ao salvar competição.');
@@ -768,7 +813,7 @@ const App: React.FC = () => {
     setCompHashtags(comp.hashtags || '');
     setCompMentions(comp.mentions || '');
     setCompBonuses(comp.bonuses || '');
-    setCompInstaBonus(comp.instaBonusPrize?.toString() || '');
+    setCompViewBonus((comp as any).viewBonus || 0);
     
     const formatDate = (ms: number) => {
       const d = new Date(ms);
@@ -780,8 +825,14 @@ const App: React.FC = () => {
     setCompEndDate(comp.endDate ? formatDate(comp.endDate) : formatDate(Date.now()));
     
     setCompBanner(comp.bannerUrl);
-    setCompPositions(comp.prizes.length);
-    setCompPrizes(comp.prizes);
+    setCompPositions(comp.prizes?.length || 3);
+    setCompPrizes(comp.prizes || []);
+    setCompPositionsDaily(comp.prizesDaily?.length || 3);
+    setCompPrizesDaily(comp.prizesDaily || []);
+    setCompPositionsMonthly(comp.prizesMonthly?.length || 3);
+    setCompPrizesMonthly(comp.prizesMonthly || []);
+    setCompPositionsInstagram(comp.prizesInstagram?.length || 3);
+    setCompPrizesInstagram(comp.prizesInstagram || []);
     setIsCreatingComp(true);
   };
 
@@ -1035,11 +1086,18 @@ const App: React.FC = () => {
                   compMentions={compMentions} setCompMentions={setCompMentions}
                   compBonuses={compBonuses} setCompBonuses={setCompBonuses}
                   compInstaBonus={compInstaBonus} setCompInstaBonus={setCompInstaBonus}
+                  compViewBonus={compViewBonus} setCompViewBonus={setCompViewBonus}
                   compStartDate={compStartDate} setCompStartDate={setCompStartDate}
                   compEndDate={compEndDate} setCompEndDate={setCompEndDate}
                   compBanner={compBanner} setCompBanner={setCompBanner}
                   compPositions={compPositions} setCompPositions={setCompPositions}
                   compPrizes={compPrizes} setCompPrizes={setCompPrizes}
+                  compPositionsDaily={compPositionsDaily} setCompPositionsDaily={setCompPositionsDaily}
+                  compPrizesDaily={compPrizesDaily} setCompPrizesDaily={setCompPrizesDaily}
+                  compPositionsMonthly={compPositionsMonthly} setCompPositionsMonthly={setCompPositionsMonthly}
+                  compPrizesMonthly={compPrizesMonthly} setCompPrizesMonthly={setCompPrizesMonthly}
+                  compPositionsInstagram={compPositionsInstagram} setCompPositionsInstagram={setCompPositionsInstagram}
+                  compPrizesInstagram={compPrizesInstagram} setCompPrizesInstagram={setCompPrizesInstagram}
                   isCreatingComp={isCreatingComp} setIsCreatingComp={setIsCreatingComp}
                   editingUser={editingUser} setEditingUser={setEditingUser}
                   editName={editName} setEditName={setEditName}
@@ -1703,21 +1761,82 @@ const Dashboard = ({ user, announcements, rankings, competitions, registrations 
                 </div>
               </div>
 
-              <div className="space-y-4">
-                <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">Premiação</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {selectedComp.prizes.map((prize, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-[10px] font-black text-zinc-500">
-                          {prize.position}º
+              <div className="space-y-6">
+                {selectedComp.prizesMonthly && selectedComp.prizesMonthly.length > 0 && (
+                  <div className="space-y-4">
+                    <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">Premiação Mensal (Tempo de Competição)</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {selectedComp.prizesMonthly.map((prize, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-[10px] font-black text-zinc-500">
+                              {prize.position}º
+                            </div>
+                            <span className="text-xs font-bold">{prize.label}</span>
+                          </div>
+                          <span className="text-sm font-black text-amber-500">R$ {prize.value.toLocaleString()}</span>
                         </div>
-                        <span className="text-xs font-bold">{prize.label}</span>
-                      </div>
-                      <span className="text-sm font-black text-amber-500">R$ {prize.value.toLocaleString()}</span>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                )}
+
+                {selectedComp.prizesDaily && selectedComp.prizesDaily.length > 0 && (
+                  <div className="space-y-4">
+                    <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">Premiação Diária</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {selectedComp.prizesDaily.map((prize, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-[10px] font-black text-zinc-500">
+                              {prize.position}º
+                            </div>
+                            <span className="text-xs font-bold">{prize.label}</span>
+                          </div>
+                          <span className="text-sm font-black text-cyan-500">R$ {prize.value.toLocaleString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {selectedComp.prizesInstagram && selectedComp.prizesInstagram.length > 0 && (
+                  <div className="space-y-4">
+                    <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">Premiação Instagram (Quantidade)</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {selectedComp.prizesInstagram.map((prize, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-[10px] font-black text-zinc-500">
+                              {prize.position}º
+                            </div>
+                            <span className="text-xs font-bold">{prize.label}</span>
+                          </div>
+                          <span className="text-sm font-black text-pink-500">R$ {prize.value.toLocaleString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {(!selectedComp.prizesDaily && !selectedComp.prizesMonthly && !selectedComp.prizesInstagram) && (
+                   <div className="space-y-4">
+                    <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">Premiação</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {selectedComp.prizes.map((prize, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-[10px] font-black text-zinc-500">
+                              {prize.position}º
+                            </div>
+                            <span className="text-xs font-bold">{prize.label}</span>
+                          </div>
+                          <span className="text-sm font-black text-amber-500">R$ {prize.value.toLocaleString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -2224,10 +2343,7 @@ const Rankings = ({ rankings, competitions }: { rankings: User[], competitions: 
                   <div className="flex flex-col items-end min-w-[140px]">
                     <span className="text-[12px] text-zinc-500 uppercase font-black tracking-widest">Prêmio</span>
                     <span className={`text-3xl font-black ${i < 3 ? 'text-amber-500' : 'text-emerald-500'}`}>
-                      {timeframe === 'INSTAGRAM' && i === 0 
-                        ? `R$ ${(competitions.find(c => c.isActive)?.instaBonusPrize || 0).toLocaleString()}`
-                        : `R$ ${getPrize(i).toLocaleString()}`
-                      }
+                      {`R$ ${getPrize(i).toLocaleString()}`}
                     </span>
                   </div>
                 )}
@@ -2351,11 +2467,18 @@ const AdminPanel = ({
   compMentions, setCompMentions,
   compBonuses, setCompBonuses,
   compInstaBonus, setCompInstaBonus,
+  compViewBonus, setCompViewBonus,
   compStartDate, setCompStartDate,
   compEndDate, setCompEndDate,
   compBanner, setCompBanner,
   compPositions, setCompPositions,
   compPrizes, setCompPrizes,
+  compPositionsDaily, setCompPositionsDaily,
+  compPrizesDaily, setCompPrizesDaily,
+  compPositionsMonthly, setCompPositionsMonthly,
+  compPrizesMonthly, setCompPrizesMonthly,
+  compPositionsInstagram, setCompPositionsInstagram,
+  compPrizesInstagram, setCompPrizesInstagram,
   isCreatingComp, setIsCreatingComp,
   editingUser, setEditingUser,
   editName, setEditName,
@@ -2396,11 +2519,18 @@ const AdminPanel = ({
   compMentions: string, setCompMentions: (v: string) => void,
   compBonuses: string, setCompBonuses: (v: string) => void,
   compInstaBonus: string, setCompInstaBonus: (v: string) => void,
+  compViewBonus: number, setCompViewBonus: (v: number) => void,
   compStartDate: string, setCompStartDate: (v: string) => void,
   compEndDate: string, setCompEndDate: (v: string) => void,
   compBanner: string, setCompBanner: (v: string) => void,
   compPositions: number, setCompPositions: (v: number) => void,
   compPrizes: { position: number, value: number, label: string }[], setCompPrizes: (v: { position: number, value: number, label: string }[]) => void,
+  compPositionsDaily: number, setCompPositionsDaily: (v: number) => void,
+  compPrizesDaily: { position: number, value: number, label: string }[], setCompPrizesDaily: (v: { position: number, value: number, label: string }[]) => void,
+  compPositionsMonthly: number, setCompPositionsMonthly: (v: number) => void,
+  compPrizesMonthly: { position: number, value: number, label: string }[], setCompPrizesMonthly: (v: { position: number, value: number, label: string }[]) => void,
+  compPositionsInstagram: number, setCompPositionsInstagram: (v: number) => void,
+  compPrizesInstagram: { position: number, value: number, label: string }[], setCompPrizesInstagram: (v: { position: number, value: number, label: string }[]) => void,
   isCreatingComp: boolean, setIsCreatingComp: (v: boolean) => void,
   editingUser: User | null, setEditingUser: (v: User | null) => void,
   editName: string, setEditName: (v: string) => void,
@@ -3142,7 +3272,7 @@ const AdminPanel = ({
               <h3 className="text-xl font-black uppercase tracking-tight">
                 {selectedCompId ? 'Dashboard da Competição' : 'Competições'}
               </h3>
-              {userRole === 'admin' && !selectedCompId && (
+              {((userRole === 'admin' || userRole === 'administrativo')) && !selectedCompId && (
                 <button 
                   onClick={() => setIsCreatingComp(!isCreatingComp)}
                   className="px-6 py-2 gold-bg text-black font-black rounded-xl text-xs hover:scale-105 transition-all"
@@ -3282,6 +3412,76 @@ const AdminPanel = ({
                           <p className="font-black">{new Date(comp.endDate).toLocaleDateString()}</p>
                         </div>
                       </div>
+                      
+                      {/* Seção de Prêmios no Dashboard */}
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-2">
+                           <Trophy className="w-5 h-5 text-amber-500" />
+                           <h5 className="text-xs font-black uppercase tracking-widest text-zinc-400">Tabela de Premiação</h5>
+                        </div>
+                        <div className="grid grid-cols-1 gap-2">
+                           {/* Bônus por 1M Views — destaque especial */}
+                           {(comp as any).viewBonus > 0 && (
+                             <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 to-transparent border border-amber-500/30 flex items-center gap-3">
+                               <Eye className="w-5 h-5 text-amber-500 shrink-0" />
+                               <div>
+                                 <p className="text-[9px] font-black text-amber-500 uppercase">Bônus por 1 Milhão de Views</p>
+                                 <p className="text-lg font-black text-white">R$ {(comp as any).viewBonus.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                                 <p className="text-[9px] text-zinc-500 font-bold">Pago a cada 1.000.000 views atingidas por vídeo</p>
+                               </div>
+                             </div>
+                           )}
+                           {comp.prizesMonthly && comp.prizesMonthly.length > 0 && (
+                             <div className="p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800/50">
+                               <p className="text-[9px] font-black text-amber-500 uppercase mb-2">🏆 Ranking Mensal (Acumulado do Período)</p>
+                               <div className="flex flex-wrap gap-2">
+                                 {comp.prizesMonthly.map((p, idx) => (
+                                   <span key={idx} className="text-[10px] font-bold bg-black px-2 py-1 rounded-lg border border-zinc-800">
+                                     {p.label}: <span className="text-amber-400">R$ {p.value}</span>
+                                   </span>
+                                 ))}
+                               </div>
+                             </div>
+                           )}
+                           {comp.prizesDaily && comp.prizesDaily.length > 0 && (
+                             <div className="p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800/50">
+                               <p className="text-[9px] font-black text-blue-400 uppercase mb-2">📅 Premiação Diária (Views do Dia)</p>
+                               <div className="flex flex-wrap gap-2">
+                                 {comp.prizesDaily.map((p, idx) => (
+                                   <span key={idx} className="text-[10px] font-bold bg-black px-2 py-1 rounded-lg border border-zinc-800">
+                                     {p.label}: <span className="text-blue-400">R$ {p.value}</span>
+                                   </span>
+                                 ))}
+                               </div>
+                             </div>
+                           )}
+                           {comp.prizes && comp.prizes.length > 0 && (
+                             <div className="p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800/50">
+                               <p className="text-[9px] font-black text-emerald-400 uppercase mb-2">📊 Ranking Geral</p>
+                               <div className="flex flex-wrap gap-2">
+                                 {comp.prizes.map((p, idx) => (
+                                   <span key={idx} className="text-[10px] font-bold bg-black px-2 py-1 rounded-lg border border-zinc-800">
+                                     {p.label}: <span className="text-emerald-400">R$ {p.value}</span>
+                                   </span>
+                                 ))}
+                               </div>
+                             </div>
+                           )}
+                           {comp.prizesInstagram && comp.prizesInstagram.length > 0 && (
+                             <div className="p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800/50">
+                               <p className="text-[9px] font-black text-pink-500 uppercase mb-2">📸 Instagram (Quantidade de Posts)</p>
+                               <div className="flex flex-wrap gap-2">
+                                 {comp.prizesInstagram.map((p, idx) => (
+                                   <span key={idx} className="text-[10px] font-bold bg-black px-2 py-1 rounded-lg border border-zinc-800">
+                                     {p.label}: <span className="text-pink-400">R$ {p.value}</span>
+                                   </span>
+                                 ))}
+                               </div>
+                             </div>
+                           )}
+                        </div>
+                      </div>
+
                       <div className="p-6 rounded-3xl bg-zinc-900/50">
                           <p className="text-[10px] font-black text-zinc-500 uppercase mb-1">Hashtags Obrigatórias</p>
                           <p className="font-mono text-xs text-amber-500/80">{comp.hashtags || 'Nenhuma'}</p>
@@ -3296,14 +3496,12 @@ const AdminPanel = ({
               );
             })() : (
               <>
-                {userRole === 'admin' && isCreatingComp && (
+                {(userRole === 'admin' || userRole === 'administrativo') && isCreatingComp && (
                   <motion.div 
                     initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}
                     className="p-8 rounded-[40px] glass border border-zinc-800 space-y-6"
                   >
-                    {/* ... (Formulário de criação permanece igual, omitido por brevidade mas será preservado pelo replace_file_content) ... */}
-                    {/* Nota: Vou reinserir o conteúdo completo do formulário para garantir que não quebre */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-2">
                         <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Título da Competição</label>
@@ -3364,7 +3562,7 @@ const AdminPanel = ({
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-2">
                         <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Hashtags (#)</label>
                         <input 
@@ -3385,8 +3583,11 @@ const AdminPanel = ({
                           className="w-full bg-black border border-zinc-800 rounded-2xl py-4 px-6 text-sm font-bold focus:border-amber-500 outline-none transition-all"
                         />
                       </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Bônus</label>
+                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Bônus (Texto Livre)</label>
                         <input 
                           type="text"
                           value={compBonuses}
@@ -3394,6 +3595,150 @@ const AdminPanel = ({
                           placeholder="Ex: +10% para vídeos com áudio oficial"
                           className="w-full bg-black border border-zinc-800 rounded-2xl py-4 px-6 text-sm font-bold focus:border-amber-500 outline-none transition-all"
                         />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                          <span className="px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-500 text-[9px] font-black">R$</span>
+                          Bônus por 1 Milhão de Views
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-amber-500 font-black text-sm">R$</span>
+                          <input 
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={compViewBonus || ''}
+                            onChange={(e) => setCompViewBonus(parseFloat(e.target.value) || 0)}
+                            placeholder="0.00"
+                            className="w-full bg-black border border-amber-500/30 rounded-2xl py-4 pl-10 pr-6 text-sm font-black text-amber-400 focus:border-amber-500 outline-none transition-all"
+                          />
+                        </div>
+                        <p className="text-[9px] text-zinc-600 font-bold ml-1">Valor pago automaticamente a cada 1.000.000 views atingidas</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-8 pt-4 border-t border-zinc-800">
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-sm font-black uppercase tracking-widest gold-gradient">Premiação Mensal (Geral)</h4>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] text-zinc-500 font-bold uppercase">Posições:</span>
+                            <input 
+                              type="number" 
+                              min="1" max="20"
+                              value={compPositions}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value) || 1;
+                                setCompPositions(val);
+                                const newPrizes = [...compPrizes];
+                                while(newPrizes.length < val) {
+                                  newPrizes.push({ position: newPrizes.length + 1, value: 0, label: `${newPrizes.length + 1}º Lugar` });
+                                }
+                                setCompPrizes(newPrizes.slice(0, val));
+                              }}
+                              className="w-16 bg-zinc-900 border border-zinc-800 rounded-lg py-1 px-2 text-xs font-bold text-center"
+                            />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                          {compPrizes.map((p, i) => (
+                            <div key={i} className="p-3 rounded-xl bg-zinc-900/50 border border-zinc-800 space-y-1">
+                              <span className="text-[9px] font-black text-zinc-500 uppercase">{p.label}</span>
+                              <input 
+                                type="number"
+                                value={p.value}
+                                onChange={(e) => {
+                                  const newPrizes = [...compPrizes];
+                                  newPrizes[i].value = parseFloat(e.target.value) || 0;
+                                  setCompPrizes(newPrizes);
+                                }}
+                                className="w-full bg-transparent border-none text-sm font-black text-white focus:outline-none"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-sm font-black uppercase tracking-widest gold-gradient">Premiação Diária (Views)</h4>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] text-zinc-500 font-bold uppercase">Posições:</span>
+                            <input 
+                              type="number" 
+                              min="1" max="10"
+                              value={compPositionsDaily}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value) || 1;
+                                setCompPositionsDaily(val);
+                                const newPrizes = [...compPrizesDaily];
+                                while(newPrizes.length < val) {
+                                  newPrizes.push({ position: newPrizes.length + 1, value: 0, label: `${newPrizes.length + 1}º Diário` });
+                                }
+                                setCompPrizesDaily(newPrizes.slice(0, val));
+                              }}
+                              className="w-16 bg-zinc-900 border border-zinc-800 rounded-lg py-1 px-2 text-xs font-bold text-center"
+                            />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                          {compPrizesDaily.map((p, i) => (
+                            <div key={i} className="p-3 rounded-xl bg-zinc-900/50 border border-zinc-800 space-y-1">
+                              <span className="text-[9px] font-black text-zinc-500 uppercase">{p.label}</span>
+                              <input 
+                                type="number"
+                                value={p.value}
+                                onChange={(e) => {
+                                  const newPrizes = [...compPrizesDaily];
+                                  newPrizes[i].value = parseFloat(e.target.value) || 0;
+                                  setCompPrizesDaily(newPrizes);
+                                }}
+                                className="w-full bg-transparent border-none text-sm font-black text-white focus:outline-none"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-sm font-black uppercase tracking-widest gold-gradient">Premiação Instagram (Posts)</h4>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] text-zinc-500 font-bold uppercase">Posições:</span>
+                            <input 
+                              type="number" 
+                              min="1" max="5"
+                              value={compPositionsInstagram}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value) || 1;
+                                setCompPositionsInstagram(val);
+                                const newPrizes = [...compPrizesInstagram];
+                                while(newPrizes.length < val) {
+                                  newPrizes.push({ position: newPrizes.length + 1, value: 0, label: `${newPrizes.length + 1}º Insta` });
+                                }
+                                setCompPrizesInstagram(newPrizes.slice(0, val));
+                              }}
+                              className="w-16 bg-zinc-900 border border-zinc-800 rounded-lg py-1 px-2 text-xs font-bold text-center"
+                            />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                          {compPrizesInstagram.map((p, i) => (
+                            <div key={i} className="p-3 rounded-xl bg-zinc-900/50 border border-zinc-800 space-y-1">
+                              <span className="text-[9px] font-black text-zinc-500 uppercase">{p.label}</span>
+                              <input 
+                                type="number"
+                                value={p.value}
+                                onChange={(e) => {
+                                  const newPrizes = [...compPrizesInstagram];
+                                  newPrizes[i].value = parseFloat(e.target.value) || 0;
+                                  setCompPrizesInstagram(newPrizes);
+                                }}
+                                className="w-full bg-transparent border-none text-sm font-black text-white focus:outline-none"
+                              />
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </div>
 
