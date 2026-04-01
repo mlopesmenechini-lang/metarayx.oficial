@@ -19,26 +19,33 @@ service cloud.firestore {
         );
     }
 
+    function isAuditor() {
+       return isAuthenticated() &&
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'auditor');
+    }
+
     function isApproved() {
       return isAuthenticated() && 
         (
           request.auth.token.email == "matheusmenechini18@gmail.com" ||
           (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
            (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isApproved == true || 
-            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'))
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'auditor'))
         );
     }
 
     match /users/{userId} {
-      allow get: if isAuthenticated() && (isOwner(userId) || isAdmin() || (resource != null && resource.data.isApproved == true));
+      allow get: if isAuthenticated() && (isOwner(userId) || isAdmin() || isAuditor() || (resource != null && resource.data.isApproved == true));
       allow list: if isApproved();
       allow create: if isAuthenticated() && isOwner(userId) && 
                     request.resource.data.keys().hasAll(['uid', 'email', 'role']) &&
-                    request.resource.data.keys().hasOnly(['uid', 'displayName', 'email', 'password', 'role', 'balance', 'totalViews', 'totalLikes', 'totalComments', 'totalShares', 'totalPosts', 'totalSaves', 'dailyViews', 'dailyLikes', 'dailyComments', 'dailyShares', 'dailySaves', 'dailyPosts', 'photoURL', 'isApproved']) &&
                     request.resource.data.isApproved == (request.auth.token.email == "matheusmenechini18@gmail.com");
       allow update: if isAuthenticated() && (
         (isOwner(userId) && request.resource.data.isApproved == resource.data.isApproved && request.resource.data.role == resource.data.role) || 
-        isAdmin()
+        isAdmin() ||
+        isAuditor()
       );
     }
 
@@ -83,6 +90,11 @@ service cloud.firestore {
 
     match /test/connection {
       allow read: if isAuthenticated();
+    }
+
+    match /transactions/{transactionId} {
+      allow read: if isOwner(resource.data.userId) || isAdmin() || isAuditor();
+      allow create, write: if isAdmin() || isAuditor();
     }
   }
 }
