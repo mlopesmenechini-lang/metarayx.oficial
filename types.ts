@@ -1,6 +1,6 @@
 export type Platform = 'tiktok' | 'youtube' | 'instagram';
 export type PostStatus = 'pending' | 'approved' | 'rejected';
-export type UserRole = 'admin' | 'user';
+export type UserRole = 'admin' | 'auditor' | 'user';
 
 export interface User {
   uid: string;
@@ -24,6 +24,16 @@ export interface User {
   dailyInstaPosts?: number;
   photoURL?: string;
   password?: string; // Added for administrative management
+  lifetimeEarnings?: number;
+}
+
+export interface Transaction {
+  id: string;
+  userId: string;
+  amount: number;
+  timestamp: number;
+  status: 'paid';
+  auditorId?: string;
 }
 
 export interface Post {

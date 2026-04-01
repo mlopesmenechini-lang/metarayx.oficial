@@ -4,7 +4,7 @@ import {
   onSnapshot, collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, query, where, orderBy, limit,
   OperationType, handleFirestoreError, createUserWithEmailAndPassword, signInWithEmailAndPassword, addDoc, serverTimestamp
 } from './firebase';
-import { User, Post, Season, Announcement, Platform, PostStatus, Competition, CompetitionRegistration } from './types';
+import { User, Post, Season, Announcement, Platform, PostStatus, Competition, CompetitionRegistration, UserRole, Transaction } from './types';
 import { 
   LayoutDashboard, Trophy, Send, History, Settings, LogOut, 
   ShieldCheck, AlertCircle, CheckCircle2, XCircle, Clock, 
@@ -55,10 +55,127 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
   }
 }
 
+const WalletView = ({ user }: { user: User }) => {
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<'all' | 'day' | 'week' | 'month'>('week');
+
+  useEffect(() => {
+    const fetchTransactions = async () => {
+      try {
+        const q = query(collection(db, 'transactions'), where('userId', '==', user.uid), orderBy('timestamp', 'desc'));
+        const snap = await getDocs(q);
+        const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
+        setTransactions(data);
+      } catch (e) {
+        console.error("Erro fetch extrato", e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchTransactions();
+  }, [user.uid]);
+
+  const filtered = useMemo(() => {
+    const now = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
+    return transactions.filter(t => {
+      if (filter === 'all') return true;
+      if (filter === 'day') return now - t.timestamp <= dayMs;
+      if (filter === 'week') return now - t.timestamp <= 7 * dayMs;
+      if (filter === 'month') return now - t.timestamp <= 30 * dayMs;
+      return true;
+    });
+  }, [transactions, filter]);
+
+  return (
+    <div className="space-y-8 max-w-4xl mx-auto p-4 md:p-6 lg:p-10">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
+         <div className="space-y-2">
+           <h2 className="text-3xl font-black tracking-tight uppercase gold-gradient">Portal Financeiro</h2>
+           <p className="text-zinc-500 font-bold text-xs uppercase tracking-widest">Acompanhe seus rendimentos e recebimentos</p>
+         </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 shadow-xl relative overflow-hidden">
+           <div className="absolute top-0 right-0 p-4 opacity-10">
+             <Zap className="w-24 h-24" />
+           </div>
+           <div className="relative z-10 flex flex-col items-start gap-2">
+             <span className="text-zinc-500 font-black text-[10px] tracking-widest uppercase">Pagamentos Recebidos (Lifetime)</span>
+             <span className="text-4xl md:text-5xl font-black text-white tracking-tighter">
+               R$ {(user.lifetimeEarnings || 0).toLocaleString()}
+             </span>
+           </div>
+        </div>
+
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-3xl p-6 shadow-xl relative overflow-hidden">
+           <div className="absolute top-0 right-0 p-4 opacity-10">
+             <Clock className="w-24 h-24 text-amber-500" />
+           </div>
+           <div className="relative z-10 flex flex-col items-start gap-2">
+             <span className="text-amber-500 font-black text-[10px] tracking-widest uppercase">Saldo a Receber (Pendente)</span>
+             <span className="text-4xl md:text-5xl font-black text-amber-500 tracking-tighter">
+               R$ {(user.balance || 0).toLocaleString()}
+             </span>
+           </div>
+        </div>
+      </div>
+
+      <div className="bg-zinc-950 border border-zinc-800 rounded-3xl p-6 overflow-hidden mt-8">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+           <div>
+             <h3 className="font-black uppercase text-xl text-white">Extrato de Pagamentos</h3>
+             <p className="text-[10px] font-bold text-zinc-500 tracking-widest uppercase">Histórico das transferências enviadas pela Diretoria</p>
+           </div>
+           
+           <div className="flex p-1 bg-zinc-900 rounded-xl border border-zinc-800">
+             <button onClick={() => setFilter('all')} className={`px-4 py-2 rounded-lg font-bold text-xs transition-all ${filter === 'all' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}>TUDO</button>
+             <button onClick={() => setFilter('day')} className={`px-4 py-2 rounded-lg font-bold text-xs transition-all ${filter === 'day' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}>HOJE</button>
+             <button onClick={() => setFilter('week')} className={`px-4 py-2 rounded-lg font-bold text-xs transition-all ${filter === 'week' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}>SEMANA</button>
+             <button onClick={() => setFilter('month')} className={`px-4 py-2 rounded-lg font-bold text-xs transition-all ${filter === 'month' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}>MÊS</button>
+           </div>
+        </div>
+
+        {loading ? (
+          <div className="py-20 flex justify-center">
+            <RefreshCw className="w-8 h-8 text-zinc-600 animate-spin" />
+          </div>
+        ) : (
+          <div className="space-y-3">
+             {filtered.map(t => (
+               <div key={t.id} className="flex justify-between items-center p-4 bg-black border border-zinc-800 rounded-2xl relative overflow-hidden hover:border-zinc-700 transition-colors">
+                 <div className="flex flex-col gap-1 z-10">
+                   <span className="text-emerald-500 text-[10px] font-black uppercase tracking-widest">PAGAMENTO RECEBIDO</span>
+                   <span className="font-bold text-zinc-300 text-xs">Aprovado pelo Auditor: {t.auditorId || 'Sistema'}</span>
+                 </div>
+                 <div className="flex flex-col items-end z-10">
+                   <span className="text-xl font-black text-white">+R$ {t.amount.toLocaleString()}</span>
+                   <span className="text-[10px] font-bold text-zinc-500 tracking-widest">
+                     {new Date(t.timestamp).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                   </span>
+                 </div>
+                 <div className="absolute inset-y-0 right-0 w-32 bg-gradient-to-l from-emerald-500/5 to-transparent z-0 pointer-events-none" />
+               </div>
+             ))}
+             {filtered.length === 0 && (
+               <div className="py-20 flex flex-col items-center gap-4 border-2 border-dashed border-zinc-800 rounded-2xl">
+                 <XCircle className="w-12 h-12 text-zinc-800" />
+                 <p className="text-zinc-500 font-bold uppercase tracking-widest text-xs">Nenhum pagamento encontrado.</p>
+               </div>
+             )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<'DASHBOARD' | 'RANKINGS' | 'POST' | 'HISTORY' | 'ADMIN' | 'SETTINGS'>('RANKINGS');
+  const [view, setView] = useState<'DASHBOARD' | 'RANKINGS' | 'POST' | 'HISTORY' | 'ADMIN' | 'SETTINGS' | 'WALLET'>('RANKINGS');
   const [posts, setPosts] = useState<Post[]>([]);
   const [rankings, setRankings] = useState<User[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
@@ -775,8 +892,9 @@ const App: React.FC = () => {
               <NavItem active={view === 'RANKINGS'} onClick={() => setView('RANKINGS')} icon={<Trophy />} label="Rankings" />
               <NavItem active={view === 'POST'} onClick={() => setView('POST')} icon={<Send />} label="Postar Link" />
               <NavItem active={view === 'HISTORY'} onClick={() => setView('HISTORY')} icon={<History />} label="Meus Protocolos" />
-              {user.role === 'admin' && (
-                <NavItem active={view === 'ADMIN'} onClick={() => setView('ADMIN')} icon={<ShieldCheck />} label="Diretoria" />
+              <NavItem active={view === 'WALLET'} onClick={() => setView('WALLET')} icon={<Zap />} label="Minha Carteira" />
+              {(user.role === 'admin' || user.role === 'auditor') && (
+                <NavItem active={view === 'ADMIN'} onClick={() => setView('ADMIN')} icon={<ShieldCheck />} label={user.role === 'admin' ? "Diretoria" : "Auditoria"} />
               )}
               <NavItem active={view === 'SETTINGS'} onClick={() => setView('SETTINGS')} icon={<Settings />} label="Configurações" />
               
@@ -864,8 +982,10 @@ const App: React.FC = () => {
               {view === 'RANKINGS' && <Rankings rankings={rankings} competitions={competitions} />}
               {view === 'POST' && <PostSubmit user={user} />}
               {view === 'HISTORY' && <HistoryView posts={posts} onDelete={setPostToDelete} isAdmin={user.role === 'admin'} />}
-              {view === 'ADMIN' && user.role === 'admin' && (
+              {view === 'WALLET' && <WalletView user={user} />}
+              {view === 'ADMIN' && (user.role === 'admin' || user.role === 'auditor') && (
                 <AdminPanel 
+                  userRole={user.role}
                   posts={posts} 
                   pendingUsers={pendingUsers} 
                   approvedUsers={approvedUsers}
@@ -2101,54 +2221,85 @@ const Rankings = ({ rankings, competitions }: { rankings: User[], competitions: 
   );
 };
 
-const FinancialRow = ({ user }: { user: User }) => {
-  const [val, setVal] = useState(user.balance?.toString() || '0');
+const FinancialRow = ({ user, onViewLinks }: { user: User, onViewLinks: (uid: string) => void }) => {
   const [saving, setSaving] = useState(false);
+  
+  const balance = user.balance || 0;
+  const lifetime = user.lifetimeEarnings || 0;
 
-  useEffect(() => {
-    setVal(user.balance?.toString() || '0');
-  }, [user.balance]);
+  const handlePay = async () => {
+    if (balance <= 0) {
+      alert('Usuário não possui saldo pendente.');
+      return;
+    }
 
-  const handleSave = async () => {
+    if (!window.confirm(`Confirma o repasse financeiro de R$ ${balance.toLocaleString()} para ${user.displayName}? Esse valor será zerado e contabilizado no histórico dele.`)) {
+      return;
+    }
+
     setSaving(true);
     try {
-      await updateDoc(doc(db, 'users', user.uid), { balance: Number(val) });
+      const auditorId = auth.currentUser?.uid || 'system';
+      
+      // Criar transação
+      await addDoc(collection(db, 'transactions'), {
+        userId: user.uid,
+        amount: balance,
+        timestamp: Date.now(),
+        status: 'paid',
+        auditorId: auditorId
+      });
+
+      // Atualizar Saldo do Usuário
+      await updateDoc(doc(db, 'users', user.uid), { 
+        balance: 0,
+        lifetimeEarnings: lifetime + balance
+      });
+      
     } catch(e) {
       console.error(e);
+      alert('Erro ao confirmar pagamento.');
     }
     setSaving(false);
   };
 
   return (
-    <div className="flex items-center gap-4 bg-zinc-900 border border-zinc-800 p-4 rounded-2xl shadow-xl justify-between flex-wrap">
-       <div className="flex flex-col gap-1 w-full sm:w-auto">
-          <span className="text-amber-500 font-bold tracking-widest uppercase text-[10px]">@{user.displayName?.toLowerCase().replace(/\s+/g, '_')}</span>
-          <span className="font-black text-lg text-white truncate max-w-[200px]">{user.displayName}</span>
+    <div className="flex flex-col gap-4 bg-zinc-900 border border-zinc-800 p-5 rounded-2xl shadow-xl">
+       <div className="flex justify-between items-start">
+         <div className="flex flex-col gap-1 w-full sm:w-auto">
+            <span className="text-amber-500 font-bold tracking-widest uppercase text-[10px]">@{user.displayName?.toLowerCase().replace(/\s+/g, '_')}</span>
+            <span className="font-black text-lg text-white truncate max-w-[200px] leading-tight">{user.displayName}</span>
+            <span className="text-zinc-500 text-[10px] font-bold mt-1 uppercase">Ganhos Totais: R$ {lifetime.toLocaleString()}</span>
+         </div>
+         <div className="flex flex-col items-end">
+            <span className="text-[10px] uppercase font-black tracking-widest text-zinc-500">Saldo a Pagar</span>
+            <span className="text-3xl font-black text-white">R$ {balance.toLocaleString()}</span>
+         </div>
        </div>
-       <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto justify-between sm:justify-end">
-          {Number(val) > 0 ? (
-            <span className="px-3 py-1 rounded bg-amber-500/20 text-amber-500 text-[10px] font-black uppercase tracking-widest">Pendente</span>
-          ) : (
-            <span className="px-3 py-1 rounded bg-emerald-500/20 text-emerald-500 text-[10px] font-black uppercase tracking-widest">Pago</span>
-          )}
-          <div className="flex items-center gap-2">
-            <span className="text-zinc-500 font-bold text-sm">R$</span>
-            <input 
-              type="number" 
-              value={val} 
-              onChange={e => setVal(e.target.value)}
-              className="w-24 bg-black border border-zinc-700 py-3 px-4 text-right rounded-xl font-mono text-sm font-bold focus:border-amber-500 outline-none"
-            />
-            <button onClick={handleSave} disabled={saving} className="gold-bg text-black px-4 py-3 font-black rounded-xl text-xs hover:scale-105 transition-all">
-              {saving ? '...' : 'Salvar'}
-            </button>
-          </div>
+       
+       <div className="flex gap-2 w-full pt-4 border-t border-zinc-800">
+         <button 
+           onClick={() => onViewLinks(user.uid)}
+           className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white py-3 rounded-xl font-black text-xs transition-all flex justify-center items-center gap-2"
+         >
+           <CheckCircle2 className="w-4 h-4" />
+           AUDITAR CONTA
+         </button>
+         <button 
+           onClick={handlePay} 
+           disabled={saving || balance <= 0} 
+           className="flex-1 bg-emerald-500 hover:bg-emerald-400 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:opacity-50 text-black py-3 rounded-xl font-black text-xs transition-all flex justify-center items-center gap-2"
+         >
+           {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+           {saving ? '...' : 'EFETUAR PAGTO'}
+         </button>
        </div>
     </div>
   );
 };
 
 const AdminPanel = ({ 
+  userRole,
   posts, 
   pendingUsers, 
   approvedUsers, 
@@ -2193,6 +2344,7 @@ const AdminPanel = ({
   annMsg, setAnnMsg,
   isCreatingAnn, setIsCreatingAnn
 }: { 
+  userRole: UserRole,
   posts: Post[], 
   pendingUsers: User[], 
   approvedUsers: User[],
@@ -2238,6 +2390,7 @@ const AdminPanel = ({
   isCreatingAnn: boolean, setIsCreatingAnn: (v: boolean) => void
 }) => {
   const [tab, setTab] = useState<'POSTS' | 'USERS' | 'USERS_APPROVED' | 'COMPETITIONS' | 'REGISTROS' | 'SYNC' | 'AVISOS' | 'FINANCEIRO'>('POSTS');
+  const [auditUserId, setAuditUserId] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncingPostId, setSyncingPostId] = useState<string | null>(null);
   const [apifyKey, setApifyKey] = useState(settings.apifyKey);
@@ -2410,13 +2563,59 @@ const AdminPanel = ({
               <p className="text-zinc-500 font-bold text-xs">Monitore saldos a pagar. Atualize o valor após fechar o pix e ele marcará como Pago.</p>
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {approvedUsers.map(u => (
-                 <FinancialRow key={u.uid} user={u} />
-              ))}
-              {approvedUsers.length === 0 && (
-                <div className="col-span-full py-12 text-center border-2 border-dashed border-zinc-800 rounded-3xl">
-                  <p className="text-zinc-500 font-bold">Nenhum usuário aprovado para gerir finanças.</p>
+              {auditUserId ? (
+                <div className="col-span-full border border-zinc-800 rounded-3xl p-6 bg-zinc-950">
+                  <div className="flex justify-between items-center mb-6">
+                     <div>
+                       <h3 className="text-xl font-black uppercase text-amber-500">Auditoria Aprofundada</h3>
+                       <p className="text-xs text-zinc-500 font-bold tracking-widest uppercase">
+                         Verificando vídeos de {approvedUsers.find(u => u.uid === auditUserId)?.displayName}
+                       </p>
+                     </div>
+                     <button 
+                       onClick={() => setAuditUserId(null)}
+                       className="px-4 py-2 bg-zinc-800 text-white font-bold rounded-xl text-xs flex items-center gap-2 hover:bg-zinc-700"
+                     >
+                       <X className="w-4 h-4" /> VOLTAR À LISTA
+                     </button>
+                  </div>
+
+                  <div className="space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
+                     {posts.filter(p => p.userId === auditUserId).map(post => (
+                       <div key={post.id} className="p-4 rounded-2xl bg-black border border-zinc-800 flex flex-col md:flex-row gap-4 items-center justify-between">
+                         <div className="flex items-center gap-4 w-full md:w-auto">
+                            {post.platform === 'tiktok' ? <Zap className="w-6 h-6 text-amber-500" /> : 
+                             post.platform === 'youtube' ? <TrendingUp className="w-6 h-6 text-red-500" /> :
+                             <Camera className="w-6 h-6 text-pink-500" />}
+                            <div className="flex flex-col overflow-hidden max-w-[200px]">
+                              <p className="font-bold text-xs truncate text-zinc-300">{post.url}</p>
+                              <p className={`text-[10px] font-black uppercase ${post.status === 'approved' ? 'text-emerald-500' : post.status === 'rejected' ? 'text-red-500' : 'text-amber-500'}`}>
+                                STATUS: {post.status}
+                              </p>
+                            </div>
+                         </div>
+                         <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
+                            <span className="text-zinc-500 font-bold uppercase tracking-widest flex items-center gap-1"><Eye className="w-3 h-3 text-zinc-400"/> {(post.views || 0).toLocaleString()}</span>
+                            <span className="text-zinc-500 font-bold uppercase tracking-widest flex items-center gap-1"><Heart className="w-3 h-3 text-zinc-400"/> {(post.likes || 0).toLocaleString()}</span>
+                         </div>
+                       </div>
+                     ))}
+                     {posts.filter(p => p.userId === auditUserId).length === 0 && (
+                       <p className="text-center py-6 text-zinc-500 font-bold">Nenhum vídeo registrado para este usuário.</p>
+                     )}
+                  </div>
                 </div>
+              ) : (
+                <>
+                  {approvedUsers.map(u => (
+                     <FinancialRow key={u.uid} user={u} onViewLinks={setAuditUserId} />
+                  ))}
+                  {approvedUsers.length === 0 && (
+                    <div className="col-span-full py-12 text-center border-2 border-dashed border-zinc-800 rounded-3xl">
+                      <p className="text-zinc-500 font-bold">Nenhum usuário aprovado para gerir finanças.</p>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
