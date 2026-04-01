@@ -2256,9 +2256,10 @@ const FinancialRow = ({ user, onViewLinks }: { user: User, onViewLinks: (uid: st
         lifetimeEarnings: lifetime + balance
       });
       
-    } catch(e) {
+      alert('Pagamento confirmado com sucesso!');
+    } catch(e: any) {
       console.error(e);
-      alert('Erro ao confirmar pagamento.');
+      alert(`Erro ao confirmar pagamento: ${e.message}`);
     }
     setSaving(false);
   };
@@ -2603,24 +2604,20 @@ const AdminPanel = ({
                               <a href={post.url} target="_blank" rel="noreferrer" className="flex-1 text-center sm:flex-none px-4 py-2 rounded-xl bg-zinc-900 text-zinc-400 font-bold hover:text-white transition-colors">
                                 Ver Link
                               </a>
-                              {post.status !== 'approved' && (
-                                <button 
-                                  onClick={() => handlePostStatus(post.id, 'approved')}
-                                  className="p-2 rounded-xl bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-black transition-all"
-                                  title="Aprovar Vídeo"
-                                >
-                                  <CheckCircle2 className="w-5 h-5" />
-                                </button>
-                              )}
-                              {post.status !== 'rejected' && (
-                                <button 
-                                  onClick={() => handlePostStatus(post.id, 'rejected')}
-                                  className="p-2 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-black transition-all"
-                                  title="Rejeitar Vídeo"
-                                >
-                                  <XCircle className="w-5 h-5" />
-                                </button>
-                              )}
+                              <button 
+                                onClick={() => handlePostStatus(post.id, 'approved')}
+                                className={`p-2 rounded-xl transition-all ${post.status === 'approved' ? 'bg-emerald-500 text-black' : 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-black'}`}
+                                title="Aprovar Vídeo"
+                              >
+                                <CheckCircle2 className="w-5 h-5" />
+                              </button>
+                              <button 
+                                onClick={() => handlePostStatus(post.id, 'rejected')}
+                                className={`p-2 rounded-xl transition-all ${post.status === 'rejected' ? 'bg-red-500 text-black' : 'bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-black'}`}
+                                title="Rejeitar Vídeo"
+                              >
+                                <XCircle className="w-5 h-5" />
+                              </button>
                             </div>
                          </div>
                        </div>
