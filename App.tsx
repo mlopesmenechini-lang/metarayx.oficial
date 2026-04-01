@@ -2609,7 +2609,7 @@ const AdminPanel = ({
         {/* POSTS - visível apenas para admin e auditor */}
         {(userRole === 'admin' || userRole === 'auditor') && (
           <button 
-            onClick={() => setTab('POSTS')}
+            onClick={() => { setTab('POSTS'); setAuditUserId(null); }}
             className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'POSTS' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
           >
             POSTS ({pendingPosts.length})
@@ -2618,7 +2618,7 @@ const AdminPanel = ({
         {/* USERS - visível apenas para admin */}
         {userRole === 'admin' && (
           <button 
-            onClick={() => setTab('USERS')}
+            onClick={() => { setTab('USERS'); setAuditUserId(null); }}
             className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'USERS' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
           >
             PENDENTES ({pendingUsers.length})
@@ -2627,7 +2627,7 @@ const AdminPanel = ({
         {/* APROVADOS - visível apenas para admin */}
         {userRole === 'admin' && (
           <button 
-            onClick={() => setTab('USERS_APPROVED')}
+            onClick={() => { setTab('USERS_APPROVED'); setAuditUserId(null); }}
             className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'USERS_APPROVED' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
           >
             APROVADOS ({approvedUsers.length})
@@ -2636,7 +2636,7 @@ const AdminPanel = ({
         {/* COMPETIÇÕES - visível apenas para admin */}
         {userRole === 'admin' && (
           <button 
-            onClick={() => setTab('COMPETITIONS')}
+            onClick={() => { setTab('COMPETITIONS'); setAuditUserId(null); }}
             className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'COMPETITIONS' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
           >
             COMPETIÇÕES ({competitions.length})
@@ -2645,7 +2645,7 @@ const AdminPanel = ({
         {/* SINCRONIA - visível para admin e auditor */}
         {(userRole === 'admin' || userRole === 'auditor') && (
           <button 
-            onClick={() => setTab('SYNC')}
+            onClick={() => { setTab('SYNC'); setAuditUserId(null); }}
             className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'SYNC' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
           >
             SINCRONIA ({posts.filter(p => p.status === 'approved').length})
@@ -2951,36 +2951,107 @@ const AdminPanel = ({
         ) : tab === 'USERS_APPROVED' ? (
           <div className="space-y-6">
             <h3 className="text-xl font-black uppercase tracking-tight">Usuários Aprovados</h3>
-            <div className="grid grid-cols-1 gap-4">
-              {approvedUsers.map(u => (
-                <div key={u.uid} className="p-6 rounded-3xl glass flex flex-col md:flex-row items-center gap-6">
-                  <img src={u.photoURL || `https://ui-avatars.com/api/?name=${u.displayName}`} className="w-16 h-16 rounded-2xl shrink-0" alt="" />
-                  <div className="flex-1 min-w-0 text-center md:text-left">
-                    <p className="text-lg font-black">{u.displayName}</p>
-                    <p className="text-sm font-bold text-zinc-500">{u.email}</p>
-                    {u.password && <p className="text-[10px] font-mono text-zinc-600 mt-1">Senha: {u.password}</p>}
-                  </div>
-                  <div className="flex items-center gap-3 shrink-0">
-                    <button 
-                      onClick={() => {
-                        setEditingUser(u);
-                        setEditName(u.displayName);
-                        setEditPass('');
-                      }}
-                      className="px-6 py-3 rounded-xl bg-zinc-800 text-zinc-300 font-black text-xs hover:bg-zinc-700 transition-all"
-                    >
-                      EDITAR
-                    </button>
-                    <button 
-                      onClick={() => handleUserApproval(u.uid, false)}
-                      className="px-6 py-3 rounded-xl bg-red-500/10 text-red-500 font-black text-xs hover:bg-red-500 hover:text-black transition-all"
-                    >
-                      REMOVER
-                    </button>
-                  </div>
+            {auditUserId ? (
+              <div className="border border-zinc-800 rounded-3xl p-6 bg-zinc-950">
+                <div className="flex justify-between items-center mb-6">
+                   <div>
+                     <h3 className="text-xl font-black uppercase text-amber-500">Links do Usuário</h3>
+                     <p className="text-xs text-zinc-500 font-bold tracking-widest uppercase">
+                       Visualizando postagens de {approvedUsers.find(u => u.uid === auditUserId)?.displayName}
+                     </p>
+                   </div>
+                   <button 
+                     onClick={() => setAuditUserId(null)}
+                     className="px-4 py-2 bg-zinc-800 text-white font-bold rounded-xl text-xs flex items-center gap-2 hover:bg-zinc-700"
+                   >
+                     <X className="w-4 h-4" /> VOLTAR À LISTA
+                   </button>
                 </div>
-              ))}
-            </div>
+
+                <div className="space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
+                   {posts.filter(p => p.userId === auditUserId).map(post => (
+                     <div key={post.id} className="p-4 rounded-2xl bg-black border border-zinc-800 flex flex-col md:flex-row gap-4 items-center justify-between">
+                       <div className="flex items-center gap-4 w-full md:w-auto">
+                          {post.platform === 'tiktok' ? <Zap className="w-6 h-6 text-amber-500" /> : 
+                           post.platform === 'youtube' ? <TrendingUp className="w-6 h-6 text-red-500" /> :
+                           <Camera className="w-6 h-6 text-pink-500" />}
+                          <div className="flex flex-col overflow-hidden max-w-[200px]">
+                            <p className="font-bold text-xs truncate text-zinc-300">{post.url}</p>
+                            <p className={`text-[10px] font-black uppercase ${post.status === 'approved' ? 'text-emerald-500' : post.status === 'rejected' ? 'text-red-500' : 'text-amber-500'}`}>
+                              STATUS: {post.status}
+                            </p>
+                          </div>
+                       </div>
+                       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 text-xs w-full md:w-auto">
+                          <div className="flex items-center gap-4 bg-zinc-900/50 p-2 rounded-xl">
+                            <span className="text-zinc-500 font-bold uppercase tracking-widest flex items-center gap-1"><Eye className="w-3 h-3 text-zinc-400"/> {(post.views || 0).toLocaleString()}</span>
+                            <span className="text-zinc-500 font-bold uppercase tracking-widest flex items-center gap-1"><Heart className="w-3 h-3 text-zinc-400"/> {(post.likes || 0).toLocaleString()}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <a href={post.url} target="_blank" rel="noreferrer" className="flex-1 text-center sm:flex-none px-4 py-2 rounded-xl bg-zinc-900 text-zinc-400 font-bold hover:text-white transition-colors">
+                              Ver Link
+                            </a>
+                            <button 
+                              onClick={() => handlePostStatus(post.id, 'approved')}
+                              className={`p-2 rounded-xl transition-all ${post.status === 'approved' ? 'bg-emerald-500 text-black' : 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-black'}`}
+                              title="Aprovar Vídeo"
+                            >
+                              <CheckCircle2 className="w-5 h-5" />
+                            </button>
+                            <button 
+                              onClick={() => handlePostStatus(post.id, 'rejected')}
+                              className={`p-2 rounded-xl transition-all ${post.status === 'rejected' ? 'bg-red-500 text-black' : 'bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-black'}`}
+                              title="Rejeitar Vídeo"
+                            >
+                              <XCircle className="w-5 h-5" />
+                            </button>
+                          </div>
+                       </div>
+                     </div>
+                   ))}
+                   {posts.filter(p => p.userId === auditUserId).length === 0 && (
+                     <p className="text-center py-6 text-zinc-500 font-bold">Nenhum vídeo registrado para este usuário.</p>
+                   )}
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4">
+                {approvedUsers.map(u => (
+                  <div key={u.uid} className="p-6 rounded-3xl glass flex flex-col md:flex-row items-center gap-6">
+                    <img src={u.photoURL || `https://ui-avatars.com/api/?name=${u.displayName}`} className="w-16 h-16 rounded-2xl shrink-0" alt="" />
+                    <div className="flex-1 min-w-0 text-center md:text-left">
+                      <p className="text-lg font-black">{u.displayName}</p>
+                      <p className="text-sm font-bold text-zinc-500">{u.email}</p>
+                      {u.password && <p className="text-[10px] font-mono text-zinc-600 mt-1">Senha: {u.password}</p>}
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <button 
+                        onClick={() => setAuditUserId(u.uid)}
+                        className="px-6 py-3 rounded-xl bg-amber-500/10 text-amber-500 font-black text-xs hover:bg-amber-500 hover:text-black transition-all"
+                      >
+                        VER LINKS
+                      </button>
+                      <button 
+                        onClick={() => {
+                          setEditingUser(u);
+                          setEditName(u.displayName);
+                          setEditPass('');
+                        }}
+                        className="px-6 py-3 rounded-xl bg-zinc-800 text-zinc-300 font-black text-xs hover:bg-zinc-700 transition-all"
+                      >
+                        EDITAR
+                      </button>
+                      <button 
+                        onClick={() => handleUserApproval(u.uid, false)}
+                        className="px-6 py-3 rounded-xl bg-red-500/10 text-red-500 font-black text-xs hover:bg-red-500 hover:text-black transition-all"
+                      >
+                        REMOVER
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {editingUser && (
               <div className="fixed inset-0 z-[110] flex items-center justify-center p-6">
