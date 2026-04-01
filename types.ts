@@ -122,5 +122,5 @@ export interface Suggestion {
   userEmail: string;
   message: string;
   timestamp: number;
-  status: 'pending' | 'read' | 'implemented';
+  status: 'pendente' | 'analise' | 'desenvolvimento' | 'concluido';
 }

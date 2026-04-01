@@ -411,11 +411,9 @@ const App: React.FC = () => {
     const unsubReg = onSnapshot(regQuery, (snapshot) => {
       setRegistrations(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CompetitionRegistration)));
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'competition_registrations'));
-
-    // Admin/Staff: Users & Suggestions Listeners
+    // Admin/Staff: Users Listeners
     let unsubPendingUsers = () => {};
     let unsubApprovedUsers = () => {};
-    let unsubSuggestions = () => {};
 
     if (isStaff) {
       const pendingUsersQuery = query(collection(db, 'users'), where('isApproved', '==', false));
@@ -428,12 +426,13 @@ const App: React.FC = () => {
       unsubApprovedUsers = onSnapshot(approvedUsersQuery, (snapshot) => {
         setApprovedUsers(snapshot.docs.map(doc => doc.data() as User));
       }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
-
-      const suggestionsQuery = query(collection(db, 'suggestions'), orderBy('timestamp', 'desc'));
-      unsubSuggestions = onSnapshot(suggestionsQuery, (snapshot) => {
-        setSuggestions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Suggestion)));
-      }, (error) => handleFirestoreError(error, OperationType.LIST, 'suggestions'));
     }
+    
+    // Suggestions Listener (Visível para todos)
+    const suggestionsQuery = query(collection(db, 'suggestions'), orderBy('timestamp', 'desc'));
+    const unsubSuggestions = onSnapshot(suggestionsQuery, (snapshot) => {
+      setSuggestions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Suggestion)));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'suggestions'));
 
     return () => { 
       unsubPosts(); 
@@ -685,19 +684,21 @@ const App: React.FC = () => {
         try {
           const activeCompetition = competitions.find(c => c.isActive);
           const dailyViewWinners = [...approvedUsers]
-            .filter(u => u.dailyViews > 0)
+            .filter(u => u.role === 'user' && u.dailyViews > 0)
             .sort((a,b) => b.dailyViews - a.dailyViews)
             .slice(0, activeCompetition?.prizesDaily?.length || 10);
             
           const instaWinner = [...approvedUsers]
-            .filter(u => (u.dailyInstaPosts || 0) > 0)
+            .filter(u => u.role === 'user' && (u.dailyInstaPosts || 0) > 0)
             .sort((a,b) => (b.dailyInstaPosts || 0) - (a.dailyInstaPosts || 0))[0];
 
           const balanceIncrements: Record<string, number> = {};
+          const viewBonusValue = activeCompetition?.viewBonus || 0;
           
           dailyViewWinners.forEach((u, i) => {
              const prize = activeCompetition?.prizesDaily?.[i]?.value || 0;
-             balanceIncrements[u.uid] = (balanceIncrements[u.uid] || 0) + prize;
+             const bonusFromViews = Math.floor(u.dailyViews / 1000000) * viewBonusValue;
+             balanceIncrements[u.uid] = (balanceIncrements[u.uid] || 0) + prize + bonusFromViews;
           });
           
           if (instaWinner && activeCompetition?.prizesInstagram?.[0]) {
@@ -916,6 +917,26 @@ const App: React.FC = () => {
     } catch (error) {
       console.error('Error sending suggestion:', error);
       alert('Erro ao enviar sugestão. Tente novamente mais tarde.');
+    }
+  };
+
+  const handleUpdateSuggestionStatus = async (id: string, status: Suggestion['status']) => {
+    try {
+      await updateDoc(doc(db, 'suggestions', id), { status });
+      alert('Status da sugestão atualizado!');
+    } catch (error) {
+      console.error('Error updating suggestion:', error);
+      alert('Erro ao atualizar status.');
+    }
+  };
+
+  const handleUpdateUserRole = async (uid: string, role: UserRole) => {
+    try {
+      await updateDoc(doc(db, 'users', uid), { role });
+      alert('Cargo do usuário atualizado com sucesso!');
+    } catch (error) {
+      console.error('Error updating user role:', error);
+      alert('Erro ao mudar cargo!');
     }
   };
 
@@ -1163,6 +1184,8 @@ const App: React.FC = () => {
                   annMsg={annMsg} setAnnMsg={setAnnMsg}
                   isCreatingAnn={isCreatingAnn} setIsCreatingAnn={setIsCreatingAnn}
                   editRole={editRole} setEditRole={setEditRole}
+                  handleUpdateSuggestionStatus={handleUpdateSuggestionStatus}
+                  handleUpdateUserRole={handleUpdateUserRole}
                 />
               )}
               {view === 'SETTINGS' && user && (
@@ -1181,6 +1204,7 @@ const App: React.FC = () => {
                   suggestionMsg={suggestionMsg}
                   setSuggestionMsg={setSuggestionMsg}
                   handleSendSuggestion={handleSendSuggestion}
+                  suggestions={suggestions}
                 />
               )}
             </motion.div>
@@ -1676,13 +1700,13 @@ const Dashboard = ({ user, announcements, rankings, competitions, registrations 
     )}
 
     {/* Announcements */}
-    {announcements.filter(a => a.isActive).length > 0 && (
+    {announcements.filter(a => a.isActive !== false).length > 0 && (
       <div className="space-y-4">
         <div className="flex items-center gap-2 mb-2">
           <Bell className="w-4 h-4 text-amber-500" />
           <h3 className="text-xs font-black uppercase tracking-widest text-zinc-500">Avisos da Diretoria</h3>
         </div>
-        {announcements.filter(a => a.isActive).map(ann => (
+        {announcements.filter(a => a.isActive !== false).map(ann => (
           <motion.div 
             key={ann.id}
             initial={{ x: -20, opacity: 0 }}
@@ -2552,7 +2576,9 @@ const AdminPanel = ({
   editRole, setEditRole,
   annTitle, setAnnTitle,
   annMsg, setAnnMsg,
-  isCreatingAnn, setIsCreatingAnn
+  isCreatingAnn, setIsCreatingAnn,
+  handleUpdateSuggestionStatus,
+  handleUpdateUserRole
 }: { 
   userRole: UserRole,
   posts: Post[], 
@@ -2580,6 +2606,8 @@ const AdminPanel = ({
   handleCreateAnnouncement: () => void,
   handleDeleteAnnouncement: (id: string) => void,
   handleDeleteSuggestion: (id: string) => void,
+  handleUpdateSuggestionStatus: (id: string, status: Suggestion['status']) => void,
+  handleUpdateUserRole: (uid: string, role: UserRole) => void,
   suggestions: Suggestion[],
   compTitle: string, setCompTitle: (v: string) => void,
   compDesc: string, setCompDesc: (v: string) => void,
@@ -3251,6 +3279,18 @@ const AdminPanel = ({
                       >
                         VER LINKS
                       </button>
+                      <div className="flex flex-col gap-1">
+                        <select 
+                          value={u.role}
+                          onChange={(e) => handleUpdateUserRole(u.uid, e.target.value as any)}
+                          className="bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-[10px] font-black uppercase text-amber-500 outline-none focus:border-amber-500 transition-all cursor-pointer"
+                        >
+                          <option value="user">👤 USUÁRIO</option>
+                          <option value="auditor">🔍 AUDITOR</option>
+                          <option value="administrativo">🏢 ADMINISTRA</option>
+                          <option value="admin">👑 DIRETORIA</option>
+                        </select>
+                      </div>
                       <button 
                         onClick={() => {
                           setEditingUser(u);
@@ -4104,12 +4144,24 @@ const AdminPanel = ({
                     <p className="text-zinc-300 font-bold leading-relaxed">{s.message}</p>
                     <p className="text-[10px] text-zinc-500 font-black mt-2 uppercase">{s.userEmail}</p>
                   </div>
-                  <button 
-                    onClick={() => handleDeleteSuggestion(s.id)}
-                    className="p-3 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-black transition-all"
-                  >
-                    <Trash2 className="w-5 h-5" />
-                  </button>
+                  <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0">
+                    <select 
+                      value={s.status}
+                      onChange={(e) => handleUpdateSuggestionStatus(s.id, e.target.value as any)}
+                      className="bg-black border border-zinc-800 rounded-xl px-4 py-2 text-[10px] font-black uppercase text-amber-500 outline-none focus:border-amber-500 transition-all"
+                    >
+                      <option value="pendente">PENDENTE</option>
+                      <option value="analise">EM ANÁLISE</option>
+                      <option value="desenvolvimento">TRABALHANDO</option>
+                      <option value="concluido">CONCLUÍDO</option>
+                    </select>
+                    <button 
+                      onClick={() => handleDeleteSuggestion(s.id)}
+                      className="p-3 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-black transition-all"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  </div>
                 </div>
               ))}
               {suggestions.length === 0 && (
@@ -4225,20 +4277,25 @@ const SettingsView = ({
 const SuggestionsView = ({ 
   suggestionMsg, 
   setSuggestionMsg, 
-  handleSendSuggestion 
+  handleSendSuggestion,
+  suggestions
 }: { 
   suggestionMsg: string; 
   setSuggestionMsg: (v: string) => void; 
   handleSendSuggestion: () => void;
+  suggestions: Suggestion[];
 }) => (
-  <div className="max-w-2xl mx-auto space-y-10">
-    <div className="space-y-2">
-      <h2 className="text-3xl font-black tracking-tight uppercase">Sugestões e Ideias</h2>
-      <p className="text-zinc-500 font-bold text-xs uppercase tracking-widest">Ajude-nos a construir o melhor HUB de criadores do Brasil</p>
+  <div className="max-w-4xl mx-auto space-y-12 p-4 pb-20">
+    <div className="space-y-4 text-center">
+      <h2 className="text-4xl md:text-5xl font-black tracking-tighter uppercase gold-gradient">Mural de Sugestões</h2>
+      <p className="text-zinc-500 font-bold text-xs uppercase tracking-widest max-w-lg mx-auto">Colabore com a evolução do MetaRayx. Vote, sugira e acompanhe o que estamos construindo.</p>
     </div>
 
-    <div className="p-8 rounded-[40px] glass border border-zinc-800 space-y-8">
-      <div className="space-y-4">
+    <div className="p-8 rounded-[40px] glass border border-zinc-800 space-y-8 shadow-2xl relative overflow-hidden">
+      <div className="absolute top-0 right-0 p-8 opacity-5">
+        <MessageSquare className="w-32 h-32" />
+      </div>
+      <div className="space-y-4 relative z-10">
         <div className="flex items-center gap-3 text-amber-500">
            <Zap className="w-5 h-5" />
            <span className="text-xs font-black uppercase tracking-widest">O que podemos melhorar?</span>
@@ -4246,28 +4303,67 @@ const SuggestionsView = ({
         <textarea 
           value={suggestionMsg}
           onChange={(e) => setSuggestionMsg(e.target.value)}
-          placeholder="Descreva sua ideia, bug encontrado ou sugestão de nova funcionalidade..."
-          className="w-full bg-black border border-zinc-800 rounded-3xl py-6 px-8 text-sm font-bold focus:border-amber-500 outline-none transition-all h-48 resize-none shadow-inner"
+          placeholder="Descreva sua ideia ou funcionalidade..."
+          className="w-full bg-black border border-zinc-800 rounded-3xl py-6 px-8 text-sm font-bold focus:border-amber-500 outline-none transition-all h-32 resize-none shadow-inner"
         />
       </div>
 
       <button 
         onClick={handleSendSuggestion}
         disabled={!suggestionMsg.trim()}
-        className="w-full py-5 gold-bg text-black font-black rounded-2xl hover:scale-[1.01] transition-all shadow-xl shadow-amber-500/10 disabled:opacity-50 flex items-center justify-center gap-3"
+        className="w-full py-5 gold-bg text-black font-black rounded-2xl hover:scale-[1.01] transition-all shadow-xl shadow-amber-500/10 disabled:opacity-50 flex items-center justify-center gap-3 relative z-10"
       >
         <Send className="w-5 h-5" />
         ENVIAR MINHA SUGESTÃO
       </button>
     </div>
 
-    <div className="p-6 rounded-3xl bg-zinc-900/50 border border-zinc-800 flex items-start gap-4">
-      <div className="p-2 rounded-lg bg-zinc-800">
-        <Heart className="w-5 h-5 text-pink-500" />
+    <div className="space-y-6">
+      <div className="flex items-center gap-3 px-2">
+        <div className="w-1.5 h-6 gold-bg rounded-full" />
+        <h3 className="font-black uppercase tracking-widest text-sm text-zinc-400">Ideias da Comunidade</h3>
       </div>
-      <p className="text-xs text-zinc-500 leading-relaxed font-bold">
-        Todas as sugestões são lidas pela diretoria. Valorizamos cada feedback para tornar sua experiência no MetaRayx cada vez mais produtiva e rentável.
-      </p>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {suggestions.map(s => (
+          <motion.div 
+            key={s.id}
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="p-6 rounded-[32px] bg-zinc-900/50 border border-zinc-800/50 flex flex-col justify-between gap-4 group hover:border-zinc-700 transition-all"
+          >
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest ${
+                  s.status === 'pendente' ? 'bg-zinc-800 text-zinc-500' :
+                  s.status === 'analise' ? 'bg-cyan-500/10 text-cyan-500' :
+                  s.status === 'desenvolvimento' ? 'bg-amber-500/10 text-amber-500' :
+                  'bg-emerald-500/10 text-emerald-500'
+                }`}>
+                  {s.status === 'pendente' ? 'EM ESPERA' : 
+                   s.status === 'analise' ? 'EM ANÁLISE' : 
+                   s.status === 'desenvolvimento' ? 'DESENVOLVENDO' : 'CONCLUÍDO'}
+                </span>
+                <span className="text-[9px] text-zinc-700 font-bold uppercase">{new Date(s.timestamp).toLocaleDateString()}</span>
+              </div>
+              <p className="text-zinc-300 text-sm font-bold leading-relaxed">{s.message}</p>
+            </div>
+            
+            <div className="flex items-center gap-2 pt-2 border-t border-zinc-800/50">
+              <div className="w-6 h-6 rounded-lg bg-zinc-800 flex items-center justify-center">
+                <UserIcon className="w-3 h-3 text-zinc-500" />
+              </div>
+              <span className="text-[10px] font-black text-zinc-600 uppercase">Enviado por @{s.userName?.toLowerCase().split(' ')[0]}</span>
+            </div>
+          </motion.div>
+        ))}
+        {suggestions.length === 0 && (
+          <div className="col-span-full py-20 text-center space-y-4">
+             <MessageSquare className="w-12 h-12 text-zinc-800 mx-auto opacity-20" />
+             <p className="text-zinc-600 font-bold uppercase text-[10px] tracking-widest">Inaugure o mural com sua ideia!</p>
+          </div>
+        )}
+      </div>
     </div>
   </div>
 );
