@@ -76,6 +76,7 @@ export interface Competition {
   hashtags?: string;
   mentions?: string;
   bonuses?: string;
+  instaBonusPrize?: number;
 }
 
 export interface CompetitionRegistration {

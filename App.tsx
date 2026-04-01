@@ -82,6 +82,7 @@ const App: React.FC = () => {
   const [compHashtags, setCompHashtags] = useState('');
   const [compMentions, setCompMentions] = useState('');
   const [compBonuses, setCompBonuses] = useState('');
+  const [compInstaBonus, setCompInstaBonus] = useState('');
   const [compBanner, setCompBanner] = useState('');
   const [compPositions, setCompPositions] = useState(3);
   const [compPrizes, setCompPrizes] = useState<{ position: number; value: number; label: string; }[]>([
@@ -560,6 +561,7 @@ const App: React.FC = () => {
         hashtags: compHashtags,
         mentions: compMentions,
         bonuses: compBonuses,
+        instaBonusPrize: compInstaBonus ? Number(compInstaBonus) : 0,
         bannerUrl: compBanner,
         isActive: true,
         startDate: Date.now(),
@@ -584,6 +586,7 @@ const App: React.FC = () => {
       setCompHashtags('');
       setCompMentions('');
       setCompBonuses('');
+      setCompInstaBonus('');
       setCompBanner('');
     } catch (error) {
       console.error('Error saving competition:', error);
@@ -599,6 +602,7 @@ const App: React.FC = () => {
     setCompHashtags(comp.hashtags || '');
     setCompMentions(comp.mentions || '');
     setCompBonuses(comp.bonuses || '');
+    setCompInstaBonus(comp.instaBonusPrize?.toString() || '');
     setCompBanner(comp.bannerUrl);
     setCompPositions(comp.prizes.length);
     setCompPrizes(comp.prizes);
@@ -814,7 +818,7 @@ const App: React.FC = () => {
                   registrations={registrations}
                 />
               )}
-              {view === 'RANKINGS' && <Rankings rankings={rankings} />}
+              {view === 'RANKINGS' && <Rankings rankings={rankings} competitions={competitions} />}
               {view === 'POST' && <PostSubmit user={user} />}
               {view === 'HISTORY' && <HistoryView posts={posts} onDelete={setPostToDelete} isAdmin={user.role === 'admin'} />}
               {view === 'ADMIN' && user.role === 'admin' && (
@@ -848,6 +852,7 @@ const App: React.FC = () => {
                   compHashtags={compHashtags} setCompHashtags={setCompHashtags}
                   compMentions={compMentions} setCompMentions={setCompMentions}
                   compBonuses={compBonuses} setCompBonuses={setCompBonuses}
+                  compInstaBonus={compInstaBonus} setCompInstaBonus={setCompInstaBonus}
                   compBanner={compBanner} setCompBanner={setCompBanner}
                   compPositions={compPositions} setCompPositions={setCompPositions}
                   compPrizes={compPrizes} setCompPrizes={setCompPrizes}
@@ -1842,7 +1847,7 @@ const HistoryView = ({ posts, onDelete, isAdmin }: { posts: Post[], onDelete: (i
   </div>
 );
 
-const Rankings = ({ rankings }: { rankings: User[] }) => {
+const Rankings = ({ rankings, competitions }: { rankings: User[], competitions: Competition[] }) => {
   const [timeframe, setTimeframe] = useState<'DAILY' | 'MONTHLY' | 'INSTAGRAM'>('MONTHLY');
 
   const sortedRankings = useMemo(() => {
@@ -2011,12 +2016,17 @@ const Rankings = ({ rankings }: { rankings: User[] }) => {
                     {timeframe === 'INSTAGRAM' ? (player.dailyInstaPosts || 0).toLocaleString() : stats.views.toLocaleString()}
                   </span>
                 </div>
-                <div className="flex flex-col items-end min-w-[140px]">
-                  <span className="text-[12px] text-zinc-500 uppercase font-black tracking-widest">Prêmio</span>
-                  <span className={`text-3xl font-black ${i < 3 ? 'text-amber-500' : 'text-emerald-500'}`}>
-                    R$ {getPrize(i).toLocaleString()}
-                  </span>
-                </div>
+                {!(timeframe === 'INSTAGRAM' && i > 0) && (
+                  <div className="flex flex-col items-end min-w-[140px]">
+                    <span className="text-[12px] text-zinc-500 uppercase font-black tracking-widest">Prêmio</span>
+                    <span className={`text-3xl font-black ${i < 3 ? 'text-amber-500' : 'text-emerald-500'}`}>
+                      {timeframe === 'INSTAGRAM' && i === 0 
+                        ? `R$ ${(competitions.find(c => c.isActive)?.instaBonusPrize || 0).toLocaleString()}`
+                        : `R$ ${getPrize(i).toLocaleString()}`
+                      }
+                    </span>
+                  </div>
+                )}
               </div>
             </motion.div>
           );
@@ -2057,6 +2067,7 @@ const AdminPanel = ({
   compHashtags, setCompHashtags,
   compMentions, setCompMentions,
   compBonuses, setCompBonuses,
+  compInstaBonus, setCompInstaBonus,
   compBanner, setCompBanner,
   compPositions, setCompPositions,
   compPrizes, setCompPrizes,
@@ -2098,6 +2109,7 @@ const AdminPanel = ({
   compHashtags: string, setCompHashtags: (v: string) => void,
   compMentions: string, setCompMentions: (v: string) => void,
   compBonuses: string, setCompBonuses: (v: string) => void,
+  compInstaBonus: string, setCompInstaBonus: (v: string) => void,
   compBanner: string, setCompBanner: (v: string) => void,
   compPositions: number, setCompPositions: (v: number) => void,
   compPrizes: { position: number, value: number, label: string }[], setCompPrizes: (v: { position: number, value: number, label: string }[]) => void,
@@ -2602,6 +2614,16 @@ const AdminPanel = ({
                       value={compBonuses}
                       onChange={(e) => setCompBonuses(e.target.value)}
                       placeholder="Ex: +10% para vídeos com áudio oficial"
+                      className="w-full bg-black border border-zinc-800 rounded-2xl py-4 px-6 text-sm font-bold focus:border-amber-500 outline-none transition-all"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Bônus Diário (Top 1 Insta)</label>
+                    <input 
+                      type="number"
+                      value={compInstaBonus}
+                      onChange={(e) => setCompInstaBonus(e.target.value)}
+                      placeholder="Ex: 500"
                       className="w-full bg-black border border-zinc-800 rounded-2xl py-4 px-6 text-sm font-bold focus:border-amber-500 outline-none transition-all"
                     />
                   </div>
