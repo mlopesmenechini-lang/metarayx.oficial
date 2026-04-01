@@ -844,7 +844,7 @@ const App: React.FC = () => {
     return <AuthScreen onLoginSuccess={(u) => setUser(u)} />;
   }
 
-  if (!user.isApproved && user.role !== 'admin') {
+  if (!user.isApproved && user.role !== 'admin' && user.role !== 'administrativo') {
     return (
       <div className="h-screen w-screen flex flex-col items-center justify-center bg-black px-4 text-center">
         <div className="w-24 h-24 gold-bg rounded-3xl flex items-center justify-center mb-8 shadow-2xl">
@@ -896,8 +896,11 @@ const App: React.FC = () => {
               <NavItem active={view === 'POST'} onClick={() => setView('POST')} icon={<Send />} label="Postar Link" />
               <NavItem active={view === 'HISTORY'} onClick={() => setView('HISTORY')} icon={<History />} label="Meus Protocolos" />
               <NavItem active={view === 'WALLET'} onClick={() => setView('WALLET')} icon={<Zap />} label="Minha Carteira" />
-              {(user.role === 'admin' || user.role === 'auditor') && (
-                <NavItem active={view === 'ADMIN'} onClick={() => setView('ADMIN')} icon={<ShieldCheck />} label={user.role === 'admin' ? "Diretoria" : "Auditoria"} />
+              {(user.role === 'admin' || user.role === 'auditor' || user.role === 'administrativo') && (
+                <NavItem active={view === 'ADMIN'} onClick={() => setView('ADMIN')} icon={<ShieldCheck />} label={
+                  user.role === 'admin' ? "Diretoria" : 
+                  user.role === 'administrativo' ? "Administrativo" : "Auditoria"
+                } />
               )}
               <NavItem active={view === 'SETTINGS'} onClick={() => setView('SETTINGS')} icon={<Settings />} label="Configurações" />
               
@@ -986,7 +989,7 @@ const App: React.FC = () => {
               {view === 'POST' && <PostSubmit user={user} />}
               {view === 'HISTORY' && <HistoryView posts={posts} onDelete={setPostToDelete} isAdmin={user.role === 'admin'} />}
               {view === 'WALLET' && <WalletView user={user} />}
-              {view === 'ADMIN' && (user.role === 'admin' || user.role === 'auditor') && (
+              {view === 'ADMIN' && (user.role === 'admin' || user.role === 'auditor' || user.role === 'administrativo') && (
                 <AdminPanel 
                   userRole={user.role}
                   posts={posts} 
@@ -2393,7 +2396,9 @@ const AdminPanel = ({
   annMsg: string, setAnnMsg: (v: string) => void,
   isCreatingAnn: boolean, setIsCreatingAnn: (v: boolean) => void
 }) => {
-  const [tab, setTab] = useState<'POSTS' | 'USERS' | 'USERS_APPROVED' | 'COMPETITIONS' | 'REGISTROS' | 'SYNC' | 'AVISOS' | 'FINANCEIRO' | 'ACESSOS'>('POSTS');
+  const [tab, setTab] = useState<'POSTS' | 'USERS' | 'USERS_APPROVED' | 'COMPETITIONS' | 'REGISTROS' | 'SYNC' | 'AVISOS' | 'FINANCEIRO' | 'ACESSOS'>(
+    userRole === 'administrativo' ? 'FINANCEIRO' : 'POSTS'
+  );
   const [auditUserId, setAuditUserId] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncingPostId, setSyncingPostId] = useState<string | null>(null);
@@ -2402,7 +2407,7 @@ const AdminPanel = ({
   const [newUserName, setNewUserName] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserPass, setNewUserPass] = useState('');
-  const [newUserRole, setNewUserRole] = useState<'user'|'auditor'|'admin'>('user');
+  const [newUserRole, setNewUserRole] = useState<'user'|'auditor'|'administrativo'|'admin'>('user');
   const [creatingUser, setCreatingUser] = useState(false);
 
   const handleCreateUser = async () => {
@@ -2564,60 +2569,87 @@ const AdminPanel = ({
       </div>
 
       <div className="flex flex-wrap p-1 bg-zinc-900 rounded-2xl w-fit gap-1">
-        <button 
-          onClick={() => setTab('POSTS')}
-          className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'POSTS' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
-        >
-          POSTS ({pendingPosts.length})
-        </button>
-        <button 
-          onClick={() => setTab('USERS')}
-          className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'USERS' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
-        >
-          PENDENTES ({pendingUsers.length})
-        </button>
-        <button 
-          onClick={() => setTab('USERS_APPROVED')}
-          className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'USERS_APPROVED' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
-        >
-          APROVADOS ({approvedUsers.length})
-        </button>
-        <button 
-          onClick={() => setTab('COMPETITIONS')}
-          className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'COMPETITIONS' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
-        >
-          COMPETIÇÕES ({competitions.length})
-        </button>
-        <button 
-          onClick={() => setTab('SYNC')}
-          className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'SYNC' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
-        >
-          SINCRONIA ({posts.filter(p => p.status === 'approved').length})
-        </button>
-        <button 
-          onClick={() => setTab('REGISTROS')}
-          className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'REGISTROS' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
-        >
-          REGISTROS ({pendingRegistrations.length})
-        </button>
-        <button 
-          onClick={() => setTab('AVISOS')}
-          className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'AVISOS' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
-        >
-          AVISOS
-        </button>
-        <button 
-          onClick={() => setTab('FINANCEIRO')}
-          className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'FINANCEIRO' ? 'gold-bg text-black' : 'text-zinc-500'}`}
-        >
-          FINANCEIRO
-        </button>
-        <button 
-          onClick={() => setTab('ACESSOS')}
-          className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'ACESSOS' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
-        >
-          CRIAR ACESSO
-        </button>
+        {/* POSTS - visível apenas para admin e auditor */}
+        {(userRole === 'admin' || userRole === 'auditor') && (
+          <button 
+            onClick={() => setTab('POSTS')}
+            className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'POSTS' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
+          >
+            POSTS ({pendingPosts.length})
+          </button>
+        )}
+        {/* USERS - visível apenas para admin */}
+        {userRole === 'admin' && (
+          <button 
+            onClick={() => setTab('USERS')}
+            className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'USERS' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
+          >
+            PENDENTES ({pendingUsers.length})
+          </button>
+        )}
+        {/* APROVADOS - visível apenas para admin */}
+        {userRole === 'admin' && (
+          <button 
+            onClick={() => setTab('USERS_APPROVED')}
+            className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'USERS_APPROVED' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
+          >
+            APROVADOS ({approvedUsers.length})
+          </button>
+        )}
+        {/* COMPETIÇÕES - visível apenas para admin */}
+        {userRole === 'admin' && (
+          <button 
+            onClick={() => setTab('COMPETITIONS')}
+            className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'COMPETITIONS' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
+          >
+            COMPETIÇÕES ({competitions.length})
+          </button>
+        )}
+        {/* SINCRONIA - visível para admin e auditor */}
+        {(userRole === 'admin' || userRole === 'auditor') && (
+          <button 
+            onClick={() => setTab('SYNC')}
+            className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'SYNC' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
+          >
+            SINCRONIA ({posts.filter(p => p.status === 'approved').length})
+          </button>
+        )}
+        {/* REGISTROS - visível apenas para admin */}
+        {userRole === 'admin' && (
+          <button 
+            onClick={() => setTab('REGISTROS')}
+            className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'REGISTROS' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
+          >
+            REGISTROS ({pendingRegistrations.length})
+          </button>
+        )}
+        {/* AVISOS - visível apenas para admin */}
+        {userRole === 'admin' && (
+          <button 
+            onClick={() => setTab('AVISOS')}
+            className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'AVISOS' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
+          >
+            AVISOS
+          </button>
+        )}
+        {/* FINANCEIRO - visível para admin, auditor e administrativo */}
+        {(userRole === 'admin' || userRole === 'auditor' || userRole === 'administrativo') && (
+          <button 
+            onClick={() => setTab('FINANCEIRO')}
+            className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'FINANCEIRO' ? 'gold-bg text-black' : 'text-zinc-500'}`}
+          >
+            FINANCEIRO
+          </button>
+        )}
+        {/* CRIAR ACESSO - visível apenas para admin */}
+        {userRole === 'admin' && (
+          <button 
+            onClick={() => setTab('ACESSOS')}
+            className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'ACESSOS' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
+          >
+            CRIAR ACESSO
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-4">
@@ -2634,9 +2666,10 @@ const AdminPanel = ({
                   onChange={e => setNewUserRole(e.target.value as any)}
                   className="w-full bg-black border border-zinc-800 px-4 py-3 rounded-xl focus:border-amber-500 outline-none transition-all font-bold text-sm text-zinc-300"
                 >
-                  <option value="user">Usuário Comum (Criador)</option>
-                  <option value="auditor">Auditor de Vídeos</option>
-                  <option value="admin">Administrador (Diretoria)</option>
+                  <option value="user">👤 Usuário Comum (Criador de Conteúdo)</option>
+                  <option value="auditor">🔍 Auditor — Revisa vídeos postados</option>
+                  <option value="administrativo">🏢 Administrativo — Auditoria + Financeiro + Acesso como usuário</option>
+                  <option value="admin">👑 Administrador (Diretoria) — Acesso total</option>
                 </select>
               </div>
 

@@ -1,6 +1,6 @@
 export type Platform = 'tiktok' | 'youtube' | 'instagram';
 export type PostStatus = 'pending' | 'approved' | 'rejected';
-export type UserRole = 'admin' | 'auditor' | 'user';
+export type UserRole = 'admin' | 'auditor' | 'administrativo' | 'user';
 
 export interface User {
   uid: string;
