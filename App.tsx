@@ -2594,9 +2594,34 @@ const AdminPanel = ({
                               </p>
                             </div>
                          </div>
-                         <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
-                            <span className="text-zinc-500 font-bold uppercase tracking-widest flex items-center gap-1"><Eye className="w-3 h-3 text-zinc-400"/> {(post.views || 0).toLocaleString()}</span>
-                            <span className="text-zinc-500 font-bold uppercase tracking-widest flex items-center gap-1"><Heart className="w-3 h-3 text-zinc-400"/> {(post.likes || 0).toLocaleString()}</span>
+                         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 text-xs w-full md:w-auto">
+                            <div className="flex items-center gap-4 bg-zinc-900/50 p-2 rounded-xl">
+                              <span className="text-zinc-500 font-bold uppercase tracking-widest flex items-center gap-1"><Eye className="w-3 h-3 text-zinc-400"/> {(post.views || 0).toLocaleString()}</span>
+                              <span className="text-zinc-500 font-bold uppercase tracking-widest flex items-center gap-1"><Heart className="w-3 h-3 text-zinc-400"/> {(post.likes || 0).toLocaleString()}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <a href={post.url} target="_blank" rel="noreferrer" className="flex-1 text-center sm:flex-none px-4 py-2 rounded-xl bg-zinc-900 text-zinc-400 font-bold hover:text-white transition-colors">
+                                Ver Link
+                              </a>
+                              {post.status !== 'approved' && (
+                                <button 
+                                  onClick={() => handlePostStatus(post.id, 'approved')}
+                                  className="p-2 rounded-xl bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-black transition-all"
+                                  title="Aprovar Vídeo"
+                                >
+                                  <CheckCircle2 className="w-5 h-5" />
+                                </button>
+                              )}
+                              {post.status !== 'rejected' && (
+                                <button 
+                                  onClick={() => handlePostStatus(post.id, 'rejected')}
+                                  className="p-2 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-black transition-all"
+                                  title="Rejeitar Vídeo"
+                                >
+                                  <XCircle className="w-5 h-5" />
+                                </button>
+                              )}
+                            </div>
                          </div>
                        </div>
                      ))}
