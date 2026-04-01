@@ -2415,21 +2415,39 @@ const AdminPanel = ({
       alert("Preencha todos os campos.");
       return;
     }
+    if (newUserPass.length < 6) {
+      alert("A senha deve ter pelo menos 6 caracteres.");
+      return;
+    }
     setCreatingUser(true);
     try {
-      const secondaryApp = getApps().length > 1 ? getApp("Secondary") : initializeApp(fbConfig, "Secondary");
+      // Inicializa app secundário se não existir ainda
+      let secondaryApp;
+      const existingApps = getApps();
+      const foundSecondary = existingApps.find(a => a.name === 'Secondary');
+      if (foundSecondary) {
+        secondaryApp = foundSecondary;
+      } else {
+        secondaryApp = initializeApp(fbConfig, 'Secondary');
+      }
       const secAuth = getSecondaryAuth(secondaryApp);
       
-      const userCredential = await createSecondaryUser(secAuth, newUserEmail, newUserPass);
+      // Criar conta no Firebase Auth via app secundário (não desloga o Admin)
+      const userCredential = await createSecondaryUser(secAuth, newUserEmail.trim(), newUserPass.trim());
       const newUid = userCredential.user.uid;
+
+      // Deslogar do app secundário imediatamente antes de gravar no Firestore
+      await signSecondaryOut(secAuth);
       
+      // Gravar perfil no Firestore usando o contexto do Admin logado
       await setDoc(doc(db, 'users', newUid), {
         uid: newUid,
-        email: newUserEmail,
-        displayName: newUserName,
+        email: newUserEmail.trim(),
+        displayName: newUserName.trim(),
         role: newUserRole,
         isApproved: true,
         balance: 0,
+        lifetimeEarnings: 0,
         totalViews: 0,
         totalLikes: 0,
         totalComments: 0,
@@ -2442,19 +2460,25 @@ const AdminPanel = ({
         dailyShares: 0,
         dailySaves: 0,
         dailyPosts: 0,
-        photoURL: `https://ui-avatars.com/api/?name=${encodeURIComponent(newUserName)}`
+        photoURL: `https://ui-avatars.com/api/?name=${encodeURIComponent(newUserName.trim())}&background=random`
       });
-
-      await signSecondaryOut(secAuth);
       
-      alert(`O acesso para ${newUserName} como ${newUserRole.toUpperCase()} foi criado com sucesso!`);
+      alert(`✅ Acesso criado com sucesso!\n\nNome: ${newUserName}\nCargo: ${newUserRole.toUpperCase()}\nEmail: ${newUserEmail}`);
       setNewUserName('');
       setNewUserEmail('');
       setNewUserPass('');
       setNewUserRole('user');
     } catch (e: any) {
-      console.error(e);
-      alert(`Falha ao criar acesso: ${e.message}`);
+      console.error('Erro criar usuário:', e);
+      if (e.code === 'auth/email-already-in-use') {
+        alert('❌ Este email já está cadastrado no sistema.');
+      } else if (e.code === 'auth/invalid-email') {
+        alert('❌ Email inválido. Verifique o formato.');
+      } else if (e.code === 'permission-denied' || e.message?.includes('permission')) {
+        alert('❌ Sem permissão para gravar no banco.\n\nVocê precisa publicar as novas Regras de Segurança no Console do Firebase (aba Segurança do Firestore).');
+      } else {
+        alert(`❌ Falha ao criar acesso:\n${e.message}`);
+      }
     }
     setCreatingUser(false);
   };
