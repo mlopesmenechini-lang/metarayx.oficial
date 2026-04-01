@@ -14,6 +14,9 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { syncViewsWithApify, syncSinglePostWithApify } from './services/apifyService';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getAuth as getSecondaryAuth, createUserWithEmailAndPassword as createSecondaryUser, signOut as signSecondaryOut } from 'firebase/auth';
+import fbConfig from './firebase-applet-config.json';
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
@@ -2390,11 +2393,66 @@ const AdminPanel = ({
   annMsg: string, setAnnMsg: (v: string) => void,
   isCreatingAnn: boolean, setIsCreatingAnn: (v: boolean) => void
 }) => {
-  const [tab, setTab] = useState<'POSTS' | 'USERS' | 'USERS_APPROVED' | 'COMPETITIONS' | 'REGISTROS' | 'SYNC' | 'AVISOS' | 'FINANCEIRO'>('POSTS');
+  const [tab, setTab] = useState<'POSTS' | 'USERS' | 'USERS_APPROVED' | 'COMPETITIONS' | 'REGISTROS' | 'SYNC' | 'AVISOS' | 'FINANCEIRO' | 'ACESSOS'>('POSTS');
   const [auditUserId, setAuditUserId] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncingPostId, setSyncingPostId] = useState<string | null>(null);
   const [apifyKey, setApifyKey] = useState(settings.apifyKey);
+
+  const [newUserName, setNewUserName] = useState('');
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserPass, setNewUserPass] = useState('');
+  const [newUserRole, setNewUserRole] = useState<'user'|'auditor'|'admin'>('user');
+  const [creatingUser, setCreatingUser] = useState(false);
+
+  const handleCreateUser = async () => {
+    if (!newUserName.trim() || !newUserEmail.trim() || !newUserPass.trim()) {
+      alert("Preencha todos os campos.");
+      return;
+    }
+    setCreatingUser(true);
+    try {
+      const secondaryApp = getApps().length > 1 ? getApp("Secondary") : initializeApp(fbConfig, "Secondary");
+      const secAuth = getSecondaryAuth(secondaryApp);
+      
+      const userCredential = await createSecondaryUser(secAuth, newUserEmail, newUserPass);
+      const newUid = userCredential.user.uid;
+      
+      await setDoc(doc(db, 'users', newUid), {
+        uid: newUid,
+        email: newUserEmail,
+        displayName: newUserName,
+        role: newUserRole,
+        isApproved: true,
+        balance: 0,
+        totalViews: 0,
+        totalLikes: 0,
+        totalComments: 0,
+        totalShares: 0,
+        totalPosts: 0,
+        totalSaves: 0,
+        dailyViews: 0,
+        dailyLikes: 0,
+        dailyComments: 0,
+        dailyShares: 0,
+        dailySaves: 0,
+        dailyPosts: 0,
+        photoURL: `https://ui-avatars.com/api/?name=${encodeURIComponent(newUserName)}`
+      });
+
+      await signSecondaryOut(secAuth);
+      
+      alert(`O acesso para ${newUserName} como ${newUserRole.toUpperCase()} foi criado com sucesso!`);
+      setNewUserName('');
+      setNewUserEmail('');
+      setNewUserPass('');
+      setNewUserRole('user');
+    } catch (e: any) {
+      console.error(e);
+      alert(`Falha ao criar acesso: ${e.message}`);
+    }
+    setCreatingUser(false);
+  };
 
   useEffect(() => {
     if (settings.apifyKey && !apifyKey) {
@@ -2554,9 +2612,73 @@ const AdminPanel = ({
         >
           FINANCEIRO
         </button>
+        <button 
+          onClick={() => setTab('ACESSOS')}
+          className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'ACESSOS' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
+        >
+          CRIAR ACESSO
+        </button>
       </div>
 
       <div className="grid grid-cols-1 gap-4">
+        {tab === 'ACESSOS' && userRole === 'admin' && (
+          <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-3xl max-w-xl mx-auto w-full">
+            <h3 className="text-xl font-black uppercase mb-2">Criar Novo Funcionário/Acesso</h3>
+            <p className="text-xs font-bold text-zinc-500 mb-6">Crie um acesso direto para Auditores, Administradores ou Usuários sem sair da sua conta atual.</p>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-black text-zinc-500 uppercase ml-2 mb-1 block">TIPO DE CARGO</label>
+                <select 
+                  value={newUserRole} 
+                  onChange={e => setNewUserRole(e.target.value as any)}
+                  className="w-full bg-black border border-zinc-800 px-4 py-3 rounded-xl focus:border-amber-500 outline-none transition-all font-bold text-sm text-zinc-300"
+                >
+                  <option value="user">Usuário Comum (Criador)</option>
+                  <option value="auditor">Auditor de Vídeos</option>
+                  <option value="admin">Administrador (Diretoria)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-black text-zinc-500 uppercase ml-2 mb-1 block">NOME DO USUÁRIO</label>
+                <input 
+                  type="text" value={newUserName} onChange={e => setNewUserName(e.target.value)}
+                  placeholder="Nome do integrante"
+                  className="w-full bg-black border border-zinc-800 px-4 py-3 rounded-xl focus:border-amber-500 outline-none transition-all font-bold text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-black text-zinc-500 uppercase ml-2 mb-1 block">EMAIL (LOGIN)</label>
+                <input 
+                  type="email" value={newUserEmail} onChange={e => setNewUserEmail(e.target.value)}
+                  placeholder="acesso@metarayx.com.br"
+                  className="w-full bg-black border border-zinc-800 px-4 py-3 rounded-xl focus:border-amber-500 outline-none transition-all font-bold text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-black text-zinc-500 uppercase ml-2 mb-1 block">SENHA</label>
+                <input 
+                  type="text" value={newUserPass} onChange={e => setNewUserPass(e.target.value)}
+                  placeholder="No mínimo 6 caracteres"
+                  className="w-full bg-black border border-zinc-800 px-4 py-3 rounded-xl focus:border-amber-500 outline-none transition-all font-bold text-sm"
+                />
+              </div>
+
+              <button 
+                onClick={handleCreateUser}
+                disabled={creatingUser}
+                className="w-full mt-6 flex justify-center items-center gap-2 gold-bg text-black font-black uppercase tracking-widest py-4 rounded-xl hover:scale-[1.02] transition-all disabled:opacity-50"
+              >
+                {creatingUser ? <RefreshCw className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5" />}
+                {creatingUser ? 'CRIANDO...' : 'REGISTRAR ACESSO NO BANDO DE DADOS'}
+              </button>
+            </div>
+          </div>
+        )}
+
         {tab === 'FINANCEIRO' && (
           <div className="space-y-6">
             <div className="flex flex-col gap-2 mb-4">
