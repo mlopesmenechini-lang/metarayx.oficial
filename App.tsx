@@ -394,7 +394,8 @@ const App: React.FC = () => {
     if (user.role === 'admin') {
       const pendingUsersQuery = query(collection(db, 'users'), where('isApproved', '==', false));
       unsubPendingUsers = onSnapshot(pendingUsersQuery, (snapshot) => {
-        setPendingUsers(snapshot.docs.map(doc => doc.data() as User));
+        const users = snapshot.docs.map(doc => doc.data() as User);
+        setPendingUsers(users.filter(u => !(u as any).isRejected));
       }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
 
       const approvedUsersQuery = query(collection(db, 'users'), where('isApproved', '==', true));
@@ -620,12 +621,24 @@ const App: React.FC = () => {
     setConfirmModal({
       isOpen: true,
       title: 'Remover Solicitação',
-      message: 'Tem certeza que deseja apagar os dados desta solicitação de acesso pendente?',
+      message: 'Tem certeza que deseja apagar os dados desta solicitação de acesso pendente? O usuário não poderá mais fazer login.',
       onConfirm: async () => {
         try {
           await deleteDoc(doc(db, 'users', userId));
-        } catch (error) {
-          handleFirestoreError(error, OperationType.DELETE, `users/${userId}`);
+          alert('Solicitação removida com sucesso!');
+        } catch (error: any) {
+          console.error('Erro ao deletar usuário:', error);
+          if (error.code === 'permission-denied') {
+            // Fallback: se não tiver permissão de deletar, marca como rejeitado
+            try {
+              await updateDoc(doc(db, 'users', userId), { isApproved: false, isRejected: true });
+              alert('Solicitação marcada como rejeitada. Para deletar definitivamente, publique as Regras atualizadas no Firebase Console.');
+            } catch (e2) {
+              alert('Erro ao remover solicitação. Verifique as regras do Firebase.');
+            }
+          } else {
+            alert(`Erro ao remover: ${error.message}`);
+          }
         }
       }
     });

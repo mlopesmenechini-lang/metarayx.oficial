@@ -50,16 +50,9 @@ service cloud.firestore {
     match /users/{userId} {
       allow get: if isAuthenticated() && (isOwner(userId) || isStaff() || (resource != null && resource.data.isApproved == true));
       allow list: if isApproved();
-      allow create: if isAuthenticated() && (
-        isAdmin() ||
-        (isOwner(userId) && 
-         request.resource.data.keys().hasAll(['uid', 'email', 'role']) &&
-         request.resource.data.isApproved == (request.auth.token.email == "matheusmenechini18@gmail.com"))
-      );
-      allow update: if isAuthenticated() && (
-        (isOwner(userId) && request.resource.data.isApproved == resource.data.isApproved && request.resource.data.role == resource.data.role) || 
-        isStaff()
-      );
+      allow create: if isAuthenticated() && (isAdmin() || (isOwner(userId) && request.resource.data.keys().hasAll(['uid', 'email', 'role'])));
+      allow update: if isAuthenticated() && ((isOwner(userId) && request.resource.data.isApproved == resource.data.isApproved && request.resource.data.role == resource.data.role) || isStaff());
+      allow delete: if isAdmin();
     }
 
     match /config/settings {
