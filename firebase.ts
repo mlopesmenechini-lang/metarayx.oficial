@@ -1,13 +1,34 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, setPersistence, browserLocalPersistence } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, setPersistence, browserLocalPersistence, onAuthStateChanged } from 'firebase/auth';
+
 import { getFirestore, doc, getDoc, getDocs, collection, onSnapshot, setDoc, updateDoc, deleteDoc, query, where, orderBy, limit, getDocFromServer, addDoc, serverTimestamp } from 'firebase/firestore';
-import firebaseConfig from './firebase-applet-config.json';
+import fallbackFirebaseConfig from './firebase-applet-config.json';
+
+const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || fallbackFirebaseConfig.apiKey,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || fallbackFirebaseConfig.authDomain,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || fallbackFirebaseConfig.projectId,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || fallbackFirebaseConfig.storageBucket,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || fallbackFirebaseConfig.messagingSenderId,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || fallbackFirebaseConfig.appId,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || fallbackFirebaseConfig.measurementId,
+};
+
+// Debug: Mostrar apenas início e fim da chave para segurança
+console.log('Firebase Init - Project:', firebaseConfig.projectId);
+if (firebaseConfig.apiKey) {
+  console.log('API Key Check:', `${firebaseConfig.apiKey.slice(0, 5)}...${firebaseConfig.apiKey.slice(-4)}`);
+}
+
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 setPersistence(auth, browserLocalPersistence).catch(err => console.error('Persistence Error:', err));
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+const databaseId = import.meta.env.VITE_FIRESTORE_DATABASE_ID || fallbackFirebaseConfig.firestoreDatabaseId;
+export const db = getFirestore(app, databaseId && databaseId !== '(default)' ? databaseId : undefined);
 export const googleProvider = new GoogleAuthProvider();
+
 
 export enum OperationType {
   CREATE = 'create',
@@ -76,4 +97,5 @@ async function testConnection() {
 }
 testConnection();
 
-export { doc, getDoc, getDocs, collection, onSnapshot, setDoc, updateDoc, deleteDoc, query, where, orderBy, limit, signInWithPopup, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, addDoc, serverTimestamp };
+export { doc, getDoc, getDocs, collection, onSnapshot, setDoc, updateDoc, deleteDoc, query, where, orderBy, limit, signInWithPopup, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, addDoc, serverTimestamp, onAuthStateChanged };
+

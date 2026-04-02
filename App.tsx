@@ -2,8 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   auth, db, googleProvider, signInWithPopup, signOut, 
   onSnapshot, collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, query, where, orderBy, limit,
-  OperationType, handleFirestoreError, createUserWithEmailAndPassword, signInWithEmailAndPassword, addDoc, serverTimestamp
+  OperationType, handleFirestoreError, createUserWithEmailAndPassword, signInWithEmailAndPassword, addDoc, serverTimestamp, onAuthStateChanged
 } from './firebase';
+
 import { User, Post, Season, Announcement, Platform, PostStatus, Competition, CompetitionRegistration, UserRole, Transaction, Suggestion } from './types';
 import { 
   LayoutDashboard, Trophy, Send, History, Settings, LogOut, 
@@ -178,7 +179,9 @@ const WalletView = ({ user }: { user: User }) => {
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [view, setView] = useState<'DASHBOARD' | 'RANKINGS' | 'POST' | 'HISTORY' | 'ADMIN' | 'SETTINGS' | 'WALLET' | 'SUGGESTIONS'>('RANKINGS');
+
   const [posts, setPosts] = useState<Post[]>([]);
   const [rankings, setRankings] = useState<User[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
@@ -282,82 +285,71 @@ const App: React.FC = () => {
   useEffect(() => {
     let unsubscribeUser: (() => void) | null = null;
 
-    const unsubscribeAuth = auth.onAuthStateChanged(async (firebaseUser) => {
-      console.log('Auth state changed. User:', firebaseUser?.email);
-      // Clean up previous user listener
+    const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
+      // Limpa listener anterior se houver
       if (unsubscribeUser) {
         unsubscribeUser();
         unsubscribeUser = null;
       }
 
       if (firebaseUser) {
-        console.log('User detected:', firebaseUser.uid);
-        const userRef = doc(db, 'users', firebaseUser.uid);
-        
-        // Fetch settings once
-        const settingsRef = doc(db, 'config', 'settings');
-        getDoc(settingsRef).then(settingsDoc => {
-          if (settingsDoc.exists()) {
-            setSettings(settingsDoc.data() as { apifyKey: string });
+        const timeout = setTimeout(() => {
+          if (loading) {
+            setLoadError('Tempo de conexão excedido. Verifique se o Database está ativo.');
           }
-        }).catch(err => handleFirestoreError(err, OperationType.GET, settingsRef.path));
+        }, 15000);
 
-        // Set up real-time listener for user document
-        unsubscribeUser = onSnapshot(userRef, async (docSnap) => {
-          console.log('User snapshot received. Exists:', docSnap.exists());
-          if (docSnap.exists()) {
-            const userData = docSnap.data() as User;
-            console.log('User data isApproved:', userData.isApproved);
-            setUser({
-              ...userData,
-              totalViews: userData.totalViews || 0,
-              totalLikes: userData.totalLikes || 0,
-              totalComments: userData.totalComments || 0,
-              totalShares: userData.totalShares || 0,
-              totalPosts: userData.totalPosts || 0,
-              dailyViews: userData.dailyViews || 0,
-              dailyLikes: userData.dailyLikes || 0,
-              dailyComments: userData.dailyComments || 0,
-              dailyShares: userData.dailyShares || 0,
-              dailyPosts: userData.dailyPosts || 0,
-              balance: userData.balance || 0
-            });
-          } else {
-            // Create user doc if it doesn't exist (e.g. Google Login first time)
-            const isAdminEmail = firebaseUser.email === 'matheusmenechini18@gmail.com' || firebaseUser.email === 'hypedosmemes@gmail.com';
-            const newUser: User = {
-              uid: firebaseUser.uid,
-              displayName: firebaseUser.displayName || 'Anon',
-              email: firebaseUser.email || '',
-              role: isAdminEmail ? 'admin' : 'user',
-              isApproved: isAdminEmail, // Admin auto-approved
-              balance: 0,
-              totalViews: 0,
-              totalLikes: 0,
-              totalComments: 0,
-              totalShares: 0,
-              totalSaves: 0,
-              totalPosts: 0,
-              dailyViews: 0,
-              dailyLikes: 0,
-              dailyComments: 0,
-              dailyShares: 0,
-              dailySaves: 0,
-              dailyPosts: 0,
-              photoURL: firebaseUser.photoURL || undefined
-            };
-            try {
+        try {
+          const userRef = doc(db, 'users', firebaseUser.uid);
+          unsubscribeUser = onSnapshot(userRef, async (docSnap) => {
+            clearTimeout(timeout);
+            if (docSnap.exists()) {
+              const userData = docSnap.data() as User;
+              setUser(userData);
+              setProfileName(userData.displayName || '');
+              setProfilePhoto(userData.photoURL || '');
+            } else {
+              // Lógica de Primeiro Admin
+              const usersSnap = await getDocs(query(collection(db, 'users'), limit(1)));
+              const isFirstUser = usersSnap.empty;
+              const isAdminEmail = firebaseUser.email === 'matheusmenechini18@gmail.com' || firebaseUser.email === 'hypedosmemes@gmail.com';
+
+              const newUser: User = {
+                uid: firebaseUser.uid,
+                displayName: firebaseUser.displayName || 'Usuário Sem Nome',
+                email: firebaseUser.email || '',
+                role: (isFirstUser || isAdminEmail) ? 'admin' : 'user',
+                isApproved: (isFirstUser || isAdminEmail),
+                balance: 0,
+                totalViews: 0,
+                totalLikes: 0,
+                totalComments: 0,
+                totalShares: 0,
+                totalSaves: 0,
+                totalPosts: 0,
+                dailyViews: 0,
+                dailyLikes: 0,
+                dailyComments: 0,
+                dailyShares: 0,
+                dailySaves: 0,
+                dailyPosts: 0,
+                photoURL: firebaseUser.photoURL || undefined
+              };
               await setDoc(userRef, newUser);
-              // The onSnapshot will trigger again after setDoc
-            } catch (err) {
-              handleFirestoreError(err, OperationType.CREATE, userRef.path);
             }
-          }
+            setLoading(false);
+          }, (error) => {
+            clearTimeout(timeout);
+            console.error('Firestore Error:', error);
+            setLoadError(`Erro ao carregar perfil: ${error.message}`);
+            setLoading(false);
+          });
+        } catch (err: any) {
+          clearTimeout(timeout);
+          console.error('Auth logic error:', err);
+          setLoadError(err.message);
           setLoading(false);
-        }, (error) => {
-          console.error('User listener error:', error);
-          setLoading(false);
-        });
+        }
       } else {
         setUser(null);
         setLoading(false);
@@ -369,6 +361,7 @@ const App: React.FC = () => {
       if (unsubscribeUser) unsubscribeUser();
     };
   }, []);
+
 
   // Real-time Data Listeners
   useEffect(() => {
@@ -536,15 +529,38 @@ const App: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-black">
-        <motion.div 
-          animate={{ rotate: 360 }}
-          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-          className="w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full"
-        />
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-black p-6 text-center">
+        {!loadError ? (
+          <motion.div 
+            animate={{ rotate: 360 }}
+            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+            className="w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full"
+          />
+        ) : (
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="max-w-md space-y-6"
+          >
+            <div className="w-20 h-20 bg-red-500/20 rounded-3xl flex items-center justify-center mx-auto mb-4">
+              <AlertCircle className="w-10 h-10 text-red-500" />
+            </div>
+            <h2 className="text-2xl font-black text-white uppercase">Falha na Conexão</h2>
+            <p className="text-zinc-500 font-bold text-sm leading-relaxed">
+              {loadError}
+            </p>
+            <button 
+              onClick={() => window.location.reload()}
+              className="px-8 py-4 gold-bg text-black font-black rounded-2xl hover:scale-[1.05] transition-all"
+            >
+              TENTAR NOVAMENTE
+            </button>
+          </motion.div>
+        )}
       </div>
     );
   }
+
 
   const handleLogout = async () => {
     try {
