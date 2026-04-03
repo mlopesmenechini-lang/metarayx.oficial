@@ -363,7 +363,36 @@ const App: React.FC = () => {
   }, []);
 
 
-  // Real-time Data Listeners
+  // Real-time Data Listeners — dados públicos (carrega assim que autenticado)
+  useEffect(() => {
+    if (!user) return;
+
+    // Rankings Listener (público — não depende de aprovação)
+    const rankingsQuery = query(collection(db, 'users'), where('isApproved', '==', true), orderBy('totalViews', 'desc'), limit(20));
+    const unsubRankings = onSnapshot(rankingsQuery, (snapshot) => {
+      setRankings(snapshot.docs.map(doc => doc.data() as User));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
+
+    // Announcements Listener (público)
+    const annQuery = query(collection(db, 'announcements'), orderBy('timestamp', 'desc'));
+    const unsubAnn = onSnapshot(annQuery, (snapshot) => {
+      setAnnouncements(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Announcement)));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'announcements'));
+
+    // Competitions Listener (público)
+    const compQuery = query(collection(db, 'competitions'), orderBy('timestamp', 'desc'), limit(10));
+    const unsubComp = onSnapshot(compQuery, (snapshot) => {
+      setCompetitions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Competition)));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'competitions'));
+
+    return () => {
+      unsubRankings();
+      unsubAnn();
+      unsubComp();
+    };
+  }, [user?.uid]);
+
+  // Real-time Data Listeners — dados privados (depende de aprovação)
   useEffect(() => {
     if (!user) return;
     const isStaff = user.role === 'admin' || user.role === 'auditor' || user.role === 'administrativo';
@@ -378,24 +407,6 @@ const App: React.FC = () => {
       setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Post)));
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'posts'));
 
-    // Rankings Listener
-    const rankingsQuery = query(collection(db, 'users'), where('isApproved', '==', true), orderBy('totalViews', 'desc'), limit(20));
-    const unsubRankings = onSnapshot(rankingsQuery, (snapshot) => {
-      setRankings(snapshot.docs.map(doc => doc.data() as User));
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
-
-    // Announcements Listener
-    const annQuery = query(collection(db, 'announcements'), orderBy('timestamp', 'desc'));
-    const unsubAnn = onSnapshot(annQuery, (snapshot) => {
-      setAnnouncements(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Announcement)));
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'announcements'));
-
-    // Competitions Listener
-    const compQuery = query(collection(db, 'competitions'), orderBy('timestamp', 'desc'), limit(10));
-    const unsubComp = onSnapshot(compQuery, (snapshot) => {
-      setCompetitions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Competition)));
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'competitions'));
-
     // Registrations Listener
     const regQuery = user.role === 'admin'
       ? query(collection(db, 'competition_registrations'), orderBy('timestamp', 'desc'))
@@ -404,6 +415,7 @@ const App: React.FC = () => {
     const unsubReg = onSnapshot(regQuery, (snapshot) => {
       setRegistrations(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CompetitionRegistration)));
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'competition_registrations'));
+
     // Admin/Staff: Users Listeners
     let unsubPendingUsers = () => {};
     let unsubApprovedUsers = () => {};
@@ -421,7 +433,7 @@ const App: React.FC = () => {
       }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
     }
     
-    // Suggestions Listener (Visível para todos)
+    // Suggestions Listener
     const suggestionsQuery = query(collection(db, 'suggestions'), orderBy('timestamp', 'desc'));
     const unsubSuggestions = onSnapshot(suggestionsQuery, (snapshot) => {
       setSuggestions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Suggestion)));
@@ -429,9 +441,6 @@ const App: React.FC = () => {
 
     return () => { 
       unsubPosts(); 
-      unsubRankings(); 
-      unsubAnn(); 
-      unsubComp();
       unsubReg();
       unsubPendingUsers();
       unsubApprovedUsers();
