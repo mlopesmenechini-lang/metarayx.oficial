@@ -63,6 +63,22 @@ const WalletView = ({ user }: { user: User }) => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'day' | 'week' | 'month'>('week');
+  const [pixKey, setPixKey] = useState(user.pixKey || '');
+  const [isSavingPix, setIsSavingPix] = useState(false);
+
+  const handleSavePix = async () => {
+    if (!pixKey.trim()) return;
+    setIsSavingPix(true);
+    try {
+      await updateDoc(doc(db, 'users', user.uid), { pixKey });
+      alert('Chave PIX salva com sucesso!');
+    } catch (error) {
+      console.error('Erro ao salvar PIX:', error);
+      alert('Erro ao salvar chave PIX.');
+    } finally {
+      setIsSavingPix(false);
+    }
+  };
 
   useEffect(() => {
     const fetchTransactions = async () => {
@@ -101,29 +117,65 @@ const WalletView = ({ user }: { user: User }) => {
          </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 shadow-xl relative overflow-hidden">
-           <div className="absolute top-0 right-0 p-4 opacity-10">
-             <Zap className="w-24 h-24" />
-           </div>
-           <div className="relative z-10 flex flex-col items-start gap-2">
-             <span className="text-zinc-500 font-black text-[10px] tracking-widest uppercase">Pagamentos Recebidos (Lifetime)</span>
-             <span className="text-4xl md:text-5xl font-black text-white tracking-tighter">
-               R$ {(user.lifetimeEarnings || 0).toLocaleString()}
-             </span>
-           </div>
+      <div className="bg-zinc-950 border border-zinc-800 rounded-[32px] p-8 space-y-6 shadow-2xl">
+        <div className="space-y-4">
+          <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest px-1">Resumo de Saldos</h3>
+          <div className="divide-y divide-zinc-800/50">
+            {/* Lifetime Item */}
+            <div className="flex items-center justify-between py-4 group">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 group-hover:text-white transition-colors">
+                  <Zap className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-xs font-black text-zinc-500 uppercase tracking-widest">Total Recebido (Lifetime)</p>
+                  <p className="text-xl font-black text-white">R$ {(user.lifetimeEarnings || 0).toLocaleString()}</p>
+                </div>
+              </div>
+              <div className="hidden md:block px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-500 text-[10px] font-black uppercase">ACUMULADO</div>
+            </div>
+
+            {/* Pending Balance Item */}
+            <div className="flex items-center justify-between py-4 group">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-xs font-black text-amber-500/60 uppercase tracking-widest">Saldo a Receber</p>
+                  <p className="text-xl font-black text-amber-500">R$ {(user.balance || 0).toLocaleString()}</p>
+                </div>
+              </div>
+              <div className="hidden md:block px-3 py-1 rounded-full bg-amber-500/20 text-amber-500 text-[10px] font-black uppercase">PENDENTE</div>
+            </div>
+          </div>
         </div>
 
-        <div className="bg-amber-500/10 border border-amber-500/20 rounded-3xl p-6 shadow-xl relative overflow-hidden">
-           <div className="absolute top-0 right-0 p-4 opacity-10">
-             <Clock className="w-24 h-24 text-amber-500" />
-           </div>
-           <div className="relative z-10 flex flex-col items-start gap-2">
-             <span className="text-amber-500 font-black text-[10px] tracking-widest uppercase">Saldo a Receber (Pendente)</span>
-             <span className="text-4xl md:text-5xl font-black text-amber-500 tracking-tighter">
-               R$ {(user.balance || 0).toLocaleString()}
-             </span>
-           </div>
+        {/* PIX Section */}
+        <div className="pt-6 border-t border-zinc-900">
+          <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest px-1 mb-4">Dados para Pagamento</h3>
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex-1 relative">
+              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                <Mail className="w-4 h-4 text-zinc-500" />
+              </div>
+              <input 
+                type="text"
+                value={pixKey}
+                onChange={(e) => setPixKey(e.target.value)}
+                placeholder="Sua Chave PIX (E-mail, CPF, Celular...)"
+                className="w-full bg-black border border-zinc-800 rounded-2xl py-4 pl-12 pr-4 text-sm font-bold focus:border-amber-500 outline-none transition-all placeholder:text-zinc-700"
+              />
+            </div>
+            <button 
+              onClick={handleSavePix}
+              disabled={isSavingPix || !pixKey}
+              className="px-8 py-4 gold-bg text-black font-black rounded-2xl hover:scale-[1.02] transition-all disabled:opacity-50 disabled:scale-100 flex items-center justify-center gap-2 min-w-[140px]"
+            >
+              {isSavingPix ? <Loader2 className="w-5 h-5 animate-spin" /> : 'SALVAR CHAVE'}
+            </button>
+          </div>
+          <p className="mt-3 px-1 text-[10px] font-bold text-zinc-600 uppercase tracking-widest">Atenção: Verifique os dados antes de salvar para evitar erros nos repasses.</p>
         </div>
       </div>
 
@@ -2330,33 +2382,12 @@ const Rankings = ({ rankings, competitions }: { rankings: User[], competitions: 
           <div className="flex items-center gap-3 mb-2">
             <Trophy className="w-6 h-6 text-amber-500" />
             <h2 className="text-2xl font-black tracking-tight uppercase">
-              {timeframe === 'MONTHLY' ? 'Ranking Mensal' : timeframe === 'DAILY' ? 'Ranking Diário' : 'Top 3 Instagram'}
+              Ranking Mensal
             </h2>
           </div>
           <p className="text-zinc-500 font-bold text-[10px] uppercase tracking-widest">
-            {timeframe === 'INSTAGRAM' ? 'Ranking baseado na quantidade de vídeos de Instagram enviados hoje' : 'Ranking baseado no total de visualizações (Views)'}
+            Ranking baseado no total acumulado de visualizações (Views)
           </p>
-        </div>
-
-        <div className="flex p-1 bg-zinc-900 rounded-xl border border-zinc-800">
-          <button 
-            onClick={() => setTimeframe('DAILY')} 
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-black transition-all ${timeframe === 'DAILY' ? 'bg-zinc-800 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
-          >
-            <Zap className="w-3 h-3" /> DIA
-          </button>
-          <button 
-            onClick={() => setTimeframe('INSTAGRAM')} 
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-black transition-all ${timeframe === 'INSTAGRAM' ? 'bg-zinc-800 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
-          >
-            <Camera className="w-3 h-3" /> INSTA
-          </button>
-          <button 
-            onClick={() => setTimeframe('MONTHLY')} 
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-black transition-all ${timeframe === 'MONTHLY' ? 'bg-zinc-800 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
-          >
-            <Trophy className="w-3 h-3" /> MÊS
-          </button>
         </div>
       </div>
 
@@ -2513,35 +2544,49 @@ const FinancialRow = ({ user, onViewLinks }: { user: User, onViewLinks: (uid: st
   };
 
   return (
-    <div className="flex flex-col gap-4 bg-zinc-900 border border-zinc-800 p-5 rounded-2xl shadow-xl">
-       <div className="flex justify-between items-start">
-         <div className="flex flex-col gap-1 w-full sm:w-auto">
-            <span className="text-amber-500 font-bold tracking-widest uppercase text-[10px]">@{user.displayName?.toLowerCase().replace(/\s+/g, '_')}</span>
-            <span className="font-black text-lg text-white truncate max-w-[200px] leading-tight">{user.displayName}</span>
-            <span className="text-zinc-500 text-[10px] font-bold mt-1 uppercase">Ganhos Totais: R$ {lifetime.toLocaleString()}</span>
+    <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-2xl shadow-xl hover:border-zinc-700 transition-colors">
+       <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+         <div className="flex items-center gap-4 flex-1 w-full">
+            <div className="w-12 h-12 rounded-xl bg-zinc-800 flex items-center justify-center shrink-0">
+               <UserIcon className="w-6 h-6 text-zinc-500" />
+            </div>
+            <div className="flex flex-col min-w-0">
+               <span className="font-black text-white truncate max-w-[180px] leading-tight">{user.displayName}</span>
+               <span className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest truncate">{user.email}</span>
+            </div>
          </div>
-         <div className="flex flex-col items-end">
-            <span className="text-[10px] uppercase font-black tracking-widest text-zinc-500">Saldo a Pagar</span>
-            <span className="text-3xl font-black text-white">R$ {balance.toLocaleString()}</span>
+
+         <div className="flex flex-col items-center sm:items-start min-w-[200px] w-full sm:w-auto">
+            <span className="text-[10px] uppercase font-black tracking-widest text-zinc-500 mb-1 flex items-center gap-1">
+               <Mail className="w-3 h-3" /> CHAVE PIX
+            </span>
+            <span className={`text-xs font-bold ${user.pixKey ? 'text-amber-500' : 'text-red-500/50 italic'}`}>
+               {user.pixKey || 'Não cadastrada'}
+            </span>
          </div>
-       </div>
-       
-       <div className="flex gap-2 w-full pt-4 border-t border-zinc-800">
-         <button 
-           onClick={() => onViewLinks(user.uid)}
-           className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white py-3 rounded-xl font-black text-xs transition-all flex justify-center items-center gap-2"
-         >
-           <CheckCircle2 className="w-4 h-4" />
-           AUDITAR CONTA
-         </button>
-         <button 
-           onClick={handlePay} 
-           disabled={saving || balance <= 0} 
-           className="flex-1 bg-emerald-500 hover:bg-emerald-400 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:opacity-50 text-black py-3 rounded-xl font-black text-xs transition-all flex justify-center items-center gap-2"
-         >
-           {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-           {saving ? '...' : 'EFETUAR PAGTO'}
-         </button>
+
+         <div className="flex flex-col items-center sm:items-end min-w-[120px]">
+            <span className="text-[10px] uppercase font-black tracking-widest text-zinc-500">Saldo</span>
+            <span className="text-2xl font-black text-white">R$ {balance.toLocaleString()}</span>
+         </div>
+         
+         <div className="flex gap-2 w-full sm:w-auto">
+           <button 
+             onClick={() => onViewLinks(user.uid)}
+             className="p-3 rounded-xl bg-zinc-800 text-zinc-400 hover:text-white transition-all"
+             title="Auditar Conta"
+           >
+             <CheckCircle2 className="w-5 h-5" />
+           </button>
+           <button 
+             onClick={handlePay} 
+             disabled={saving || balance <= 0} 
+             className="flex-1 sm:flex-none px-6 py-3 bg-emerald-500 hover:bg-emerald-400 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:opacity-50 text-black rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2"
+           >
+             {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+             {saving ? '...' : 'PAGAR'}
+           </button>
+         </div>
        </div>
     </div>
   );

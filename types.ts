@@ -25,6 +25,7 @@ export interface User {
   photoURL?: string;
   password?: string; // Added for administrative management
   lifetimeEarnings?: number;
+  pixKey?: string;
 }
 
 export interface Transaction {
