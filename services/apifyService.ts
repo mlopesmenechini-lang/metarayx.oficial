@@ -11,7 +11,7 @@ const runActorAndGetResults = async (apiKey: string, actorId: string, input: any
 
   if (!runResponse.ok) {
     const error = await runResponse.json();
-    throw new Error(`Apify Error: ${error.error?.message || runResponse.statusText}`);
+    throw new Error(`Apify Error (${actorId}): ${error.error?.message || runResponse.statusText}`);
   }
 
   const runData = await runResponse.json();
@@ -46,49 +46,106 @@ export const updateUserMetrics = async (userId: string) => {
   if (!userSnap.exists()) return;
 
   const userData = userSnap.data() as User;
-  const userPostsQuery = query(collection(db, 'posts'), where('userId', '==', userData.uid), where('status', '==', 'approved'));
+  const userPostsQuery = query(collection(db, 'posts'), where('userId', '==', userData.uid), where('status', 'in', ['approved', 'synced']));
   const userPostsSnapshot = await getDocs(userPostsQuery);
   
   const now = Date.now();
   const oneDayAgo = now - 24 * 60 * 60 * 1000;
   
-  const totals = userPostsSnapshot.docs.reduce((acc, doc) => {
+  const globalTotals = {
+    views: 0, likes: 0, comments: 0, shares: 0, saves: 0, posts: 0, instaPosts: 0,
+    dailyViews: 0, dailyLikes: 0, dailyComments: 0, dailyShares: 0, dailySaves: 0, dailyPosts: 0, dailyInstaPosts: 0
+  };
+
+  const competitionStats: Record<string, any> = {};
+
+  userPostsSnapshot.docs.forEach((doc) => {
     const data = doc.data() as Post;
     const isDaily = (data.timestamp || 0) > oneDayAgo;
-    
-    return {
-      views: acc.views + (data.views || 0),
-      likes: acc.likes + (data.likes || 0),
-      comments: acc.comments + (data.comments || 0),
-      shares: acc.shares + (data.shares || 0),
-      saves: acc.saves + (data.saves || 0),
-      posts: acc.posts + 1,
-      dailyViews: acc.dailyViews + (isDaily ? (data.views || 0) : 0),
-      dailyLikes: acc.dailyLikes + (isDaily ? (data.likes || 0) : 0),
-      dailyComments: acc.dailyComments + (isDaily ? (data.comments || 0) : 0),
-      dailyShares: acc.dailyShares + (isDaily ? (data.shares || 0) : 0),
-      dailySaves: acc.dailySaves + (isDaily ? (data.saves || 0) : 0),
-      dailyPosts: acc.dailyPosts + (isDaily ? 1 : 0)
-    };
-  }, { 
-    views: 0, likes: 0, comments: 0, shares: 0, saves: 0, posts: 0,
-    dailyViews: 0, dailyLikes: 0, dailyComments: 0, dailyShares: 0, dailySaves: 0, dailyPosts: 0
+    const isInsta = data.platform === 'instagram';
+    const cid = data.competitionId || 'no_competition';
+
+    if (!competitionStats[cid]) {
+      competitionStats[cid] = {
+        views: 0, likes: 0, comments: 0, shares: 0, saves: 0, posts: 0, instaPosts: 0,
+        dailyViews: 0, dailyLikes: 0, dailyComments: 0, dailyShares: 0, dailySaves: 0, dailyPosts: 0, dailyInstaPosts: 0,
+        balance: userData.competitionStats?.[cid]?.balance || 0,
+        paidTotal: userData.competitionStats?.[cid]?.paidTotal || 0
+      };
+    }
+
+    // Update Competition Stats
+    competitionStats[cid].views += (data.views || 0);
+    competitionStats[cid].likes += (data.likes || 0);
+    competitionStats[cid].comments += (data.comments || 0);
+    competitionStats[cid].shares += (data.shares || 0);
+    competitionStats[cid].saves += (data.saves || 0);
+    competitionStats[cid].posts += 1;
+    if (isInsta) competitionStats[cid].instaPosts += 1;
+
+    if (isDaily) {
+      competitionStats[cid].dailyViews += (data.views || 0);
+      competitionStats[cid].dailyLikes += (data.likes || 0);
+      competitionStats[cid].dailyComments += (data.comments || 0);
+      competitionStats[cid].dailyShares += (data.shares || 0);
+      competitionStats[cid].dailySaves += (data.saves || 0);
+      competitionStats[cid].dailyPosts += 1;
+      if (isInsta) competitionStats[cid].dailyInstaPosts += 1;
+    }
+
+    // Update Global Totals
+    globalTotals.views += (data.views || 0);
+    globalTotals.likes += (data.likes || 0);
+    globalTotals.comments += (data.comments || 0);
+    globalTotals.shares += (data.shares || 0);
+    globalTotals.saves += (data.saves || 0);
+    globalTotals.posts += 1;
+    if (isInsta) globalTotals.instaPosts += 1;
+
+    if (isDaily) {
+      globalTotals.dailyViews += (data.views || 0);
+      globalTotals.dailyLikes += (data.likes || 0);
+      globalTotals.dailyComments += (data.comments || 0);
+      globalTotals.dailyShares += (data.shares || 0);
+      globalTotals.dailySaves += (data.saves || 0);
+      globalTotals.dailyPosts += 1;
+      if (isInsta) globalTotals.dailyInstaPosts += 1;
+    }
   });
   
   await updateDoc(userRef, {
-    totalViews: totals.views,
-    totalLikes: totals.likes,
-    totalComments: totals.comments,
-    totalShares: totals.shares,
-    totalSaves: totals.saves,
-    totalPosts: totals.posts,
-    dailyViews: totals.dailyViews,
-    dailyLikes: totals.dailyLikes,
-    dailyComments: totals.dailyComments,
-    dailyShares: totals.dailyShares,
-    dailySaves: totals.dailySaves,
-    dailyPosts: totals.dailyPosts
+    totalViews: globalTotals.views,
+    totalLikes: globalTotals.likes,
+    totalComments: globalTotals.comments,
+    totalShares: globalTotals.shares,
+    totalSaves: globalTotals.saves,
+    totalPosts: globalTotals.posts,
+    instaPosts: globalTotals.instaPosts,
+    dailyViews: globalTotals.dailyViews,
+    dailyLikes: globalTotals.dailyLikes,
+    dailyComments: globalTotals.dailyComments,
+    dailyShares: globalTotals.dailyShares,
+    dailySaves: globalTotals.dailySaves,
+    dailyPosts: globalTotals.dailyPosts,
+    dailyInstaPosts: globalTotals.dailyInstaPosts,
+    competitionStats: competitionStats
   });
+};
+
+export const repairAllUserMetrics = async () => {
+  const usersSnapshot = await getDocs(collection(db, 'users'));
+  const results = { total: usersSnapshot.size, success: 0, error: 0 };
+  
+  for (const userDoc of usersSnapshot.docs) {
+    try {
+      await updateUserMetrics(userDoc.id);
+      results.success++;
+    } catch (err) {
+      console.error(`Error repairing user ${userDoc.id}:`, err);
+      results.error++;
+    }
+  }
+  return results;
 };
 
 const formatYoutubeUrl = (url: string) => {
@@ -104,7 +161,7 @@ export const syncSinglePostWithApify = async (apiKey: string, post: Post) => {
 
   let items = [];
   if (post.platform === 'tiktok') {
-    items = await runActorAndGetResults(apiKey, 'apify/tiktok-scraper', {
+    items = await runActorAndGetResults(apiKey, 'clockworks/tiktok-scraper', {
       postURLs: [post.url],
       resultsPerPage: 1,
       shouldDownloadVideos: false,
@@ -165,7 +222,7 @@ export const syncViewsWithApify = async (apiKey: string) => {
     throw new Error('Apify API Key is required for synchronization.');
   }
 
-  const postsQuery = query(collection(db, 'posts'), where('status', '==', 'approved'));
+  const postsQuery = query(collection(db, 'posts'), where('status', 'in', ['approved', 'synced']));
   const postsSnapshot = await getDocs(postsQuery);
   const posts = postsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Post));
 
@@ -177,7 +234,7 @@ export const syncViewsWithApify = async (apiKey: string) => {
 
   if (tiktokPosts.length > 0) {
     try {
-      const items = await runActorAndGetResults(apiKey, 'apify/tiktok-scraper', {
+      const items = await runActorAndGetResults(apiKey, 'clockworks/tiktok-scraper', {
         postURLs: tiktokPosts.map(p => p.url),
         resultsPerPage: tiktokPosts.length,
         shouldDownloadVideos: false,

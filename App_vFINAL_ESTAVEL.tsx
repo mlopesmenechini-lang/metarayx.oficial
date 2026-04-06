@@ -11,11 +11,10 @@ import {
   ShieldCheck, AlertCircle, CheckCircle2, XCircle, Clock,
   TrendingUp, Users, Zap, Calendar, MessageSquare, Menu, X, ChevronLeft, ExternalLink,
   Mail, Lock, User as UserIcon, Eye, EyeOff, Loader2, RefreshCw, Crown, Trash2,
-  Heart, Share2, Bookmark, Bell, Check, Camera, BarChart3, ArrowLeft, BookOpen, Shield, Star, ChevronRight, Target,
-  Award, UserX, Sparkles, CreditCard, Coins
+  Heart, Share2, Bookmark, Bell, Check, Camera, BarChart3, ArrowLeft, BookOpen, Shield, Star, ChevronRight, Target
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { syncViewsWithApify, syncSinglePostWithApify, updateUserMetrics, repairAllUserMetrics } from './services/apifyService';
+import { syncViewsWithApify, syncSinglePostWithApify, updateUserMetrics } from './services/apifyService';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth as getSecondaryAuth, createUserWithEmailAndPassword as createSecondaryUser, signOut as signSecondaryOut } from 'firebase/auth';
 import fbConfig from './firebase-applet-config.json';
@@ -122,20 +121,14 @@ const WalletView = ({ user, competitions, showBalances }: { user: User, competit
   }, [compFiltered, filter]);
 
   // Total pago (repasses já realizados) para a competição filtrada
-  const totalPago = useMemo(() => {
-    if (selectedCompId) {
-      return user?.competitionStats?.[selectedCompId]?.paidTotal || 0;
-    }
-    return user?.lifetimeEarnings || 0;
-  }, [user, selectedCompId]);
+  const totalPago = useMemo(() =>
+    compFiltered.filter(t => t.status === 'paid').reduce((a, t) => a + (t.amount || 0), 0)
+  , [compFiltered]);
 
   // Ganhos creditados ainda não pagos
-  const totalPendente = useMemo(() => {
-    if (selectedCompId) {
-      return user?.competitionStats?.[selectedCompId]?.balance || 0;
-    }
-    return user?.balance || 0;
-  }, [user, selectedCompId]);
+  const totalPendente = useMemo(() =>
+    compFiltered.filter(t => t.status === 'credit' || t.status === 'pending').reduce((a, t) => a + (t.amount || 0), 0)
+  , [compFiltered]);
 
   const selectedComp = competitions?.find(c => c.id === selectedCompId);
 
@@ -281,935 +274,6 @@ const WalletView = ({ user, competitions, showBalances }: { user: User, competit
       </div>
     </div>
   );
-};
-
-const AuthScreen = ({ onLoginSuccess }: { onLoginSuccess: (u: User) => void }) => {
-  const [isLogin, setIsLogin] = useState(true);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  const handleGoogleLogin = async () => {
-    try {
-      setLoading(true);
-      await signInWithPopup(auth, googleProvider);
-    } catch (err: any) {
-      if (err.code === 'auth/network-request-failed') {
-        setError('Erro de conexÃ£o ou Provedor Google nÃ£o habilitado no Firebase Console.');
-      } else {
-        setError(err.message);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleEmailAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-    try {
-      if (isLogin) {
-        await signInWithEmailAndPassword(auth, email, password);
-      } else {
-        const cred = await createUserWithEmailAndPassword(auth, email, password);
-        const isAdminEmail = email === 'matheusmenechini18@gmail.com' || email === 'hypedosmemes@gmail.com';
-        const newUser: User = {
-          uid: cred.user.uid,
-          displayName: name || 'Anon',
-          email: email,
-          role: isAdminEmail ? 'admin' : 'user',
-          isApproved: isAdminEmail,
-          balance: 0,
-          totalViews: 0,
-          totalLikes: 0,
-          totalComments: 0,
-          totalShares: 0,
-          totalSaves: 0,
-          totalPosts: 0,
-          dailyViews: 0,
-          dailyLikes: 0,
-          dailyComments: 0,
-          dailyShares: 0,
-          dailySaves: 0,
-          dailyPosts: 0
-        };
-        await setDoc(doc(db, 'users', cred.user.uid), newUser);
-        onLoginSuccess(newUser);
-      }
-    } catch (err: any) {
-      if (err.code === 'auth/network-request-failed') {
-        setError('Erro de conexÃ£o ou Provedor E-mail/Senha nÃ£o habilitado no Firebase Console.');
-      } else {
-        setError(err.message);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="h-screen w-screen flex flex-col items-center justify-center bg-black px-4 overflow-y-auto py-10">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md space-y-8"
-      >
-        <div className="text-center space-y-4">
-          <div className="flex justify-center">
-            <div className="w-20 h-20 gold-bg rounded-3xl flex items-center justify-center shadow-2xl">
-              <Zap className="w-10 h-10 text-black" />
-            </div>
-          </div>
-          <div className="space-y-1">
-            <h1 className="text-4xl font-black gold-gradient tracking-tighter uppercase">MetaRayx Hub</h1>
-            <p className="text-zinc-500 font-bold text-sm uppercase tracking-widest">Hub de Criadores</p>
-          </div>
-        </div>
-
-        <div className="glass p-8 rounded-[32px] border border-zinc-800/50 space-y-6">
-          <div className="flex p-1 bg-zinc-900 rounded-2xl">
-            <button
-              onClick={() => setIsLogin(true)}
-              className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${isLogin ? 'bg-zinc-800 text-white shadow-lg' : 'text-zinc-500'}`}
-            >
-              LOGIN
-            </button>
-            <button
-              onClick={() => setIsLogin(false)}
-              className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${!isLogin ? 'bg-zinc-800 text-white shadow-lg' : 'text-zinc-500'}`}
-            >
-              CADASTRO
-            </button>
-          </div>
-
-          <form onSubmit={handleEmailAuth} className="space-y-4">
-            {!isLogin && (
-              <div className="space-y-1">
-                <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest ml-1">Nome Completo</label>
-                <div className="relative">
-                  <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                  <input
-                    required
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    type="text"
-                    placeholder="Seu nome"
-                    className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-sm font-bold focus:border-amber-500 outline-none transition-all"
-                  />
-                </div>
-              </div>
-            )}
-            <div className="space-y-1">
-              <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest ml-1">E-mail</label>
-              <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                <input
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  type="email"
-                  placeholder="seu@email.com"
-                  className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-sm font-bold focus:border-amber-500 outline-none transition-all"
-                />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest ml-1">Senha</label>
-              <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                <input
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  type="password"
-                  placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
-                  className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-sm font-bold focus:border-amber-500 outline-none transition-all"
-                />
-              </div>
-            </div>
-
-            {error && (
-              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-[10px] font-bold uppercase text-center">
-                {error}
-              </div>
-            )}
-
-            <button
-              disabled={loading}
-              className="w-full py-4 gold-bg text-black font-black rounded-2xl hover:scale-[1.02] transition-all shadow-xl flex items-center justify-center gap-2"
-            >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : isLogin ? 'ENTRAR NO HUB' : 'CRIAR CONTA'}
-            </button>
-          </form>
-
-          <div className="relative flex items-center gap-4">
-            <div className="flex-1 h-px bg-zinc-800" />
-            <span className="text-[10px] text-zinc-500 font-black">OU</span>
-            <div className="flex-1 h-px bg-zinc-800" />
-          </div>
-
-          <button
-            onClick={handleGoogleLogin}
-            className="w-full py-4 bg-white text-black font-black rounded-2xl hover:scale-[1.02] transition-all flex items-center justify-center gap-3"
-          >
-            <img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="" />
-            CONTINUAR COM GOOGLE
-          </button>
-        </div>
-        <p className="text-center text-[10px] text-zinc-600 font-black tracking-widest uppercase">Acesso Restrito a Membros Autorizados</p>
-      </motion.div>
-    </div>
-  );
-};
-
-const NavItem = ({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) => (
-  <button
-    onClick={onClick}
-    className={`
-      w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold text-sm
-      ${active ? 'gold-bg text-black shadow-lg shadow-amber-500/20' : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900'}
-    `}
-  >
-    {React.cloneElement(icon as React.ReactElement<any>, { className: 'w-5 h-5' })}
-    {label}
-  </button>
-);
-
-const Dashboard = ({ user, announcements, rankings, competitions, registrations, posts, showBalances }: {
-  user: User,
-  announcements: Announcement[],
-  rankings: User[],
-  competitions: Competition[],
-  registrations: CompetitionRegistration[],
-  posts: Post[],
-  showBalances: boolean
-}) => {
-  const [selectedComp, setSelectedComp] = useState<Competition | null>(null);
-  const [acceptedRules, setAcceptedRules] = useState(false);
-
-  const handleRegister = async (compId: string) => {
-    if (!acceptedRules) {
-      alert('VocÃª precisa aceitar as regras para participar!');
-      return;
-    }
-    try {
-      const newReg: Omit<CompetitionRegistration, 'id'> = {
-        competitionId: compId,
-        userId: user.uid,
-        userName: user.displayName,
-        userEmail: user.email,
-        status: 'pending',
-        acceptedRules: true,
-        timestamp: Date.now()
-      };
-      await addDoc(collection(db, 'competition_registrations'), newReg);
-      alert('SolicitaÃ§Ã£o de inscriÃ§Ã£o enviada! Aguarde a aprovaÃ§Ã£o da diretoria.');
-      setSelectedComp(null);
-      setAcceptedRules(false);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'competition_registrations');
-    }
-  };
-
-  const sortedMonthly = useMemo(() => {
-    return [...rankings].sort((a, b) => (b.totalViews || 0) - (a.totalViews || 0)).slice(0, 3);
-  }, [rankings]);
-
-  // Agregação por plataforma com base nos posts do usuário
-  const platformStats = useMemo(() => {
-    const platforms = ['tiktok', 'youtube', 'instagram'] as const;
-    return platforms.map(platform => {
-      const platformPosts = posts.filter(p => p.platform === platform);
-      const views = platformPosts.reduce((acc, p) => acc + (p.views || 0), 0);
-      const likes = platformPosts.reduce((acc, p) => acc + (p.likes || 0), 0);
-      const comments = platformPosts.reduce((acc, p) => acc + (p.comments || 0), 0);
-      const count = platformPosts.length;
-      return { platform, views, likes, comments, count };
-    });
-  }, [posts]);
-
-  const maxViews = Math.max(...platformStats.map(p => p.views), 1);
-
-  return (
-    <div className="space-y-12 shrink-0">
-      {/* 🚀 Cockpit Pessoal */}
-      <div className="space-y-6">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-          <div>
-            <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tight">
-              Bem-vindo(a), <span className="gold-gradient">{user.displayName.split(' ')[0]}</span>!
-            </h1>
-            <p className="text-zinc-400 font-bold mt-1 text-sm md:text-base">Métricas da sua performance geral no HUB.</p>
-          </div>
-          <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs font-black text-emerald-500 w-fit">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            CONTA ATIVA
-          </div>
-        </div>
-        
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="glass shadow-2xl shadow-amber-500/5 hover:border-amber-500/50 transition-all border border-amber-500/20 p-6 rounded-[32px] relative overflow-hidden group flex flex-col justify-between min-h-[140px]">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-amber-500/20 transition-all" />
-            <h3 className="text-[10px] font-black text-amber-500 uppercase tracking-widest relative z-10">Lucro Acumulado</h3>
-            <p className="text-2xl md:text-3xl font-black text-white relative z-10">R$ {showBalances ? (user.lifetimeEarnings || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '***'}</p>
-            <TrendingUp className="absolute -bottom-4 -right-4 w-24 h-24 text-amber-500/10 group-hover:scale-110 transition-transform duration-500" />
-          </div>
-
-          <div className="glass border border-cyan-500/20 hover:border-cyan-500/50 transition-all p-6 rounded-[32px] relative overflow-hidden group flex flex-col justify-between min-h-[140px]">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/10 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-cyan-500/20 transition-all" />
-            <h3 className="text-[10px] font-black text-cyan-500 uppercase tracking-widest relative z-10">Total de Views</h3>
-            <p className="text-2xl md:text-3xl font-black text-white relative z-10">{(user.totalViews || 0).toLocaleString()}</p>
-            <Eye className="absolute -bottom-4 -right-4 w-24 h-24 text-cyan-500/10 group-hover:scale-110 transition-transform duration-500" />
-          </div>
-
-          <div className="glass border border-pink-500/20 hover:border-pink-500/50 transition-all p-6 rounded-[32px] relative overflow-hidden group flex flex-col justify-between min-h-[140px]">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-pink-500/10 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-pink-500/20 transition-all" />
-            <h3 className="text-[10px] font-black text-pink-500 uppercase tracking-widest relative z-10">Total de Likes</h3>
-            <p className="text-2xl md:text-3xl font-black text-white relative z-10">{(user.totalLikes || 0).toLocaleString()}</p>
-            <Heart className="absolute -bottom-4 -right-4 w-24 h-24 text-pink-500/10 group-hover:scale-110 transition-transform duration-500" />
-          </div>
-
-          <div className="glass border border-zinc-700/50 hover:border-zinc-500 transition-all p-6 rounded-[32px] relative overflow-hidden group flex flex-col justify-between min-h-[140px]">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-white/10 transition-all" />
-            <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest relative z-10">Vídeos Sincronizados</h3>
-            <p className="text-2xl md:text-3xl font-black text-white relative z-10">{(user.totalPosts || 0).toLocaleString()}</p>
-            <Camera className="absolute -bottom-4 -right-4 w-24 h-24 text-white/5 group-hover:scale-110 transition-transform duration-500" />
-          </div>
-        </div>
-      </div>
-
-      {/* 🎯 Foco Central: Competições */}
-      {competitions.filter(c => c.isActive).length > 0 && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-black tracking-tight uppercase flex items-center gap-3">
-              <Target className="w-6 h-6 text-amber-500" /> Foco Atual
-            </h2>
-            <div className="flex items-center gap-2 text-[10px] font-black text-amber-500 bg-amber-500/10 px-3 py-1.5 rounded-full border border-amber-500/20 shadow-lg">
-              <Zap className="w-3 h-3" /> COMPETIÇÕES ATIVAS
-            </div>
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {competitions.filter(c => c.isActive).map(comp => (
-              <motion.div
-                key={comp.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="group relative h-64 rounded-[40px] overflow-hidden border border-zinc-800 shadow-2xl cursor-pointer"
-                onClick={() => setSelectedComp(comp)}
-              >
-                <img src={comp.bannerUrl} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt="" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
-
-                <div className="absolute inset-0 p-8 flex flex-col justify-end space-y-4">
-                  <div className="space-y-1">
-                    <h3 className="text-3xl font-black tracking-tighter uppercase leading-none">{comp.title}</h3>
-                    <p className="text-zinc-300 text-xs font-bold line-clamp-2 max-w-md">{comp.description}</p>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-3">
-                    {comp.prizes.slice(0, 3).map((prize, idx) => (
-                      <div key={idx} className="flex items-center gap-2 bg-white/10 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/10">
-                        <Trophy className={`w-4 h-4 ${idx === 0 ? 'text-amber-400' : idx === 1 ? 'text-zinc-300' : 'text-amber-700'}`} />
-                        <div className="flex flex-col">
-                          <span className="text-[8px] font-black text-zinc-400 uppercase leading-none">{prize.label}</span>
-                          <span className="text-xs font-black text-white">R$ {prize.value.toLocaleString()}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="absolute top-6 right-6">
-                  {(() => {
-                    const reg = registrations.find(r => r.competitionId === comp.id && r.userId === user.uid);
-                    if (!reg) {
-                      return (
-                        <div className="bg-amber-500 text-black px-6 py-2 rounded-full text-xs font-black shadow-xl hover:scale-105 transition-all">
-                          VER DETALHES
-                        </div>
-                      );
-                    }
-                    return (
-                      <div className={`px-4 py-1.5 rounded-full text-[10px] font-black shadow-xl ${reg.status === 'approved' ? 'bg-emerald-500 text-black' :
-                          reg.status === 'rejected' ? 'bg-red-500 text-white' :
-                            'bg-amber-500/20 text-amber-500 border border-amber-500/30'
-                        }`}>
-                        {reg.status === 'approved' ? 'PARTICIPANDO' :
-                          reg.status === 'rejected' ? 'RECUSADO' : 'AGUARDANDO APROVAÇÃO'}
-                      </div>
-                    );
-                  })()}
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* 🏅 Competições e Pódio (Lado a Lado) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start pb-10">
-        
-        {/* Elite do Mês (Ocupa 2 colunas) */}
-        <div className="lg:col-span-2 glass border border-zinc-800 rounded-[40px] p-8">
-          {sortedMonthly.length > 0 ? (
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-xl bg-amber-500/20 text-amber-500">
-                    <Trophy className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-black tracking-tight uppercase">Elite do Mês</h2>
-                    <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Global</p>
-                  </div>
-                </div>
-                <div className="hidden md:flex items-center gap-2 px-4 py-1.5 rounded-full bg-zinc-900 border border-zinc-800 text-[10px] font-black text-zinc-400">
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  TEMPO REAL
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4 items-end pt-10 pb-4">
-                {/* 2nd Place */}
-                {sortedMonthly[1] && (
-                  <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="flex flex-col items-center space-y-4">
-                    <div className="relative">
-                      <div className="absolute -top-4 -right-2 w-8 h-8 rounded-full bg-zinc-400 flex items-center justify-center border-2 border-black z-10">
-                        <span className="text-[10px] font-black text-black">2º</span>
-                      </div>
-                      <img src={sortedMonthly[1].photoURL || `https://ui-avatars.com/api/?name=${sortedMonthly[1].displayName}`} className="w-16 h-16 md:w-20 md:h-20 rounded-[32px] border-4 border-zinc-400/30 object-cover shadow-2xl" alt="" referrerPolicy="no-referrer" />
-                    </div>
-                    <div className="text-center">
-                      <p className="text-xs md:text-sm font-black truncate max-w-[90px]">@{sortedMonthly[1].displayName}</p>
-                      <div className="flex flex-col items-center mt-1">
-                        <span className="text-[8px] text-zinc-500 uppercase font-black tracking-widest leading-none">Views</span>
-                        <span className="text-xs md:text-sm font-black text-cyan-400">{(sortedMonthly[1].totalViews || 0).toLocaleString()}</span>
-                      </div>
-                    </div>
-                    <div className="w-full h-24 md:h-28 bg-gradient-to-t from-zinc-800/50 to-zinc-800/20 rounded-t-3xl border-x border-t border-zinc-800 flex flex-col items-center justify-start pt-4">
-                      <div className="w-6 h-6 rounded-full bg-zinc-400/10 flex items-center justify-center"><Trophy className="w-3 h-3 text-zinc-400" /></div>
-                    </div>
-                  </motion.div>
-                )}
-
-                {/* 1st Place */}
-                {sortedMonthly[0] && (
-                  <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center space-y-4">
-                    <div className="relative">
-                      <motion.div animate={{ y: [0, -5, 0] }} transition={{ duration: 2, repeat: Infinity }} className="absolute -top-6 left-1/2 -translate-x-1/2 z-10">
-                        <Crown className="w-8 h-8 text-amber-500 drop-shadow-[0_0_15px_rgba(245,158,11,0.5)]" />
-                      </motion.div>
-                      <div className="absolute -top-4 -right-2 w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center border-2 border-black z-10 shadow-[0_0_20px_rgba(245,158,11,0.3)]">
-                        <span className="text-xs font-black text-black">1º</span>
-                      </div>
-                      <img src={sortedMonthly[0].photoURL || `https://ui-avatars.com/api/?name=${sortedMonthly[0].displayName}`} className="w-20 h-20 md:w-28 md:h-28 rounded-[40px] border-4 border-amber-500 object-cover shadow-[0_0_40px_rgba(245,158,11,0.2)]" alt="" referrerPolicy="no-referrer" />
-                    </div>
-                    <div className="text-center">
-                      <p className="text-sm md:text-base font-black gold-gradient truncate max-w-[110px]">@{sortedMonthly[0].displayName}</p>
-                      <div className="flex flex-col items-center mt-1">
-                        <span className="text-[8px] text-zinc-500 uppercase font-black tracking-widest leading-none">Views</span>
-                        <span className="text-sm md:text-lg font-black text-cyan-400">{(sortedMonthly[0].totalViews || 0).toLocaleString()}</span>
-                      </div>
-                    </div>
-                    <div className="w-full h-32 md:h-36 bg-gradient-to-t from-amber-500/20 to-amber-500/5 rounded-t-[40px] border-x border-t border-amber-500/30 flex flex-col items-center justify-start pt-4 relative overflow-hidden">
-                      <div className="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center relative z-10"><Trophy className="w-4 h-4 text-amber-500" /></div>
-                    </div>
-                  </motion.div>
-                )}
-
-                {/* 3rd Place */}
-                {sortedMonthly[2] && (
-                  <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="flex flex-col items-center space-y-4">
-                    <div className="relative">
-                      <div className="absolute -top-4 -right-2 w-8 h-8 rounded-full bg-amber-800 flex items-center justify-center border-2 border-black z-10">
-                        <span className="text-[10px] font-black text-white">3º</span>
-                      </div>
-                      <img src={sortedMonthly[2].photoURL || `https://ui-avatars.com/api/?name=${sortedMonthly[2].displayName}`} className="w-16 h-16 md:w-20 md:h-20 rounded-[32px] border-4 border-amber-800/30 object-cover shadow-2xl" alt="" referrerPolicy="no-referrer" />
-                    </div>
-                    <div className="text-center">
-                      <p className="text-xs md:text-sm font-black truncate max-w-[90px]">@{sortedMonthly[2].displayName}</p>
-                      <div className="flex flex-col items-center mt-1">
-                        <span className="text-[8px] text-zinc-500 uppercase font-black tracking-widest leading-none">Views</span>
-                        <span className="text-xs md:text-sm font-black text-cyan-400">{(sortedMonthly[2].totalViews || 0).toLocaleString()}</span>
-                      </div>
-                    </div>
-                    <div className="w-full h-20 md:h-24 bg-gradient-to-t from-amber-900/40 to-amber-900/10 rounded-t-3xl border-x border-t border-amber-900/30 flex flex-col items-center justify-start pt-4">
-                      <div className="w-6 h-6 rounded-full bg-amber-900/20 flex items-center justify-center"><Trophy className="w-3 h-3 text-amber-800" /></div>
-                    </div>
-                  </motion.div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="py-20 flex flex-col items-center justify-center text-center opacity-50">
-              <Trophy className="w-12 h-12 text-zinc-700 mb-4" />
-              <p className="text-zinc-500 font-black uppercase tracking-widest text-xs">Ranking em apuração</p>
-            </div>
-          )}
-        </div>
-
-        {/* 🔔 Avisos da Diretoria (Ocupa 1 coluna) */}
-        <div className="lg:col-span-1 rounded-[40px] space-y-4">
-          <div className="flex items-center gap-2 mb-4">
-            <Bell className="w-5 h-5 text-amber-500" />
-            <h3 className="text-lg font-black uppercase tracking-tight">Mural</h3>
-          </div>
-          
-          {announcements.filter(a => a.isActive !== false).length > 0 ? (
-            <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2 scrollbar-hide">
-              {announcements.filter(a => a.isActive !== false).map(ann => (
-                <motion.div
-                  key={ann.id}
-                  initial={{ x: 20, opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  className="p-6 rounded-3xl bg-amber-500/10 border border-amber-500/20 flex flex-col gap-3 relative overflow-hidden group hover:bg-amber-500/20 transition-all"
-                >
-                  <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full -mr-12 -mt-12 blur-2xl" />
-                  <div className="flex items-center justify-between">
-                    <div className="p-2 rounded-xl bg-amber-500/20 text-amber-500">
-                      <AlertCircle className="w-4 h-4" />
-                    </div>
-                    <p className="text-[9px] text-amber-500 border border-amber-500/20 px-2 py-0.5 rounded-lg uppercase font-black">
-                      {new Date(ann.timestamp).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <div className="space-y-1 relative z-10">
-                    <h4 className="font-black text-amber-500 uppercase tracking-tight text-sm">{ann.title || 'AVISO IMPORTANTE'}</h4>
-                    <p className="text-xs font-bold text-amber-100/80 leading-relaxed">{ann.message}</p>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          ) : (
-            <div className="py-10 text-center glass rounded-3xl border border-zinc-800">
-              <Clock className="w-8 h-8 text-zinc-700 mx-auto mb-2" />
-              <p className="text-zinc-600 font-bold text-xs uppercase tracking-widest">Nenhum aviso no momento</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Competition Details Modal */}
-      <AnimatePresence>
-        {selectedComp && (
-          <div className="fixed inset-0 z-[120] flex items-center justify-center p-6">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setSelectedComp(null)}
-              className="absolute inset-0 bg-black/90 backdrop-blur-xl"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative w-full max-w-2xl glass rounded-[40px] border border-zinc-800 overflow-hidden flex flex-col max-h-[90vh]"
-            >
-              <div className="h-48 shrink-0 relative">
-                <img src={selectedComp.bannerUrl} className="w-full h-full object-cover" alt="" />
-                <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 to-transparent" />
-                <button
-                  onClick={() => setSelectedComp(null)}
-                  className="absolute top-6 right-6 p-2 rounded-full bg-black/50 text-white hover:bg-black transition-all"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-                <div className="absolute bottom-6 left-8">
-                  <h3 className="text-3xl font-black uppercase tracking-tighter">{selectedComp.title}</h3>
-                </div>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
-                    <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">Hashtags</p>
-                    <p className="text-xs font-bold text-amber-500">{selectedComp.hashtags || 'Nenhuma'}</p>
-                  </div>
-                  <div className="p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
-                    <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">MarcaÃ§Ãµes</p>
-                    <p className="text-xs font-bold text-amber-500">{selectedComp.mentions || 'Nenhuma'}</p>
-                  </div>
-                  <div className="p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
-                    <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">BÃ´nus</p>
-                    <p className="text-xs font-bold text-emerald-500">{selectedComp.bonuses || 'Nenhum'}</p>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">Regras da CompetiÃ§Ã£o</h4>
-                  <div className="p-6 rounded-3xl bg-zinc-900/30 border border-zinc-800/50 text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap font-medium">
-                    {selectedComp.rules || selectedComp.description}
-                  </div>
-                </div>
-
-                <div className="space-y-6">
-                  {selectedComp.prizesMonthly && selectedComp.prizesMonthly.length > 0 && (
-                    <div className="space-y-4">
-                      <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">PremiaÃ§Ã£o Mensal (Tempo de CompetiÃ§Ã£o)</h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {selectedComp.prizesMonthly.map((prize, idx) => (
-                          <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-[10px] font-black text-zinc-500">
-                                {prize.position}Âº
-                              </div>
-                              <span className="text-xs font-bold">{prize.label}</span>
-                            </div>
-                            <span className="text-sm font-black text-amber-500">R$ {prize.value.toLocaleString()}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {selectedComp.prizesDaily && selectedComp.prizesDaily.length > 0 && (
-                    <div className="space-y-4">
-                      <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">PremiaÃ§Ã£o DiÃ¡ria</h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {selectedComp.prizesDaily.map((prize, idx) => (
-                          <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-[10px] font-black text-zinc-500">
-                                {prize.position}Âº
-                              </div>
-                              <span className="text-xs font-bold">{prize.label}</span>
-                            </div>
-                            <span className="text-sm font-black text-cyan-500">R$ {prize.value.toLocaleString()}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {selectedComp.prizesInstagram && selectedComp.prizesInstagram.length > 0 && (
-                    <div className="space-y-4">
-                      <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">PremiaÃ§Ã£o Instagram (Quantidade)</h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {selectedComp.prizesInstagram.map((prize, idx) => (
-                          <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-[10px] font-black text-zinc-500">
-                                {prize.position}Âº
-                              </div>
-                              <span className="text-xs font-bold">{prize.label}</span>
-                            </div>
-                            <span className="text-sm font-black text-pink-500">R$ {prize.value.toLocaleString()}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {(!selectedComp.prizesDaily && !selectedComp.prizesMonthly && !selectedComp.prizesInstagram) && (
-                    <div className="space-y-4">
-                      <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">PremiaÃ§Ã£o</h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {selectedComp.prizes.map((prize, idx) => (
-                          <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-[10px] font-black text-zinc-500">
-                                {prize.position}Âº
-                              </div>
-                              <span className="text-xs font-bold">{prize.label}</span>
-                            </div>
-                            <span className="text-sm font-black text-amber-500">R$ {prize.value.toLocaleString()}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="p-8 bg-zinc-950 border-t border-zinc-900 space-y-6">
-                {!registrations.find(r => r.competitionId === selectedComp.id && r.userId === user.uid) ? (
-                  <>
-                    <label className="flex items-start gap-4 cursor-pointer group">
-                      <div className="relative flex items-center mt-1">
-                        <input
-                          type="checkbox"
-                          checked={acceptedRules}
-                          onChange={(e) => setAcceptedRules(e.target.checked)}
-                          className="peer h-5 w-5 appearance-none rounded border-2 border-zinc-800 bg-zinc-900 transition-all checked:border-amber-500 checked:bg-amber-500"
-                        />
-                        <Check className="absolute h-3.5 w-3.5 text-black opacity-0 transition-opacity peer-checked:opacity-100 left-0.5" />
-                      </div>
-                      <span className="text-xs font-bold text-zinc-500 group-hover:text-zinc-300 transition-colors">
-                        Eu li e aceito todas as regras e condiÃ§Ãµes desta competiÃ§Ã£o.
-                      </span>
-                    </label>
-                    <button
-                      onClick={() => handleRegister(selectedComp.id)}
-                      disabled={!acceptedRules}
-                      className={`w-full py-5 font-black rounded-2xl transition-all shadow-xl ${
-                        acceptedRules 
-                          ? 'gold-bg text-black hover:scale-[1.02] shadow-amber-500/20' 
-                          : 'bg-zinc-800 text-zinc-500 cursor-not-allowed opacity-50'
-                      }`}
-                    >
-                      SOLICITAR INSCRIÇÃO
-                    </button>
-                  </>
-                ) : (
-                  <div className="text-center py-2">
-                    <p className="text-amber-500 font-black uppercase tracking-widest text-sm">VocÃª jÃ¡ solicitou inscriÃ§Ã£o nesta competiÃ§Ã£o</p>
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Seção: Performance por Rede + Elite Global */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 pb-6">
-
-        {/* Performance por Rede Social (2/3) */}
-        <div className="xl:col-span-2 space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-violet-500/20 text-violet-400">
-              <TrendingUp className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-xl font-black tracking-tight uppercase">Desempenho por Rede</h2>
-              <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Suas métricas por plataforma</p>
-            </div>
-          </div>
-
-          {posts.length > 0 ? (
-            <div className="space-y-4">
-              {platformStats.map(({ platform, views, likes, comments, count }) => {
-                const barWidth = maxViews > 0 ? Math.max((views / maxViews) * 100, count > 0 ? 4 : 0) : 0;
-                const platformConfig = {
-                  tiktok: {
-                    label: 'TikTok',
-                    emoji: '🎵',
-                    color: 'from-pink-500 to-rose-500',
-                    border: 'border-pink-500/20',
-                    glow: 'shadow-pink-500/20',
-                    text: 'text-pink-400',
-                    bg: 'bg-pink-500/10',
-                  },
-                  youtube: {
-                    label: 'YouTube',
-                    emoji: '▶️',
-                    color: 'from-red-500 to-orange-500',
-                    border: 'border-red-500/20',
-                    glow: 'shadow-red-500/20',
-                    text: 'text-red-400',
-                    bg: 'bg-red-500/10',
-                  },
-                  instagram: {
-                    label: 'Instagram',
-                    emoji: '📸',
-                    color: 'from-purple-500 to-pink-500',
-                    border: 'border-purple-500/20',
-                    glow: 'shadow-purple-500/20',
-                    text: 'text-purple-400',
-                    bg: 'bg-purple-500/10',
-                  },
-                };
-                const cfg = platformConfig[platform];
-                const isLeader = views === maxViews && views > 0;
-
-                return (
-                  <motion.div
-                    key={platform}
-                    initial={{ opacity: 0, y: 16 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className={`glass border ${cfg.border} p-6 rounded-[28px] space-y-4 relative overflow-hidden`}
-                  >
-                    {isLeader && (
-                      <div className="absolute top-3 right-4 px-3 py-1 bg-amber-500/20 border border-amber-500/30 rounded-full text-[9px] font-black text-amber-400 uppercase tracking-widest flex items-center gap-1">
-                        <Star className="w-2.5 h-2.5" /> Melhor desempenho
-                      </div>
-                    )}
-
-                    {/* Header */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className={`text-2xl w-10 h-10 rounded-2xl ${cfg.bg} flex items-center justify-center`}>{cfg.emoji}</div>
-                        <div>
-                          <p className="font-black text-base">{cfg.label}</p>
-                          <p className="text-[10px] text-zinc-500 font-bold">{count} vídeo{count !== 1 ? 's' : ''} sincronizado{count !== 1 ? 's' : ''}</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className={`text-2xl font-black ${count > 0 ? cfg.text : 'text-zinc-700'}`}>{views.toLocaleString()}</p>
-                        <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">views</p>
-                      </div>
-                    </div>
-
-                    {/* Barra de progresso */}
-                    <div className="relative">
-                      <div className="w-full h-2.5 bg-zinc-800 rounded-full overflow-hidden">
-                        <motion.div
-                          initial={{ width: 0 }}
-                          animate={{ width: `${barWidth}%` }}
-                          transition={{ duration: 1, ease: 'easeOut', delay: 0.2 }}
-                          className={`h-full rounded-full bg-gradient-to-r ${cfg.color}`}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Métricas secundárias */}
-                    <div className="grid grid-cols-3 gap-3">
-                      <div className={`${cfg.bg} border ${cfg.border} rounded-2xl p-3 text-center`}>
-                        <p className={`text-sm font-black ${cfg.text}`}>{likes.toLocaleString()}</p>
-                        <p className="text-[9px] text-zinc-500 font-black uppercase tracking-widest mt-0.5">Likes</p>
-                      </div>
-                      <div className={`${cfg.bg} border ${cfg.border} rounded-2xl p-3 text-center`}>
-                        <p className={`text-sm font-black ${cfg.text}`}>{comments.toLocaleString()}</p>
-                        <p className="text-[9px] text-zinc-500 font-black uppercase tracking-widest mt-0.5">Comentários</p>
-                      </div>
-                      <div className={`${cfg.bg} border ${cfg.border} rounded-2xl p-3 text-center`}>
-                        <p className={`text-sm font-black ${cfg.text}`}>{count > 0 ? Math.round(views / count).toLocaleString() : '—'}</p>
-                        <p className="text-[9px] text-zinc-500 font-black uppercase tracking-widest mt-0.5">Média/vídeo</p>
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="py-16 flex flex-col items-center justify-center glass rounded-[32px] border border-zinc-800 text-center">
-              <BarChart3 className="w-12 h-12 text-zinc-700 mb-4" />
-              <p className="text-zinc-500 font-black uppercase tracking-widest text-xs">Nenhum vídeo sincronizado ainda</p>
-              <p className="text-zinc-600 text-xs mt-2 font-bold">Envie seus links para começar a ver os dados</p>
-            </div>
-          )}
-        </div>
-
-        {/* Elite Global (1/3) */}
-        <div className="space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-amber-500/20 text-amber-500">
-              <Crown className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-xl font-black tracking-tight uppercase">Elite Global</h2>
-              <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Top do HUB</p>
-            </div>
-          </div>
-          <div className="glass border border-zinc-800/50 rounded-[32px] p-4 space-y-2">
-            {rankings.slice(0, 5).map((player, i) => {
-              const isMe = player.uid === user.uid;
-              const rankStyles = ['text-amber-400 border-amber-500/30 bg-amber-500/10','text-zinc-300 border-zinc-500/30 bg-zinc-500/10','text-orange-500 border-orange-700/30 bg-orange-700/10'];
-              const badgeStyle = rankStyles[i] || 'text-zinc-500 border-zinc-800 bg-zinc-900/30';
-              return (
-                <motion.div key={player.uid} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.06 }}
-                  className={`flex items-center gap-3 p-3 rounded-2xl transition-all ${isMe ? 'bg-amber-500/10 border border-amber-500/20' : 'hover:bg-zinc-800/40'}`}
-                >
-                  <div className={`w-8 h-8 rounded-xl border flex items-center justify-center text-[10px] font-black shrink-0 ${badgeStyle}`}>
-                    {i === 0 ? <Crown className="w-3.5 h-3.5" /> : `${i + 1}º`}
-                  </div>
-                  <img src={player.photoURL || `https://ui-avatars.com/api/?name=${player.displayName}&background=random&bold=true`}
-                    className={`w-9 h-9 rounded-xl object-cover shrink-0 ${isMe ? 'ring-2 ring-amber-500' : ''}`}
-                    alt="" referrerPolicy="no-referrer" />
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-xs font-black truncate ${isMe ? 'text-amber-400' : 'text-white'}`}>{isMe ? 'Você' : player.displayName}</p>
-                    <p className="text-[10px] text-zinc-500 font-bold">{(player.totalViews || 0).toLocaleString()} views</p>
-                  </div>
-                  {i === 0 && <Trophy className="w-4 h-4 text-amber-500 shrink-0" />}
-                </motion.div>
-              );
-            })}
-            {rankings.findIndex(r => r.uid === user.uid) >= 5 && (
-              <div className="pt-2 mt-2 border-t border-zinc-800">
-                <div className="flex items-center gap-3 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20">
-                  <div className="w-8 h-8 rounded-xl border border-amber-500/30 bg-amber-500/10 flex items-center justify-center text-[10px] font-black text-amber-400 shrink-0">{rankings.findIndex(r => r.uid === user.uid) + 1}º</div>
-                  <img src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}`} className="w-9 h-9 rounded-xl object-cover ring-2 ring-amber-500 shrink-0" alt="" referrerPolicy="no-referrer" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-black text-amber-400 truncate">Você</p>
-                    <p className="text-[10px] text-zinc-500 font-bold">{(user.totalViews || 0).toLocaleString()} views</p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const StatCard = ({ title, value, sub, icon, color }: { title: string, value: string, sub: string, icon: React.ReactNode, color: 'amber' | 'emerald' | 'blue' | 'purple' }) => {
-  const colors = {
-    amber: 'bg-amber-500/20 text-amber-500 border-amber-500/20',
-    emerald: 'bg-emerald-500/20 text-emerald-500 border-emerald-500/20',
-    blue: 'bg-blue-500/20 text-blue-500 border-blue-500/20',
-    purple: 'bg-purple-500/20 text-purple-500 border-purple-500/20'
-  };
-
-  const glowColors = {
-    amber: 'bg-amber-500',
-    emerald: 'bg-emerald-500',
-    blue: 'bg-blue-500',
-    purple: 'bg-purple-500'
-  };
-
-  return (
-    <div className="p-6 rounded-3xl glass relative overflow-hidden group border border-zinc-800/50">
-      <div className={`absolute top-0 right-0 w-32 h-32 -mr-16 -mt-16 rounded-full opacity-10 blur-3xl transition-opacity group-hover:opacity-20 ${glowColors[color]}`} />
-      <div className="relative z-10">
-        <div className={`w-10 h-10 rounded-xl mb-4 flex items-center justify-center ${colors[color]}`}>
-          {React.cloneElement(icon as React.ReactElement<any>, { className: 'w-5 h-5' })}
-        </div>
-        <p className="text-[10px] text-zinc-500 uppercase font-black tracking-widest mb-1">{title}</p>
-        <p className="text-3xl font-black mb-1">{value}</p>
-        <p className="text-xs text-zinc-400 font-medium">{sub}</p>
-      </div>
-    </div>
-  );
-};
-
-const normalizeUrl = (url: string) => {
-  try {
-    let clean = url.trim().toLowerCase();
-
-    // YouTube
-    if (clean.includes('youtube.com') || clean.includes('youtu.be')) {
-      let videoId = '';
-      if (clean.includes('v=')) {
-        videoId = clean.split('v=')[1]?.split('&')[0]?.split('?')[0];
-      } else if (clean.includes('/shorts/')) {
-        videoId = clean.split('/shorts/')[1]?.split('?')[0];
-      } else if (clean.includes('youtu.be/')) {
-        videoId = clean.split('youtu.be/')[1]?.split('?')[0];
-      }
-      if (videoId) return `youtube:${videoId}`;
-    }
-
-    // TikTok
-    if (clean.includes('tiktok.com')) {
-      if (clean.includes('/video/')) {
-        const videoId = clean.split('/video/')[1]?.split('?')[0]?.split('/')[0];
-        if (videoId) return `tiktok:${videoId}`;
-      }
-      // For mobile links like vm.tiktok.com/XYZ, we have to stick to the URL for now 
-      // as we can't resolve redirects client-side easily without a proxy
-    }
-
-    // Instagram
-    if (clean.includes('instagram.com')) {
-      const parts = clean.split('/');
-      const idIndex = parts.findIndex(p => p === 'p' || p === 'reels' || p === 'reel') + 1;
-      if (idIndex > 0) {
-        const id = parts[idIndex]?.split('?')[0];
-        if (id) return `instagram:${id}`;
-      }
-    }
-
-    // Fallback standard cleanup
-    return clean.split('?')[0].replace(/\/$/, '').replace(/^https?:\/\/(www\.)?/, '');
-  } catch {
-    return url.toLowerCase().trim();
-  }
 };
 
 const App: React.FC = () => {
@@ -1675,7 +739,7 @@ const App: React.FC = () => {
         message: 'Tem certeza que deseja recusar este vídeo? Esta ação removerá o vídeo da triagem.',
         onConfirm: async () => {
           try {
-            await updateDoc(doc(db, 'posts', postId), { status, approvedAt: Date.now() });
+            await updateDoc(doc(db, 'posts', postId), { status });
             if (post) await updateUserMetrics(post.userId);
           } catch (error) {
             handleFirestoreError(error, OperationType.UPDATE, `posts/${postId}`);
@@ -1685,7 +749,7 @@ const App: React.FC = () => {
       return;
     }
     try {
-      await updateDoc(doc(db, 'posts', postId), { status, approvedAt: Date.now() });
+      await updateDoc(doc(db, 'posts', postId), { status });
       if (post) await updateUserMetrics(post.userId);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `posts/${postId}`);
@@ -1700,7 +764,7 @@ const App: React.FC = () => {
         message: 'Tem certeza que deseja remover este usuário? Ele perderÃ¡ o acesso ao HUB.',
         onConfirm: async () => {
           try {
-            await updateDoc(doc(db, 'users', userId), { isApproved, approvedAt: isApproved ? Date.now() : undefined });
+            await updateDoc(doc(db, 'users', userId), { isApproved });
           } catch (error) {
             handleFirestoreError(error, OperationType.UPDATE, `users/${userId}`);
           }
@@ -1709,7 +773,7 @@ const App: React.FC = () => {
       return;
     }
     try {
-      await updateDoc(doc(db, 'users', userId), { isApproved, approvedAt: isApproved ? Date.now() : undefined });
+      await updateDoc(doc(db, 'users', userId), { isApproved });
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `users/${userId}`);
     }
@@ -2632,15 +1696,938 @@ const App: React.FC = () => {
   );
 };
 
+const AuthScreen = ({ onLoginSuccess }: { onLoginSuccess: (u: User) => void }) => {
+  const [isLogin, setIsLogin] = useState(true);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleGoogleLogin = async () => {
+    try {
+      setLoading(true);
+      await signInWithPopup(auth, googleProvider);
+    } catch (err: any) {
+      if (err.code === 'auth/network-request-failed') {
+        setError('Erro de conexÃ£o ou Provedor Google nÃ£o habilitado no Firebase Console.');
+      } else {
+        setError(err.message);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      if (isLogin) {
+        await signInWithEmailAndPassword(auth, email, password);
+      } else {
+        const cred = await createUserWithEmailAndPassword(auth, email, password);
+        const isAdminEmail = email === 'matheusmenechini18@gmail.com' || email === 'hypedosmemes@gmail.com';
+        const newUser: User = {
+          uid: cred.user.uid,
+          displayName: name || 'Anon',
+          email: email,
+          role: isAdminEmail ? 'admin' : 'user',
+          isApproved: isAdminEmail,
+          balance: 0,
+          totalViews: 0,
+          totalLikes: 0,
+          totalComments: 0,
+          totalShares: 0,
+          totalSaves: 0,
+          totalPosts: 0,
+          dailyViews: 0,
+          dailyLikes: 0,
+          dailyComments: 0,
+          dailyShares: 0,
+          dailySaves: 0,
+          dailyPosts: 0
+        };
+        await setDoc(doc(db, 'users', cred.user.uid), newUser);
+        onLoginSuccess(newUser);
+      }
+    } catch (err: any) {
+      if (err.code === 'auth/network-request-failed') {
+        setError('Erro de conexÃ£o ou Provedor E-mail/Senha nÃ£o habilitado no Firebase Console.');
+      } else {
+        setError(err.message);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="h-screen w-screen flex flex-col items-center justify-center bg-black px-4 overflow-y-auto py-10">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="w-full max-w-md space-y-8"
+      >
+        <div className="text-center space-y-4">
+          <div className="flex justify-center">
+            <div className="w-20 h-20 gold-bg rounded-3xl flex items-center justify-center shadow-2xl">
+              <Zap className="w-10 h-10 text-black" />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <h1 className="text-4xl font-black gold-gradient tracking-tighter uppercase">MetaRayx Hub</h1>
+            <p className="text-zinc-500 font-bold text-sm uppercase tracking-widest">Hub de Criadores</p>
+          </div>
+        </div>
+
+        <div className="glass p-8 rounded-[32px] border border-zinc-800/50 space-y-6">
+          <div className="flex p-1 bg-zinc-900 rounded-2xl">
+            <button
+              onClick={() => setIsLogin(true)}
+              className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${isLogin ? 'bg-zinc-800 text-white shadow-lg' : 'text-zinc-500'}`}
+            >
+              LOGIN
+            </button>
+            <button
+              onClick={() => setIsLogin(false)}
+              className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${!isLogin ? 'bg-zinc-800 text-white shadow-lg' : 'text-zinc-500'}`}
+            >
+              CADASTRO
+            </button>
+          </div>
+
+          <form onSubmit={handleEmailAuth} className="space-y-4">
+            {!isLogin && (
+              <div className="space-y-1">
+                <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest ml-1">Nome Completo</label>
+                <div className="relative">
+                  <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                  <input
+                    required
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    type="text"
+                    placeholder="Seu nome"
+                    className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-sm font-bold focus:border-amber-500 outline-none transition-all"
+                  />
+                </div>
+              </div>
+            )}
+            <div className="space-y-1">
+              <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest ml-1">E-mail</label>
+              <div className="relative">
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                <input
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  type="email"
+                  placeholder="seu@email.com"
+                  className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-sm font-bold focus:border-amber-500 outline-none transition-all"
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest ml-1">Senha</label>
+              <div className="relative">
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                <input
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  type="password"
+                  placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
+                  className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-sm font-bold focus:border-amber-500 outline-none transition-all"
+                />
+              </div>
+            </div>
+
+            {error && (
+              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-[10px] font-bold uppercase text-center">
+                {error}
+              </div>
+            )}
+
+            <button
+              disabled={loading}
+              className="w-full py-4 gold-bg text-black font-black rounded-2xl hover:scale-[1.02] transition-all shadow-xl flex items-center justify-center gap-2"
+            >
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : isLogin ? 'ENTRAR NO HUB' : 'CRIAR CONTA'}
+            </button>
+          </form>
+
+          <div className="relative flex items-center gap-4">
+            <div className="flex-1 h-px bg-zinc-800" />
+            <span className="text-[10px] text-zinc-500 font-black">OU</span>
+            <div className="flex-1 h-px bg-zinc-800" />
+          </div>
+
+          <button
+            onClick={handleGoogleLogin}
+            className="w-full py-4 bg-white text-black font-black rounded-2xl hover:scale-[1.02] transition-all flex items-center justify-center gap-3"
+          >
+            <img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="" />
+            CONTINUAR COM GOOGLE
+          </button>
+        </div>
+        <p className="text-center text-[10px] text-zinc-600 font-black tracking-widest uppercase">Acesso Restrito a Membros Autorizados</p>
+      </motion.div>
+    </div>
+  );
+};
+
+const NavItem = ({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) => (
+  <button
+    onClick={onClick}
+    className={`
+      w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold text-sm
+      ${active ? 'gold-bg text-black shadow-lg shadow-amber-500/20' : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900'}
+    `}
+  >
+    {React.cloneElement(icon as React.ReactElement<any>, { className: 'w-5 h-5' })}
+    {label}
+  </button>
+);
+
+const Dashboard = ({ user, announcements, rankings, competitions, registrations, posts, showBalances }: {
+  user: User,
+  announcements: Announcement[],
+  rankings: User[],
+  competitions: Competition[],
+  registrations: CompetitionRegistration[],
+  posts: Post[],
+  showBalances: boolean
+}) => {
+  const [selectedComp, setSelectedComp] = useState<Competition | null>(null);
+  const [acceptedRules, setAcceptedRules] = useState(false);
+
+  const handleRegister = async (compId: string) => {
+    if (!acceptedRules) {
+      alert('VocÃª precisa aceitar as regras para participar!');
+      return;
+    }
+    try {
+      const newReg: Omit<CompetitionRegistration, 'id'> = {
+        competitionId: compId,
+        userId: user.uid,
+        userName: user.displayName,
+        userEmail: user.email,
+        status: 'pending',
+        acceptedRules: true,
+        timestamp: Date.now()
+      };
+      await addDoc(collection(db, 'competition_registrations'), newReg);
+      alert('SolicitaÃ§Ã£o de inscriÃ§Ã£o enviada! Aguarde a aprovaÃ§Ã£o da diretoria.');
+      setSelectedComp(null);
+      setAcceptedRules(false);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'competition_registrations');
+    }
+  };
+
+  const sortedMonthly = useMemo(() => {
+    return [...rankings].sort((a, b) => (b.totalViews || 0) - (a.totalViews || 0)).slice(0, 3);
+  }, [rankings]);
+
+  // Agregação por plataforma com base nos posts do usuário
+  const platformStats = useMemo(() => {
+    const platforms = ['tiktok', 'youtube', 'instagram'] as const;
+    return platforms.map(platform => {
+      const platformPosts = posts.filter(p => p.platform === platform);
+      const views = platformPosts.reduce((acc, p) => acc + (p.views || 0), 0);
+      const likes = platformPosts.reduce((acc, p) => acc + (p.likes || 0), 0);
+      const comments = platformPosts.reduce((acc, p) => acc + (p.comments || 0), 0);
+      const count = platformPosts.length;
+      return { platform, views, likes, comments, count };
+    });
+  }, [posts]);
+
+  const maxViews = Math.max(...platformStats.map(p => p.views), 1);
+
+  return (
+    <div className="space-y-12 shrink-0">
+      {/* 🚀 Cockpit Pessoal */}
+      <div className="space-y-6">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tight">
+              Bem-vindo(a), <span className="gold-gradient">{user.displayName.split(' ')[0]}</span>!
+            </h1>
+            <p className="text-zinc-400 font-bold mt-1 text-sm md:text-base">Métricas da sua performance geral no HUB.</p>
+          </div>
+          <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs font-black text-emerald-500 w-fit">
+            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            CONTA ATIVA
+          </div>
+        </div>
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="glass shadow-2xl shadow-amber-500/5 hover:border-amber-500/50 transition-all border border-amber-500/20 p-6 rounded-[32px] relative overflow-hidden group flex flex-col justify-between min-h-[140px]">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-amber-500/20 transition-all" />
+            <h3 className="text-[10px] font-black text-amber-500 uppercase tracking-widest relative z-10">Lucro Acumulado</h3>
+            <p className="text-2xl md:text-3xl font-black text-white relative z-10">R$ {showBalances ? (user.lifetimeEarnings || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '***'}</p>
+            <TrendingUp className="absolute -bottom-4 -right-4 w-24 h-24 text-amber-500/10 group-hover:scale-110 transition-transform duration-500" />
+          </div>
+
+          <div className="glass border border-cyan-500/20 hover:border-cyan-500/50 transition-all p-6 rounded-[32px] relative overflow-hidden group flex flex-col justify-between min-h-[140px]">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/10 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-cyan-500/20 transition-all" />
+            <h3 className="text-[10px] font-black text-cyan-500 uppercase tracking-widest relative z-10">Total de Views</h3>
+            <p className="text-2xl md:text-3xl font-black text-white relative z-10">{(user.totalViews || 0).toLocaleString()}</p>
+            <Eye className="absolute -bottom-4 -right-4 w-24 h-24 text-cyan-500/10 group-hover:scale-110 transition-transform duration-500" />
+          </div>
+
+          <div className="glass border border-pink-500/20 hover:border-pink-500/50 transition-all p-6 rounded-[32px] relative overflow-hidden group flex flex-col justify-between min-h-[140px]">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-pink-500/10 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-pink-500/20 transition-all" />
+            <h3 className="text-[10px] font-black text-pink-500 uppercase tracking-widest relative z-10">Total de Likes</h3>
+            <p className="text-2xl md:text-3xl font-black text-white relative z-10">{(user.totalLikes || 0).toLocaleString()}</p>
+            <Heart className="absolute -bottom-4 -right-4 w-24 h-24 text-pink-500/10 group-hover:scale-110 transition-transform duration-500" />
+          </div>
+
+          <div className="glass border border-zinc-700/50 hover:border-zinc-500 transition-all p-6 rounded-[32px] relative overflow-hidden group flex flex-col justify-between min-h-[140px]">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-white/10 transition-all" />
+            <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest relative z-10">Vídeos Sincronizados</h3>
+            <p className="text-2xl md:text-3xl font-black text-white relative z-10">{(user.totalPosts || 0).toLocaleString()}</p>
+            <Camera className="absolute -bottom-4 -right-4 w-24 h-24 text-white/5 group-hover:scale-110 transition-transform duration-500" />
+          </div>
+        </div>
+      </div>
+
+      {/* 🎯 Foco Central: Competições */}
+      {competitions.filter(c => c.isActive).length > 0 && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-black tracking-tight uppercase flex items-center gap-3">
+              <Target className="w-6 h-6 text-amber-500" /> Foco Atual
+            </h2>
+            <div className="flex items-center gap-2 text-[10px] font-black text-amber-500 bg-amber-500/10 px-3 py-1.5 rounded-full border border-amber-500/20 shadow-lg">
+              <Zap className="w-3 h-3" /> COMPETIÇÕES ATIVAS
+            </div>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {competitions.filter(c => c.isActive).map(comp => (
+              <motion.div
+                key={comp.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="group relative h-64 rounded-[40px] overflow-hidden border border-zinc-800 shadow-2xl cursor-pointer"
+                onClick={() => setSelectedComp(comp)}
+              >
+                <img src={comp.bannerUrl} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt="" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
+
+                <div className="absolute inset-0 p-8 flex flex-col justify-end space-y-4">
+                  <div className="space-y-1">
+                    <h3 className="text-3xl font-black tracking-tighter uppercase leading-none">{comp.title}</h3>
+                    <p className="text-zinc-300 text-xs font-bold line-clamp-2 max-w-md">{comp.description}</p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3">
+                    {comp.prizes.slice(0, 3).map((prize, idx) => (
+                      <div key={idx} className="flex items-center gap-2 bg-white/10 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/10">
+                        <Trophy className={`w-4 h-4 ${idx === 0 ? 'text-amber-400' : idx === 1 ? 'text-zinc-300' : 'text-amber-700'}`} />
+                        <div className="flex flex-col">
+                          <span className="text-[8px] font-black text-zinc-400 uppercase leading-none">{prize.label}</span>
+                          <span className="text-xs font-black text-white">R$ {prize.value.toLocaleString()}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="absolute top-6 right-6">
+                  {(() => {
+                    const reg = registrations.find(r => r.competitionId === comp.id && r.userId === user.uid);
+                    if (!reg) {
+                      return (
+                        <div className="bg-amber-500 text-black px-6 py-2 rounded-full text-xs font-black shadow-xl hover:scale-105 transition-all">
+                          VER DETALHES
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className={`px-4 py-1.5 rounded-full text-[10px] font-black shadow-xl ${reg.status === 'approved' ? 'bg-emerald-500 text-black' :
+                          reg.status === 'rejected' ? 'bg-red-500 text-white' :
+                            'bg-amber-500/20 text-amber-500 border border-amber-500/30'
+                        }`}>
+                        {reg.status === 'approved' ? 'PARTICIPANDO' :
+                          reg.status === 'rejected' ? 'RECUSADO' : 'AGUARDANDO APROVAÇÃO'}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 🏅 Competições e Pódio (Lado a Lado) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start pb-10">
+        
+        {/* Elite do Mês (Ocupa 2 colunas) */}
+        <div className="lg:col-span-2 glass border border-zinc-800 rounded-[40px] p-8">
+          {sortedMonthly.length > 0 ? (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-amber-500/20 text-amber-500">
+                    <Trophy className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-black tracking-tight uppercase">Elite do Mês</h2>
+                    <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Global</p>
+                  </div>
+                </div>
+                <div className="hidden md:flex items-center gap-2 px-4 py-1.5 rounded-full bg-zinc-900 border border-zinc-800 text-[10px] font-black text-zinc-400">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  TEMPO REAL
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4 items-end pt-10 pb-4">
+                {/* 2nd Place */}
+                {sortedMonthly[1] && (
+                  <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="flex flex-col items-center space-y-4">
+                    <div className="relative">
+                      <div className="absolute -top-4 -right-2 w-8 h-8 rounded-full bg-zinc-400 flex items-center justify-center border-2 border-black z-10">
+                        <span className="text-[10px] font-black text-black">2º</span>
+                      </div>
+                      <img src={sortedMonthly[1].photoURL || `https://ui-avatars.com/api/?name=${sortedMonthly[1].displayName}`} className="w-16 h-16 md:w-20 md:h-20 rounded-[32px] border-4 border-zinc-400/30 object-cover shadow-2xl" alt="" referrerPolicy="no-referrer" />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs md:text-sm font-black truncate max-w-[90px]">@{sortedMonthly[1].displayName}</p>
+                      <div className="flex flex-col items-center mt-1">
+                        <span className="text-[8px] text-zinc-500 uppercase font-black tracking-widest leading-none">Views</span>
+                        <span className="text-xs md:text-sm font-black text-cyan-400">{(sortedMonthly[1].totalViews || 0).toLocaleString()}</span>
+                      </div>
+                    </div>
+                    <div className="w-full h-24 md:h-28 bg-gradient-to-t from-zinc-800/50 to-zinc-800/20 rounded-t-3xl border-x border-t border-zinc-800 flex flex-col items-center justify-start pt-4">
+                      <div className="w-6 h-6 rounded-full bg-zinc-400/10 flex items-center justify-center"><Trophy className="w-3 h-3 text-zinc-400" /></div>
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* 1st Place */}
+                {sortedMonthly[0] && (
+                  <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center space-y-4">
+                    <div className="relative">
+                      <motion.div animate={{ y: [0, -5, 0] }} transition={{ duration: 2, repeat: Infinity }} className="absolute -top-6 left-1/2 -translate-x-1/2 z-10">
+                        <Crown className="w-8 h-8 text-amber-500 drop-shadow-[0_0_15px_rgba(245,158,11,0.5)]" />
+                      </motion.div>
+                      <div className="absolute -top-4 -right-2 w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center border-2 border-black z-10 shadow-[0_0_20px_rgba(245,158,11,0.3)]">
+                        <span className="text-xs font-black text-black">1º</span>
+                      </div>
+                      <img src={sortedMonthly[0].photoURL || `https://ui-avatars.com/api/?name=${sortedMonthly[0].displayName}`} className="w-20 h-20 md:w-28 md:h-28 rounded-[40px] border-4 border-amber-500 object-cover shadow-[0_0_40px_rgba(245,158,11,0.2)]" alt="" referrerPolicy="no-referrer" />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-sm md:text-base font-black gold-gradient truncate max-w-[110px]">@{sortedMonthly[0].displayName}</p>
+                      <div className="flex flex-col items-center mt-1">
+                        <span className="text-[8px] text-zinc-500 uppercase font-black tracking-widest leading-none">Views</span>
+                        <span className="text-sm md:text-lg font-black text-cyan-400">{(sortedMonthly[0].totalViews || 0).toLocaleString()}</span>
+                      </div>
+                    </div>
+                    <div className="w-full h-32 md:h-36 bg-gradient-to-t from-amber-500/20 to-amber-500/5 rounded-t-[40px] border-x border-t border-amber-500/30 flex flex-col items-center justify-start pt-4 relative overflow-hidden">
+                      <div className="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center relative z-10"><Trophy className="w-4 h-4 text-amber-500" /></div>
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* 3rd Place */}
+                {sortedMonthly[2] && (
+                  <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="flex flex-col items-center space-y-4">
+                    <div className="relative">
+                      <div className="absolute -top-4 -right-2 w-8 h-8 rounded-full bg-amber-800 flex items-center justify-center border-2 border-black z-10">
+                        <span className="text-[10px] font-black text-white">3º</span>
+                      </div>
+                      <img src={sortedMonthly[2].photoURL || `https://ui-avatars.com/api/?name=${sortedMonthly[2].displayName}`} className="w-16 h-16 md:w-20 md:h-20 rounded-[32px] border-4 border-amber-800/30 object-cover shadow-2xl" alt="" referrerPolicy="no-referrer" />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs md:text-sm font-black truncate max-w-[90px]">@{sortedMonthly[2].displayName}</p>
+                      <div className="flex flex-col items-center mt-1">
+                        <span className="text-[8px] text-zinc-500 uppercase font-black tracking-widest leading-none">Views</span>
+                        <span className="text-xs md:text-sm font-black text-cyan-400">{(sortedMonthly[2].totalViews || 0).toLocaleString()}</span>
+                      </div>
+                    </div>
+                    <div className="w-full h-20 md:h-24 bg-gradient-to-t from-amber-900/40 to-amber-900/10 rounded-t-3xl border-x border-t border-amber-900/30 flex flex-col items-center justify-start pt-4">
+                      <div className="w-6 h-6 rounded-full bg-amber-900/20 flex items-center justify-center"><Trophy className="w-3 h-3 text-amber-800" /></div>
+                    </div>
+                  </motion.div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="py-20 flex flex-col items-center justify-center text-center opacity-50">
+              <Trophy className="w-12 h-12 text-zinc-700 mb-4" />
+              <p className="text-zinc-500 font-black uppercase tracking-widest text-xs">Ranking em apuração</p>
+            </div>
+          )}
+        </div>
+
+        {/* 🔔 Avisos da Diretoria (Ocupa 1 coluna) */}
+        <div className="lg:col-span-1 rounded-[40px] space-y-4">
+          <div className="flex items-center gap-2 mb-4">
+            <Bell className="w-5 h-5 text-amber-500" />
+            <h3 className="text-lg font-black uppercase tracking-tight">Mural</h3>
+          </div>
+          
+          {announcements.filter(a => a.isActive !== false).length > 0 ? (
+            <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2 scrollbar-hide">
+              {announcements.filter(a => a.isActive !== false).map(ann => (
+                <motion.div
+                  key={ann.id}
+                  initial={{ x: 20, opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  className="p-6 rounded-3xl bg-amber-500/10 border border-amber-500/20 flex flex-col gap-3 relative overflow-hidden group hover:bg-amber-500/20 transition-all"
+                >
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full -mr-12 -mt-12 blur-2xl" />
+                  <div className="flex items-center justify-between">
+                    <div className="p-2 rounded-xl bg-amber-500/20 text-amber-500">
+                      <AlertCircle className="w-4 h-4" />
+                    </div>
+                    <p className="text-[9px] text-amber-500 border border-amber-500/20 px-2 py-0.5 rounded-lg uppercase font-black">
+                      {new Date(ann.timestamp).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div className="space-y-1 relative z-10">
+                    <h4 className="font-black text-amber-500 uppercase tracking-tight text-sm">{ann.title || 'AVISO IMPORTANTE'}</h4>
+                    <p className="text-xs font-bold text-amber-100/80 leading-relaxed">{ann.message}</p>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          ) : (
+            <div className="py-10 text-center glass rounded-3xl border border-zinc-800">
+              <Clock className="w-8 h-8 text-zinc-700 mx-auto mb-2" />
+              <p className="text-zinc-600 font-bold text-xs uppercase tracking-widest">Nenhum aviso no momento</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Competition Details Modal */}
+      <AnimatePresence>
+        {selectedComp && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-6">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedComp(null)}
+              className="absolute inset-0 bg-black/90 backdrop-blur-xl"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-2xl glass rounded-[40px] border border-zinc-800 overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              <div className="h-48 shrink-0 relative">
+                <img src={selectedComp.bannerUrl} className="w-full h-full object-cover" alt="" />
+                <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 to-transparent" />
+                <button
+                  onClick={() => setSelectedComp(null)}
+                  className="absolute top-6 right-6 p-2 rounded-full bg-black/50 text-white hover:bg-black transition-all"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+                <div className="absolute bottom-6 left-8">
+                  <h3 className="text-3xl font-black uppercase tracking-tighter">{selectedComp.title}</h3>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
+                    <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">Hashtags</p>
+                    <p className="text-xs font-bold text-amber-500">{selectedComp.hashtags || 'Nenhuma'}</p>
+                  </div>
+                  <div className="p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
+                    <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">MarcaÃ§Ãµes</p>
+                    <p className="text-xs font-bold text-amber-500">{selectedComp.mentions || 'Nenhuma'}</p>
+                  </div>
+                  <div className="p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
+                    <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">BÃ´nus</p>
+                    <p className="text-xs font-bold text-emerald-500">{selectedComp.bonuses || 'Nenhum'}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">Regras da CompetiÃ§Ã£o</h4>
+                  <div className="p-6 rounded-3xl bg-zinc-900/30 border border-zinc-800/50 text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap font-medium">
+                    {selectedComp.rules || selectedComp.description}
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  {selectedComp.prizesMonthly && selectedComp.prizesMonthly.length > 0 && (
+                    <div className="space-y-4">
+                      <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">PremiaÃ§Ã£o Mensal (Tempo de CompetiÃ§Ã£o)</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {selectedComp.prizesMonthly.map((prize, idx) => (
+                          <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-[10px] font-black text-zinc-500">
+                                {prize.position}Âº
+                              </div>
+                              <span className="text-xs font-bold">{prize.label}</span>
+                            </div>
+                            <span className="text-sm font-black text-amber-500">R$ {prize.value.toLocaleString()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedComp.prizesDaily && selectedComp.prizesDaily.length > 0 && (
+                    <div className="space-y-4">
+                      <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">PremiaÃ§Ã£o DiÃ¡ria</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {selectedComp.prizesDaily.map((prize, idx) => (
+                          <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-[10px] font-black text-zinc-500">
+                                {prize.position}Âº
+                              </div>
+                              <span className="text-xs font-bold">{prize.label}</span>
+                            </div>
+                            <span className="text-sm font-black text-cyan-500">R$ {prize.value.toLocaleString()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedComp.prizesInstagram && selectedComp.prizesInstagram.length > 0 && (
+                    <div className="space-y-4">
+                      <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">PremiaÃ§Ã£o Instagram (Quantidade)</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {selectedComp.prizesInstagram.map((prize, idx) => (
+                          <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-[10px] font-black text-zinc-500">
+                                {prize.position}Âº
+                              </div>
+                              <span className="text-xs font-bold">{prize.label}</span>
+                            </div>
+                            <span className="text-sm font-black text-pink-500">R$ {prize.value.toLocaleString()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {(!selectedComp.prizesDaily && !selectedComp.prizesMonthly && !selectedComp.prizesInstagram) && (
+                    <div className="space-y-4">
+                      <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">PremiaÃ§Ã£o</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {selectedComp.prizes.map((prize, idx) => (
+                          <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-[10px] font-black text-zinc-500">
+                                {prize.position}Âº
+                              </div>
+                              <span className="text-xs font-bold">{prize.label}</span>
+                            </div>
+                            <span className="text-sm font-black text-amber-500">R$ {prize.value.toLocaleString()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-8 bg-zinc-950 border-t border-zinc-900 space-y-6">
+                {!registrations.find(r => r.competitionId === selectedComp.id && r.userId === user.uid) ? (
+                  <>
+                    <label className="flex items-start gap-4 cursor-pointer group">
+                      <div className="relative flex items-center mt-1">
+                        <input
+                          type="checkbox"
+                          checked={acceptedRules}
+                          onChange={(e) => setAcceptedRules(e.target.checked)}
+                          className="peer h-5 w-5 appearance-none rounded border-2 border-zinc-800 bg-zinc-900 transition-all checked:border-amber-500 checked:bg-amber-500"
+                        />
+                        <Check className="absolute h-3.5 w-3.5 text-black opacity-0 transition-opacity peer-checked:opacity-100 left-0.5" />
+                      </div>
+                      <span className="text-xs font-bold text-zinc-500 group-hover:text-zinc-300 transition-colors">
+                        Eu li e aceito todas as regras e condiÃ§Ãµes desta competiÃ§Ã£o.
+                      </span>
+                    </label>
+                    <button
+                      onClick={() => handleRegister(selectedComp.id)}
+                      disabled={!acceptedRules}
+                      className={`w-full py-5 font-black rounded-2xl transition-all shadow-xl ${
+                        acceptedRules 
+                          ? 'gold-bg text-black hover:scale-[1.02] shadow-amber-500/20' 
+                          : 'bg-zinc-800 text-zinc-500 cursor-not-allowed opacity-50'
+                      }`}
+                    >
+                      SOLICITAR INSCRIÇÃO
+                    </button>
+                  </>
+                ) : (
+                  <div className="text-center py-2">
+                    <p className="text-amber-500 font-black uppercase tracking-widest text-sm">VocÃª jÃ¡ solicitou inscriÃ§Ã£o nesta competiÃ§Ã£o</p>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Seção: Performance por Rede + Elite Global */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 pb-6">
+
+        {/* Performance por Rede Social (2/3) */}
+        <div className="xl:col-span-2 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-violet-500/20 text-violet-400">
+              <TrendingUp className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-xl font-black tracking-tight uppercase">Desempenho por Rede</h2>
+              <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Suas métricas por plataforma</p>
+            </div>
+          </div>
+
+          {posts.length > 0 ? (
+            <div className="space-y-4">
+              {platformStats.map(({ platform, views, likes, comments, count }) => {
+                const barWidth = maxViews > 0 ? Math.max((views / maxViews) * 100, count > 0 ? 4 : 0) : 0;
+                const platformConfig = {
+                  tiktok: {
+                    label: 'TikTok',
+                    emoji: '🎵',
+                    color: 'from-pink-500 to-rose-500',
+                    border: 'border-pink-500/20',
+                    glow: 'shadow-pink-500/20',
+                    text: 'text-pink-400',
+                    bg: 'bg-pink-500/10',
+                  },
+                  youtube: {
+                    label: 'YouTube',
+                    emoji: '▶️',
+                    color: 'from-red-500 to-orange-500',
+                    border: 'border-red-500/20',
+                    glow: 'shadow-red-500/20',
+                    text: 'text-red-400',
+                    bg: 'bg-red-500/10',
+                  },
+                  instagram: {
+                    label: 'Instagram',
+                    emoji: '📸',
+                    color: 'from-purple-500 to-pink-500',
+                    border: 'border-purple-500/20',
+                    glow: 'shadow-purple-500/20',
+                    text: 'text-purple-400',
+                    bg: 'bg-purple-500/10',
+                  },
+                };
+                const cfg = platformConfig[platform];
+                const isLeader = views === maxViews && views > 0;
+
+                return (
+                  <motion.div
+                    key={platform}
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={`glass border ${cfg.border} p-6 rounded-[28px] space-y-4 relative overflow-hidden`}
+                  >
+                    {isLeader && (
+                      <div className="absolute top-3 right-4 px-3 py-1 bg-amber-500/20 border border-amber-500/30 rounded-full text-[9px] font-black text-amber-400 uppercase tracking-widest flex items-center gap-1">
+                        <Star className="w-2.5 h-2.5" /> Melhor desempenho
+                      </div>
+                    )}
+
+                    {/* Header */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className={`text-2xl w-10 h-10 rounded-2xl ${cfg.bg} flex items-center justify-center`}>{cfg.emoji}</div>
+                        <div>
+                          <p className="font-black text-base">{cfg.label}</p>
+                          <p className="text-[10px] text-zinc-500 font-bold">{count} vídeo{count !== 1 ? 's' : ''} sincronizado{count !== 1 ? 's' : ''}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className={`text-2xl font-black ${count > 0 ? cfg.text : 'text-zinc-700'}`}>{views.toLocaleString()}</p>
+                        <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">views</p>
+                      </div>
+                    </div>
+
+                    {/* Barra de progresso */}
+                    <div className="relative">
+                      <div className="w-full h-2.5 bg-zinc-800 rounded-full overflow-hidden">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${barWidth}%` }}
+                          transition={{ duration: 1, ease: 'easeOut', delay: 0.2 }}
+                          className={`h-full rounded-full bg-gradient-to-r ${cfg.color}`}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Métricas secundárias */}
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className={`${cfg.bg} border ${cfg.border} rounded-2xl p-3 text-center`}>
+                        <p className={`text-sm font-black ${cfg.text}`}>{likes.toLocaleString()}</p>
+                        <p className="text-[9px] text-zinc-500 font-black uppercase tracking-widest mt-0.5">Likes</p>
+                      </div>
+                      <div className={`${cfg.bg} border ${cfg.border} rounded-2xl p-3 text-center`}>
+                        <p className={`text-sm font-black ${cfg.text}`}>{comments.toLocaleString()}</p>
+                        <p className="text-[9px] text-zinc-500 font-black uppercase tracking-widest mt-0.5">Comentários</p>
+                      </div>
+                      <div className={`${cfg.bg} border ${cfg.border} rounded-2xl p-3 text-center`}>
+                        <p className={`text-sm font-black ${cfg.text}`}>{count > 0 ? Math.round(views / count).toLocaleString() : '—'}</p>
+                        <p className="text-[9px] text-zinc-500 font-black uppercase tracking-widest mt-0.5">Média/vídeo</p>
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="py-16 flex flex-col items-center justify-center glass rounded-[32px] border border-zinc-800 text-center">
+              <BarChart3 className="w-12 h-12 text-zinc-700 mb-4" />
+              <p className="text-zinc-500 font-black uppercase tracking-widest text-xs">Nenhum vídeo sincronizado ainda</p>
+              <p className="text-zinc-600 text-xs mt-2 font-bold">Envie seus links para começar a ver os dados</p>
+            </div>
+          )}
+        </div>
+
+        {/* Elite Global (1/3) */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-amber-500/20 text-amber-500">
+              <Crown className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-xl font-black tracking-tight uppercase">Elite Global</h2>
+              <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Top do HUB</p>
+            </div>
+          </div>
+          <div className="glass border border-zinc-800/50 rounded-[32px] p-4 space-y-2">
+            {rankings.slice(0, 5).map((player, i) => {
+              const isMe = player.uid === user.uid;
+              const rankStyles = ['text-amber-400 border-amber-500/30 bg-amber-500/10','text-zinc-300 border-zinc-500/30 bg-zinc-500/10','text-orange-500 border-orange-700/30 bg-orange-700/10'];
+              const badgeStyle = rankStyles[i] || 'text-zinc-500 border-zinc-800 bg-zinc-900/30';
+              return (
+                <motion.div key={player.uid} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.06 }}
+                  className={`flex items-center gap-3 p-3 rounded-2xl transition-all ${isMe ? 'bg-amber-500/10 border border-amber-500/20' : 'hover:bg-zinc-800/40'}`}
+                >
+                  <div className={`w-8 h-8 rounded-xl border flex items-center justify-center text-[10px] font-black shrink-0 ${badgeStyle}`}>
+                    {i === 0 ? <Crown className="w-3.5 h-3.5" /> : `${i + 1}º`}
+                  </div>
+                  <img src={player.photoURL || `https://ui-avatars.com/api/?name=${player.displayName}&background=random&bold=true`}
+                    className={`w-9 h-9 rounded-xl object-cover shrink-0 ${isMe ? 'ring-2 ring-amber-500' : ''}`}
+                    alt="" referrerPolicy="no-referrer" />
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-xs font-black truncate ${isMe ? 'text-amber-400' : 'text-white'}`}>{isMe ? 'Você' : player.displayName}</p>
+                    <p className="text-[10px] text-zinc-500 font-bold">{(player.totalViews || 0).toLocaleString()} views</p>
+                  </div>
+                  {i === 0 && <Trophy className="w-4 h-4 text-amber-500 shrink-0" />}
+                </motion.div>
+              );
+            })}
+            {rankings.findIndex(r => r.uid === user.uid) >= 5 && (
+              <div className="pt-2 mt-2 border-t border-zinc-800">
+                <div className="flex items-center gap-3 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20">
+                  <div className="w-8 h-8 rounded-xl border border-amber-500/30 bg-amber-500/10 flex items-center justify-center text-[10px] font-black text-amber-400 shrink-0">{rankings.findIndex(r => r.uid === user.uid) + 1}º</div>
+                  <img src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}`} className="w-9 h-9 rounded-xl object-cover ring-2 ring-amber-500 shrink-0" alt="" referrerPolicy="no-referrer" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-black text-amber-400 truncate">Você</p>
+                    <p className="text-[10px] text-zinc-500 font-bold">{(user.totalViews || 0).toLocaleString()} views</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 
 
 
 
+const StatCard = ({ title, value, sub, icon, color }: { title: string, value: string, sub: string, icon: React.ReactNode, color: 'amber' | 'emerald' | 'blue' | 'purple' }) => {
+  const colors = {
+    amber: 'bg-amber-500/20 text-amber-500 border-amber-500/20',
+    emerald: 'bg-emerald-500/20 text-emerald-500 border-emerald-500/20',
+    blue: 'bg-blue-500/20 text-blue-500 border-blue-500/20',
+    purple: 'bg-purple-500/20 text-purple-500 border-purple-500/20'
+  };
 
+  const glowColors = {
+    amber: 'bg-amber-500',
+    emerald: 'bg-emerald-500',
+    blue: 'bg-blue-500',
+    purple: 'bg-purple-500'
+  };
 
+  return (
+    <div className="p-6 rounded-3xl glass relative overflow-hidden group border border-zinc-800/50">
+      <div className={`absolute top-0 right-0 w-32 h-32 -mr-16 -mt-16 rounded-full opacity-10 blur-3xl transition-opacity group-hover:opacity-20 ${glowColors[color]}`} />
+      <div className="relative z-10">
+        <div className={`w-10 h-10 rounded-xl mb-4 flex items-center justify-center ${colors[color]}`}>
+          {React.cloneElement(icon as React.ReactElement<any>, { className: 'w-5 h-5' })}
+        </div>
+        <p className="text-[10px] text-zinc-500 uppercase font-black tracking-widest mb-1">{title}</p>
+        <p className="text-3xl font-black mb-1">{value}</p>
+        <p className="text-xs text-zinc-400 font-medium">{sub}</p>
+      </div>
+    </div>
+  );
+};
 
+const normalizeUrl = (url: string) => {
+  try {
+    let clean = url.trim().toLowerCase();
 
+    // YouTube
+    if (clean.includes('youtube.com') || clean.includes('youtu.be')) {
+      let videoId = '';
+      if (clean.includes('v=')) {
+        videoId = clean.split('v=')[1]?.split('&')[0]?.split('?')[0];
+      } else if (clean.includes('/shorts/')) {
+        videoId = clean.split('/shorts/')[1]?.split('?')[0];
+      } else if (clean.includes('youtu.be/')) {
+        videoId = clean.split('youtu.be/')[1]?.split('?')[0];
+      }
+      if (videoId) return `youtube:${videoId}`;
+    }
+
+    // TikTok
+    if (clean.includes('tiktok.com')) {
+      if (clean.includes('/video/')) {
+        const videoId = clean.split('/video/')[1]?.split('?')[0]?.split('/')[0];
+        if (videoId) return `tiktok:${videoId}`;
+      }
+      // For mobile links like vm.tiktok.com/XYZ, we have to stick to the URL for now 
+      // as we can't resolve redirects client-side easily without a proxy
+    }
+
+    // Instagram
+    if (clean.includes('instagram.com')) {
+      const parts = clean.split('/');
+      const idIndex = parts.findIndex(p => p === 'p' || p === 'reels' || p === 'reel') + 1;
+      if (idIndex > 0) {
+        const id = parts[idIndex]?.split('?')[0];
+        if (id) return `instagram:${id}`;
+      }
+    }
+
+    // Fallback standard cleanup
+    return clean.split('?')[0].replace(/\/$/, '').replace(/^https?:\/\/(www\.)?/, '');
+  } catch {
+    return url.toLowerCase().trim();
+  }
+};
 
 const CompetitionRegulamento = ({ comp }: { comp: Competition }) => {
   return (
@@ -3643,7 +3630,7 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId }: { rankings: U
         if (rankingType === 'DAILY') {
           return selectedCompetition?.rankingMetric === 'likes' ? (stats.dailyLikes || 0) > 0 : (stats.dailyViews || 0) > 0;
         }
-        if (rankingType === 'INSTAGRAM') return (stats.instaPosts || 0) > 0;
+        if (rankingType === 'INSTAGRAM') return (stats.dailyInstaPosts || 0) > 0;
         return selectedCompetition?.rankingMetric === 'likes' ? (stats.likes || 0) > 0 : (stats.views || 0) > 0;
       })
       .sort((a, b) => {
@@ -3654,7 +3641,7 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId }: { rankings: U
         if (rankingType === 'DAILY') {
           return selectedCompetition?.rankingMetric === 'likes' ? (statsB.dailyLikes || 0) - (statsA.dailyLikes || 0) : (statsB.dailyViews || 0) - (statsA.dailyViews || 0);
         }
-        if (rankingType === 'INSTAGRAM') return (statsB.instaPosts || 0) - (statsA.instaPosts || 0);
+        if (rankingType === 'INSTAGRAM') return (statsB.dailyInstaPosts || 0) - (statsA.dailyInstaPosts || 0);
         return selectedCompetition?.rankingMetric === 'likes' ? (statsB.likes || 0) - (statsA.likes || 0) : (statsB.views || 0) - (statsA.views || 0);
       })
       .slice(0, rankingType === 'INSTAGRAM' ? 3 : 10);
@@ -3839,11 +3826,13 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId }: { rankings: U
       <div className="space-y-3">
         {/* Cabeçalho da Tabela - Refinado */}
         {sortedRankings.length > 0 && (
-          <div className="hidden md:grid grid-cols-[80px_1fr_480px_160px] gap-4 px-8 py-3 text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em] border-y border-white/5 bg-white/[0.01]">
+          <div className="hidden md:grid grid-cols-[80px_1fr_100px_120px_140px_160px] gap-4 px-8 py-3 text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em] border-y border-white/5 bg-white/[0.01]">
             <span>Posição</span>
-            <span>Participante</span>
-            <span className="text-center">Desempenho Social (Engajamento Total)</span>
-            <span className="text-right">Prêmios</span>
+            <span>Criador</span>
+            <span className="text-right">Posts</span>
+            <span className="text-right">Likes</span>
+            <span className="text-right">{rankingType === 'INSTAGRAM' ? 'Vídeos' : selectedCompetition?.rankingMetric === 'likes' ? 'Curtidas' : 'Views'}</span>
+            <span className="text-right">Estimativa Prêmio</span>
           </div>
         )}
 
@@ -3870,9 +3859,9 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId }: { rankings: U
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: i * 0.05, type: 'spring', stiffness: 100 }}
-              className={`group relative flex flex-col md:grid md:grid-cols-[80px_1fr_480px_160px] gap-4 items-center
+              className={`group relative flex flex-col md:grid md:grid-cols-[80px_1fr_100px_120px_140px_160px] gap-4 items-center
                 p-5 md:px-8 md:py-6 rounded-3xl border transition-all duration-500 overflow-hidden
-                ${i === 0 ? 'bg-gradient-to-br from-amber-500/20 via-amber-500/5 to-transparent border-amber-500/30' :
+                ${i === 0 ? 'bg-gradient-to-br from-amber-500/20 via-amber-500/5 to-transparent border-amber-500/30 shadow-[0_0_40px_rgba(245,158,11,0.1)]' :
                   i === 1 ? 'bg-gradient-to-br from-zinc-400/10 via-zinc-400/5 to-transparent border-zinc-400/30' :
                   i === 2 ? 'bg-gradient-to-br from-orange-800/20 via-orange-800/5 to-transparent border-orange-800/30' :
                   'bg-white/[0.02] border-white/5 hover:bg-white/[0.04] hover:border-white/10'}`}
@@ -3880,41 +3869,19 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId }: { rankings: U
               {/* Shimmer Effect on Hover */}
               <div className="absolute inset-0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/[0.05] to-transparent skew-x-12 pointer-events-none" />
 
-              {/* Posição Badge - PREMIUM METALLIC LOOK */}
-              <div className="relative group/badge shrink-0">
-                <div className={`
-                  w-14 h-14 rounded-2xl flex items-center justify-center shadow-2xl transition-all duration-500 group-hover:scale-110 border-2 border-white/10 relative overflow-hidden
-                  ${i === 0 ? 'bg-gradient-to-br from-[#FFEDBB] via-[#FDB931] to-[#B8860B] text-black shadow-amber-500/20' :
-                    i === 1 ? 'bg-gradient-to-br from-[#F8F8F8] via-[#D1D1D1] to-[#AFAFAF] text-black shadow-white/10' :
-                    i === 2 ? 'bg-gradient-to-br from-[#FFDAB9] via-[#CD7F32] to-[#8B4513] text-white shadow-orange-900/20' :
-                    'bg-zinc-900 border-white/5 text-zinc-500'}
-                `}>
-                  {/* Subtle Shine Effect */}
-                  <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/30 to-transparent translate-x-[-100%] group-hover/badge:translate-x-[100%] transition-transform duration-1000 ease-in-out" />
-                  
-                  <span className="text-2xl font-black tracking-tighter tabular-nums z-10">{i + 1}º</span>
+              {/* Posição Badge */}
+              <div className="relative">
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-lg shadow-2xl transition-transform group-hover:scale-110 duration-500 border-2
+                  ${i === 0 ? 'bg-gradient-to-br from-amber-300 to-amber-600 text-black border-amber-200' :
+                    i === 1 ? 'bg-gradient-to-br from-zinc-200 to-zinc-500 text-black border-zinc-100' :
+                    i === 2 ? 'bg-gradient-to-br from-orange-400 to-orange-700 text-white border-orange-300' :
+                    'bg-zinc-900 text-zinc-500 border-white/5'}`}
+                >
+                  {i === 0 ? <Crown className="w-6 h-6 animate-float" /> : i + 1}
                 </div>
-
-                {/* Floating Podium Icon Badge - VIBRANT & HIGH CONTRAST */}
                 {isTop3 && (
-                  <>
-                    <motion.div 
-                      key={`badge-vibrant-${i}`}
-                      initial={{ scale: 0, rotate: -20 }}
-                      animate={{ scale: 1.1, rotate: 0 }}
-                      className={`absolute -top-2.5 -right-2.5 z-30 p-2 rounded-xl shadow-[0_5px_15px_rgba(0,0,0,0.6)] border-2 ${
-                        i === 0 ? 'bg-gradient-to-br from-yellow-300 via-amber-500 to-yellow-600 border-yellow-100 text-black' : 
-                        i === 1 ? 'bg-gradient-to-br from-zinc-100 via-slate-400 to-zinc-600 border-white text-black' : 
-                        'bg-gradient-to-br from-orange-400 via-orange-600 to-orange-800 border-orange-300 text-white'
-                      }`}
-                    >
-                      {i === 0 && <Crown className="w-4 h-4 fill-current drop-shadow-md" />}
-                      {i === 1 && <Award className="w-4 h-4 fill-current drop-shadow-md" />}
-                      {i === 2 && <Star className="w-4 h-4 fill-current drop-shadow-md" />}
-                    </motion.div>
-                    <div className={`absolute -inset-3 blur-3xl opacity-20 animate-pulse rounded-2xl -z-10
-                      ${i === 0 ? 'bg-yellow-400' : i === 1 ? 'bg-white' : 'bg-orange-500'}`} />
-                  </>
+                  <div className={`absolute -inset-1 blur-lg opacity-20 group-hover:opacity-40 transition-opacity rounded-2xl
+                    ${i === 0 ? 'bg-amber-500' : i === 1 ? 'bg-zinc-400' : 'bg-orange-600'}`} />
                 )}
               </div>
 
@@ -3949,98 +3916,69 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId }: { rankings: U
                   </div>
                   <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-0.5">Criador Verificado</p>
                   
-                  {/* Mobile Stats Grid - Optimized for all 5 metrics */}
-                  <div className="md:hidden grid grid-cols-3 gap-2 mt-4 p-3 bg-black/40 rounded-xl border border-white/5">
+                  {/* Mobile Stats Grid */}
+                  <div className="md:hidden grid grid-cols-2 gap-3 mt-4 p-3 bg-black/40 rounded-xl border border-white/5">
                     <div className="flex flex-col">
-                      <span className="text-[8px] text-zinc-600 uppercase font-black">Views</span>
-                      <span className="text-xs font-black text-cyan-400">{stats.views.toLocaleString()}</span>
+                      <span className="text-[9px] text-zinc-600 uppercase font-black">Posts</span>
+                      <span className="text-sm font-black text-white">{stats.posts}</span>
                     </div>
                     <div className="flex flex-col">
-                      <span className="text-[8px] text-zinc-600 uppercase font-black">Likes</span>
-                      <span className="text-xs font-black text-pink-500">{stats.likes.toLocaleString()}</span>
+                      <span className="text-[9px] text-zinc-600 uppercase font-black">Likes</span>
+                      <span className="text-sm font-black text-pink-500">{stats.likes.toLocaleString()}</span>
                     </div>
-                    <div className="flex flex-col">
-                      <span className="text-[8px] text-zinc-600 uppercase font-black">Comms</span>
-                      <span className="text-xs font-black text-emerald-500">{stats.comments.toLocaleString()}</span>
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="text-[8px] text-zinc-600 uppercase font-black">Shares</span>
-                      <span className="text-xs font-black text-blue-500">{stats.shares.toLocaleString()}</span>
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="text-[8px] text-zinc-600 uppercase font-black">Saves</span>
-                      <span className="text-xs font-black text-purple-500">{stats.saves.toLocaleString()}</span>
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="text-[8px] text-zinc-600 uppercase font-black">{rankingType === 'INSTAGRAM' ? 'IG Posts' : 'Posts'}</span>
-                      <span className="text-xs font-black text-zinc-400">{rankingType === 'INSTAGRAM' ? stats.instaPosts : stats.posts}</span>
+                    <div className="flex flex-col col-span-2 pt-2 border-t border-white/5">
+                      <span className="text-[9px] text-zinc-600 uppercase font-black">Métrica Principal</span>
+                      <div className="flex items-end justify-between">
+                        <span className="text-xl font-black text-cyan-400">
+                          {rankingType === 'INSTAGRAM' ? stats.instaPosts.toLocaleString() : selectedCompetition?.rankingMetric === 'likes' ? stats.likes.toLocaleString() : stats.views.toLocaleString()}
+                        </span>
+                        {prize > 0 && <span className="text-emerald-400 font-black text-sm">R$ {prize.toLocaleString()}</span>}
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Desktop: ALL Metrics Group */}
-              <div className="hidden md:flex items-center justify-center gap-1.5 p-2 bg-black/40 rounded-2xl border border-white/5 h-full min-w-full">
-                {/* Views */}
-                <div className="flex-1 flex flex-col items-center justify-center min-w-[70px] border-r border-white/5 px-2">
-                  <Eye className="w-4 h-4 text-cyan-500 mb-1" />
-                  <span className="text-[14px] font-black text-cyan-400 tabular-nums">{stats.views.toLocaleString()}</span>
-                  <span className="text-[8px] font-black text-zinc-600 uppercase">Views</span>
-                </div>
-                {/* Likes */}
-                <div className="flex-1 flex flex-col items-center justify-center min-w-[70px] border-r border-white/5 px-2">
-                  <Heart className={`w-4 h-4 text-pink-500 mb-1 ${stats.likes > 0 ? 'fill-pink-500' : ''}`} />
-                  <span className="text-[14px] font-black text-pink-400 tabular-nums">{stats.likes.toLocaleString()}</span>
-                  <span className="text-[8px] font-black text-zinc-600 uppercase">Likes</span>
-                </div>
-                {/* Comments */}
-                <div className="flex-1 flex flex-col items-center justify-center min-w-[70px] border-r border-white/5 px-2">
-                  <MessageSquare className="w-4 h-4 text-emerald-500 mb-1" />
-                  <span className="text-[14px] font-black text-emerald-400 tabular-nums">{stats.comments.toLocaleString()}</span>
-                  <span className="text-[8px] font-black text-zinc-600 uppercase">Comms</span>
-                </div>
-                {/* Shares */}
-                <div className="flex-1 flex flex-col items-center justify-center min-w-[70px] border-r border-white/5 px-2">
-                  <Share2 className="w-4 h-4 text-blue-500 mb-1" />
-                  <span className="text-[14px] font-black text-blue-400 tabular-nums">{stats.shares.toLocaleString()}</span>
-                  <span className="text-[8px] font-black text-zinc-600 uppercase">Shares</span>
-                </div>
-                {/* Saves */}
-                <div className="flex-1 flex flex-col items-center justify-center min-w-[70px] border-r border-white/5 px-2">
-                  <Bookmark className="w-4 h-4 text-purple-500 mb-1" />
-                  <span className="text-[14px] font-black text-purple-400 tabular-nums">{stats.saves.toLocaleString()}</span>
-                  <span className="text-[8px] font-black text-zinc-600 uppercase">Saves</span>
-                </div>
-                {/* Posts */}
-                <div className="flex-1 flex flex-col items-center justify-center min-w-[70px] px-2">
-                  <Camera className={`w-4 h-4 ${rankingType === 'INSTAGRAM' ? 'text-pink-500' : 'text-zinc-400'} mb-1`} />
-                  <span className="text-[14px] font-black text-white tabular-nums">{rankingType === 'INSTAGRAM' ? stats.instaPosts : stats.posts}</span>
-                  <span className="text-[8px] font-black text-zinc-600 uppercase">{rankingType === 'INSTAGRAM' ? 'IG Posts' : 'Posts'}</span>
-                </div>
+              {/* Desktop: Posts */}
+              <div className="hidden md:flex flex-col items-end">
+                <span className="text-[10px] text-zinc-600 font-black uppercase tracking-widest mb-1">Posts</span>
+                <span className="text-base font-black text-zinc-300 group-hover:text-white transition-colors flex items-center gap-1.5">
+                  <Send className="w-3.5 h-3.5 text-zinc-600" /> {stats.posts}
+                </span>
               </div>
 
-              {/* Desktop: Prêmio - PREMIUM NEON LOOK */}
+              {/* Desktop: Likes */}
+              <div className="hidden md:flex flex-col items-end">
+                <span className="text-[10px] text-zinc-600 font-black uppercase tracking-widest mb-1">Likes</span>
+                <span className="text-base font-black text-pink-500 flex items-center gap-1.5">
+                  <Heart className={`w-3.5 h-3.5 ${stats.likes > 0 ? 'fill-pink-500' : ''}`} /> 
+                  {stats.likes.toLocaleString()}
+                </span>
+              </div>
+
+              {/* Desktop: Métrica Principal - HIGH IMPACT */}
+              <div className="hidden md:flex flex-col items-end bg-black/20 p-3 rounded-2xl border border-white/5 min-w-[120px] transition-all group-hover:border-cyan-500/30 group-hover:bg-cyan-500/5">
+                <span className="text-[9px] text-zinc-500 font-black uppercase tracking-widest mb-1">
+                   {rankingType === 'INSTAGRAM' ? 'vídeos' : selectedCompetition?.rankingMetric === 'likes' ? 'curtidas' : 'views'}
+                </span>
+                <span className="text-2xl font-black text-cyan-400 tabular-nums tracking-tighter">
+                  {rankingType === 'INSTAGRAM' ? stats.instaPosts.toLocaleString() : selectedCompetition?.rankingMetric === 'likes' ? stats.likes.toLocaleString() : stats.views.toLocaleString()}
+                </span>
+              </div>
+
+              {/* Desktop: Prêmio - PREMIUM LOOK */}
               <div className="hidden md:flex flex-col items-end">
                 {prize > 0 ? (
                   <div className="flex flex-col items-end">
-                    <span className="text-[8px] text-zinc-600 font-black uppercase tracking-[0.2em] mb-1.5 opacity-60">Estimativa Prêmio</span>
-                    <div className={`
-                      px-5 py-2.5 rounded-2xl font-black text-xl tracking-tighter transition-all duration-300
-                      flex items-center gap-2 border-2 shadow-[0_0_25px_rgba(0,0,0,0.5)]
-                      ${isTop3 ? 
-                        'bg-gradient-to-br from-amber-500/20 via-black/40 to-amber-900/20 border-amber-500/40 text-amber-400 shadow-amber-500/10 group-hover:border-amber-400 group-hover:scale-105' : 
-                        'bg-gradient-to-br from-emerald-500/20 via-black/40 to-emerald-900/20 border-emerald-500/40 text-emerald-400 shadow-emerald-500/10 group-hover:border-emerald-400 group-hover:scale-105'
-                      }
-                    `}>
-                      <span className="text-xs opacity-50 font-bold">R$</span>
-                      <span className="tabular-nums">{prize.toLocaleString()}</span>
-                      {isTop3 && <Sparkles className="w-3.5 h-3.5 animate-pulse text-amber-300" />}
+                    <span className="text-[9px] text-zinc-600 font-black uppercase tracking-widest mb-1">Estimativa prêmio</span>
+                    <div className={`px-3 py-1 rounded-lg border font-black text-lg transition-all
+                      ${isTop3 ? 'bg-amber-500/10 border-amber-500/20 text-amber-400 group-hover:bg-amber-500 group-hover:text-black' : 
+                                'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 group-hover:bg-emerald-500 group-hover:text-black'}`}>
+                      R$ {prize.toLocaleString()}
                     </div>
                   </div>
                 ) : (
-                  <div className="h-10 flex items-center">
-                    <span className="w-8 h-[2px] bg-zinc-900 rounded-full" />
-                  </div>
+                  <span className="text-zinc-800 font-black">—</span>
                 )}
               </div>
             </motion.div>
@@ -4050,7 +3988,16 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId }: { rankings: U
     </div>
   );
 };
-
+// CabeÃ§alho compartilhado para as listas do Admin
+const ListHeader = ({ columns, gridClass }: { columns: string[], gridClass: string }) => (
+  <div className={`grid ${gridClass} gap-4 px-8 py-3 bg-zinc-900/50 border-y border-zinc-800/50 mb-2 mt-4`}>
+    {columns.map((col, i) => (
+      <span key={i} className={`text-[10px] font-black text-zinc-500 uppercase tracking-widest ${i === columns.length - 1 ? 'text-right' : ''}`}>
+        {col}
+      </span>
+    ))}
+  </div>
+);
 
 const UserListRow = ({
   user,
@@ -4123,47 +4070,28 @@ const PendingUserRow = ({ user, onApprove, onRemove }: { user: User, onApprove: 
   </div>
 );
 
-
-const ListHeader = ({ columns, gridClass }: { columns: string[], gridClass: string }) =>
- (
-  <div className={`hidden md:grid ${gridClass} gap-4 px-8 py-4 text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em] border-y border-white/5 bg-white/[0.01] sticky top-0 z-20 backdrop-blur-md`}>
-    {columns.map((col, idx) => (
-      <span key={idx} className={idx === columns.length - 1 ? 'text-right' : ''}>{col}</span>
-    ))}
-  </div>
-);
-
 const FinancialRow = ({ user, onViewLinks, compId, isPaidView }: { user: User, onViewLinks: (uid: string) => void, compId?: string, isPaidView?: boolean }) => {
   const [saving, setSaving] = useState(false);
-  const [confirming, setConfirming] = useState(false);
-  
-  const rawBalance = user.competitionStats?.[compId || '']?.balance || 0;
-  const balance = Number(rawBalance);
-  
-  const handlePay = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
+  const balance = user.competitionStats?.[compId || '']?.balance || 0;
+
+  const handlePay = async () => {
     if (!compId || balance <= 0) {
-      return; // Do nothing silently if disabled
+      alert('Usuário não possui saldo pendente nesta competição.');
+      return;
     }
 
-    if (!confirming) {
-      setConfirming(true);
-      setTimeout(() => setConfirming(false), 3000); // Cancela a confirmação após 3 segundos
+    if (!window.confirm(`Confirma o repasse financeiro de R$ ${balance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} para ${user.displayName}?`)) {
       return;
     }
 
     setSaving(true);
-    setConfirming(false);
-    
     try {
       const auditorId = auth.currentUser?.uid || 'system';
       const timestamp = Date.now();
       
       const batch = writeBatch(db);
 
-      // 1. Registra a transação
+      // 1. Registra a transação - Gerando ID manualmente para usar no batch
       const transRef = doc(collection(db, 'transactions'));
       batch.set(transRef, {
         userId: user.uid,
@@ -4178,14 +4106,14 @@ const FinancialRow = ({ user, onViewLinks, compId, isPaidView }: { user: User, o
       const allCompStats = user.competitionStats || {};
       const newGlobalBalance = Object.entries(allCompStats).reduce((acc, [cid, stats]: [string, any]) => {
         if (cid === compId) return acc;
-        return acc + Number(stats?.balance || 0);
+        return acc + (stats?.balance || 0);
       }, 0);
 
       const dataToUpdate: any = {
         [`competitionStats.${compId}.balance`]: 0,
-        [`competitionStats.${compId}.paidTotal`]: Number(user.competitionStats?.[compId]?.paidTotal || 0) + balance,
+        [`competitionStats.${compId}.paidTotal`]: (user.competitionStats?.[compId]?.paidTotal || 0) + balance,
         balance: newGlobalBalance,
-        lifetimeEarnings: Number(user.lifetimeEarnings || 0) + balance
+        lifetimeEarnings: (user.lifetimeEarnings || 0) + balance
       };
 
       const userRef = doc(db, 'users', user.uid);
@@ -4193,68 +4121,48 @@ const FinancialRow = ({ user, onViewLinks, compId, isPaidView }: { user: User, o
 
       await batch.commit();
 
-    } catch (error: any) {
-      console.error('Erro no processamento do pagamento:', error);
-    } finally {
-      setSaving(false);
+      alert('Pagamento confirmado! Saldo zerado nesta competição.');
+    } catch (e: any) {
+      console.error('Erro no pagamento:', e);
+      alert(`Erro: ${e.message}`);
     }
+    setSaving(false);
   };
 
   return (
-    <div className="grid grid-cols-[1.5fr_1fr_1.5fr_150px_220px] gap-4 items-center py-4 px-8 hover:bg-white/[0.02] transition-all group border-b border-zinc-900/50 last:border-0 min-h-[72px]">
+    <div className="grid grid-cols-[1.5fr_1fr_1.5fr_150px_220px] gap-4 items-center py-3 px-8 hover:bg-white/[0.03] transition-all group border-b border-zinc-900/50 last:border-0 h-16">
       <div className="flex items-center gap-4 min-w-0">
-        <div className="relative shrink-0">
-          <img
-            src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}`}
-            className={`w-12 h-12 rounded-2xl object-cover border-2 shadow-2xl transition-all group-hover:scale-105 ${
-              isPaidView ? 'border-emerald-500/30 shadow-emerald-500/5' : 'border-amber-500/30 shadow-amber-500/5'
-            }`}
-            alt=""
-          />
-          <div className={`absolute -bottom-1.5 -right-1.5 w-5 h-5 rounded-full border-2 border-black flex items-center justify-center ${
-            isPaidView ? 'bg-emerald-500' : 'bg-amber-500'
-          }`}>
-            {isPaidView ? <CheckCircle2 className="w-3 h-3 text-black" /> : <Zap className="w-3 h-3 text-black" />}
-          </div>
-        </div>
+        <img
+          src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}`}
+          className="w-10 h-10 rounded-xl object-cover grayscale group-hover:grayscale-0 transition-all shadow-xl"
+          alt=""
+        />
         <div className="flex flex-col min-w-0">
-          <span className="font-black text-[13px] text-white truncate uppercase tracking-tight leading-tight">{user.displayName}</span>
-          <span className="text-zinc-600 text-[9px] font-black uppercase truncate tracking-widest mt-0.5 opacity-60">ID: {user.uid.slice(0, 8)}</span>
+          <span className="font-black text-sm text-white truncate uppercase tracking-tight">{user.displayName}</span>
+          <span className="text-zinc-600 text-[10px] font-black uppercase truncate tracking-widest">{user.email.split('@')[0]}</span>
         </div>
       </div>
 
       <div className="flex flex-col min-w-0">
-        <div className="flex items-center gap-1.5 mb-1">
-          <CreditCard className="w-3 h-3 text-zinc-700" />
-          <span className="text-zinc-600 text-[8px] font-black uppercase tracking-widest whitespace-nowrap">CHAVE PIX</span>
-        </div>
-        <span className="font-black text-[11px] text-white truncate tracking-tight select-all selection:bg-amber-500 selection:text-black">
-          {user.pixKey || 'CHAVE NÃO INFORMADA'}
-        </span>
+        <span className="font-black text-[11px] text-zinc-300 truncate tracking-tight select-all">{user.pixKey || 'Não cadastrada'}</span>
+        <span className="text-zinc-600 text-[8px] font-black uppercase tracking-widest">CHAVE PIX</span>
       </div>
 
       <div className="flex flex-col min-w-0">
-        <div className="flex items-center gap-1.5 mb-1">
-          <Coins className={`w-3 h-3 ${isPaidView ? 'text-emerald-500/50' : 'text-amber-500/50'}`} />
-          <span className="text-zinc-600 text-[8px] font-black uppercase tracking-widest">{isPaidView ? 'HISTÓRICO PAGO' : 'VALOR A REPASSAR'}</span>
-        </div>
-        <p className={`text-[16px] font-black tabular-nums truncate tracking-tighter ${isPaidView ? 'text-emerald-500' : 'text-amber-500'}`}>
+        <p className={`text-[14px] font-black tabular-nums truncate ${isPaidView ? 'text-emerald-500' : 'text-amber-500'}`}>
           R$ {(isPaidView ? (user.competitionStats?.[compId || '']?.paidTotal || 0) : balance).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
         </p>
+        <p className="text-[8px] font-black text-zinc-600 uppercase tracking-widest">{isPaidView ? 'TOTAL PAGO' : 'SALDO'}</p>
       </div>
 
       <div className="text-center">
         {isPaidView ? (
-          <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-500 text-[9px] font-black uppercase tracking-widest border border-emerald-500/20 shadow-lg shadow-emerald-500/5">
-            CONCLUÍDO
+          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 text-[9px] font-black uppercase tracking-widest border border-emerald-500/20">
+            <CheckCircle2 className="w-3.5 h-3.5" /> PAGAMENTO REALIZADO
           </span>
         ) : (
-          <span className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${
-            balance > 0 
-              ? 'bg-red-500/10 text-red-500 border-red-500/20 shadow-lg shadow-red-500/5' 
-              : 'bg-zinc-900 text-zinc-600 border-zinc-800'
-          }`}>
-            {balance > 0 ? 'PENDENTE' : 'ZERADO'}
+          <span className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest ${balance > 0 ? 'bg-red-500/10 text-red-500 border border-red-500/20' : 'bg-zinc-800 text-zinc-500 border border-zinc-700'}`}>
+            {balance > 0 ? 'Pagamento Pendente' : 'Sem Saldo'}
           </span>
         )}
       </div>
@@ -4262,26 +4170,18 @@ const FinancialRow = ({ user, onViewLinks, compId, isPaidView }: { user: User, o
       <div className="flex items-center justify-end gap-3">
         <button
           onClick={() => onViewLinks(user.uid)}
-          className="px-4 py-2.5 rounded-2xl bg-zinc-900 border border-zinc-800 text-zinc-500 font-black text-[10px] hover:text-white hover:bg-zinc-800 hover:border-zinc-700 transition-all flex items-center gap-2.5 uppercase tracking-widest shadow-xl"
+          className="px-3 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-400 font-black text-[10px] hover:text-white hover:border-zinc-700 transition-all flex items-center gap-2 uppercase whitespace-nowrap"
         >
-          <BarChart3 className="w-4 h-4" /> AUDITAR
+          <BarChart3 className="w-3.5 h-3.5" /> DADOS
         </button>
         {!isPaidView && (
           <button
             onClick={handlePay}
             disabled={saving || balance <= 0}
-            className={`px-5 py-2.5 disabled:bg-zinc-900 disabled:text-zinc-700 disabled:border-zinc-800 rounded-2xl font-black text-[10px] hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2.5 uppercase tracking-widest disabled:shadow-none min-w-[120px] ${
-              confirming ? 'bg-red-500 text-white animate-pulse shadow-[0_4px_20px_rgba(239,68,68,0.4)]' : 'gold-bg text-black shadow-[0_4px_20px_rgba(245,158,11,0.2)]'
-            }`}
+            className="px-4 py-2.5 gold-bg disabled:bg-zinc-900 disabled:text-zinc-700 disabled:border-zinc-800 text-black rounded-xl font-black text-[10px] hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-2 uppercase whitespace-nowrap"
           >
-            {saving ? (
-              <RefreshCw className="w-4 h-4 animate-spin" />
-            ) : confirming ? (
-              <AlertCircle className="w-4 h-4 text-white" />
-            ) : (
-              <Zap className="w-4 h-4 fill-current" />
-            )}
-            {saving ? 'PAGANDO...' : confirming ? 'CONFIRMAR?' : 'PAGAR'}
+            {saving ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+            PAGAR
           </button>
         )}
       </div>
@@ -4475,7 +4375,7 @@ const AdminPanel = ({
   isCreatingAnn: boolean;
   setIsCreatingAnn: (v: boolean) => void;
 }) => {
-  const [tab, setTab] = useState<'VISAO_GERAL' | 'POSTS' | 'USERS' | 'USERS_APPROVED' | 'COMPETITIONS' | 'SYNC' | 'REGISTROS' | 'AVISOS' | 'FINANCEIRO' | 'ACESSOS' | 'SUGESTOES' | 'RESSINCRONIZACAO' | 'SINCRONIZACAO'>('VISAO_GERAL');
+  const [tab, setTab] = useState<'POSTS' | 'USERS' | 'USERS_APPROVED' | 'COMPETITIONS' | 'SYNC' | 'REGISTROS' | 'AVISOS' | 'FINANCEIRO' | 'ACESSOS' | 'SUGESTOES' | 'RESSINCRONIZACAO' | 'SINCRONIZACAO'>('POSTS');
   const [selectedSyncCompId, setSelectedSyncCompId] = useState<string>('ALL');
   const [selectedResetCompId, setSelectedResetCompId] = useState<string>('');
   const [auditUserId, setAuditUserId] = useState<string | null>(null);
@@ -4483,7 +4383,7 @@ const AdminPanel = ({
   const [syncing, setSyncing] = useState(false);
   const [syncingPostId, setSyncingPostId] = useState<string | null>(null);
   const [apifyKey, setApifyKey] = useState(settings.apifyKey);
-  const [financeTab, setFinanceTab] = useState<'RESUMO' | 'PENDING' | 'REALIZED'>('RESUMO');
+  const [financeTab, setFinanceTab] = useState<'PENDING' | 'REALIZED'>('PENDING');
   const [financeCompId, setFinanceCompId] = useState<string>(() => competitions[0]?.id || '');
   const [newUserName, setNewUserName] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
@@ -4491,72 +4391,6 @@ const AdminPanel = ({
   const [newUserRole, setNewUserRole] = useState<'user' | 'auditor' | 'administrativo' | 'admin'>('user');
   const [creatingUser, setCreatingUser] = useState(false);
   const [syncDetailCompId, setSyncDetailCompId] = useState<string | null>(null);
-
-  // --- BI & Performance Calculations ---
-  const approvedPosts = posts.filter(p => p.status === 'approved' || p.status === 'synced');
-  const rejectedPosts = posts.filter(p => p.status === 'rejected');
-
-  const globalViews = approvedPosts.reduce((s, p) => s + (p.views || 0), 0);
-  const globalLikes = approvedPosts.reduce((s, p) => s + (p.likes || 0), 0);
-
-  const now = Date.now();
-  const dayMs = 24 * 60 * 60 * 1000;
-
-  const postsToday = posts.filter(p => p.timestamp > now - dayMs).length;
-  const postsYesterday = posts.filter(p => p.timestamp > now - 2 * dayMs && p.timestamp <= now - dayMs).length;
-  const dailyPostTrend = postsToday >= postsYesterday ? 'up' : 'down';
-
-  const postsLast7d = posts.filter(p => p.timestamp > now - 7 * dayMs).length;
-  const avgPosts7d = Math.round(postsLast7d / 7);
-
-  const approvalRate = (approvedPosts.length + rejectedPosts.length) > 0
-    ? Math.round((approvedPosts.length / (approvedPosts.length + rejectedPosts.length)) * 100)
-    : 100;
-
-  const inactiveUsers = approvedUsers.filter(u => {
-    const userPosts = posts.filter(p => p.userId === u.uid);
-    if (userPosts.length === 0) return true;
-    const lastPost = Math.max(...userPosts.map(p => p.timestamp));
-    return now - lastPost > 3 * dayMs;
-  });
-
-  const newUsers7d = approvedUsers.filter(u => u.approvedAt && u.approvedAt > now - 7 * dayMs).length;
-
-  const totalPaidGlobal = approvedUsers.reduce((sum, u) => sum + (u.competitionStats ? Object.values(u.competitionStats).reduce((s, st: any) => s + (st.paidTotal || 0), 0) : 0), 0);
-  const cpp = approvedPosts.length > 0 ? totalPaidGlobal / approvedPosts.length : 0;
-
-  const totalPendingGlobal = approvedUsers.reduce((sum, u) => sum + (u.competitionStats ? Object.values(u.competitionStats).reduce((s, st: any) => s + (st.balance || 0), 0) : 0), 0);
-
-  const auditEfficiency = (() => {
-    const postsWithAudit = posts.filter(p => p.approvedAt && p.timestamp);
-    if (postsWithAudit.length === 0) return 0;
-    const totalDiff = postsWithAudit.reduce((s, p) => s + (p.approvedAt! - p.timestamp), 0);
-    const avgMinutes = Math.round(totalDiff / postsWithAudit.length / 1000 / 60);
-    return avgMinutes;
-  })();
-
-  const topROIUsers = [...approvedUsers]
-    .map(u => {
-      const uPosts = posts.filter(p => p.userId === u.uid && (p.status === 'approved' || p.status === 'synced'));
-      const uViews = uPosts.reduce((s, p) => s + (p.views || 0), 0);
-      const uPaid = u.competitionStats ? Object.values(u.competitionStats).reduce((s, st: any) => s + (st.paidTotal || 0), 0) : 0;
-      return { ...u, roi: uPaid > 0 ? uViews / uPaid : uViews, totalViewsCount: uViews, postsCount: uPosts.length };
-    })
-    .sort((a, b) => b.roi - a.roi)
-    .slice(0, 5);
-
-  const dailyPostCounts = [6, 5, 4, 3, 2, 1, 0].map(daysAgo => {
-    const d = new Date(now - daysAgo * dayMs);
-    d.setHours(0, 0, 0, 0);
-    const start = d.getTime();
-    const end = start + dayMs;
-    const count = posts.filter(p => p.timestamp >= start && p.timestamp < end).length;
-    return {
-      day: d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', ''),
-      count,
-      fullDate: d.toLocaleDateString('pt-BR')
-    };
-  });
 
   const handleCreateUser = async () => {
     if (!newUserName.trim() || !newUserEmail.trim() || !newUserPass.trim()) {
@@ -4640,19 +4474,6 @@ const AdminPanel = ({
   const pendingPosts = posts.filter(p => p.status === 'pending');
   const pendingRegistrations = registrations.filter(r => r.status === 'pending');
   const approvedRegistrations = registrations.filter(r => r.status === 'approved');
-  const [repairing, setRepairing] = useState(false);
-
-  const handleRepairMetrics = async () => {
-    setRepairing(true);
-    try {
-      const res = await repairAllUserMetrics();
-      alert(`✅ Reparo concluído!\n\nUsuários processados: ${res.total}\nSucesso: ${res.success}\nErros: ${res.error}`);
-    } catch (error: any) {
-      alert(`Erro no reparo: ${error.message}`);
-    } finally {
-      setRepairing(false);
-    }
-  };
 
   const handleSync = async () => {
     if (!apifyKey) {
@@ -4761,14 +4582,6 @@ const AdminPanel = ({
               </select>
             </div>
             <button
-              onClick={handleRepairMetrics}
-              disabled={repairing}
-              className="flex items-center justify-center gap-2 px-8 py-3 bg-amber-500/10 text-amber-500 font-black rounded-xl hover:bg-amber-500 hover:text-black transition-all shadow-lg shadow-amber-500/10 disabled:opacity-50"
-            >
-              {repairing ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
-              REPARAR RANKINGS
-            </button>
-            <button
               onClick={() => handleResetDailyRanking(selectedResetCompId)}
               disabled={!selectedResetCompId}
               className="flex items-center justify-center gap-2 px-8 py-3 bg-red-500/10 text-red-500 font-black rounded-xl hover:bg-red-500 hover:text-black transition-all shadow-lg shadow-red-500/10 disabled:opacity-30 disabled:hover:bg-red-500/10 disabled:hover:text-red-500"
@@ -4788,13 +4601,6 @@ const AdminPanel = ({
       </div>
 
       <div className="flex flex-wrap p-1 bg-zinc-900 rounded-2xl w-fit gap-1">
-        {/* DASHBOARD - Visão Geral */}
-        <button
-          onClick={() => { setTab('VISAO_GERAL'); setAuditUserId(null); setSelectedCompId(null); setSyncDetailCompId(null); }}
-          className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'VISAO_GERAL' ? 'gold-bg text-black' : 'text-zinc-500'}`}
-        >
-          DASHBOARD
-        </button>
         {/* POSTS - visível apenas para admin e auditor */}
         {(userRole === 'admin' || userRole === 'auditor') && (
           <button
@@ -4897,244 +4703,6 @@ const AdminPanel = ({
       </div>
 
       <div className="grid grid-cols-1 gap-4">
-        {tab === 'VISAO_GERAL' && (
-          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <div className="flex flex-col gap-1 mb-2">
-              <h3 className="text-2xl font-black uppercase tracking-tighter gold-gradient">Visão Geral do Ecossistema</h3>
-              <p className="text-zinc-500 font-bold text-[11px] uppercase tracking-[0.2em] opacity-80">Métricas em tempo real de toda a operação MetaRayx.</p>
-            </div>
-
-            {/* Quick Stats Grid - BI & Performance */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {[
-                { 
-                  label: 'Alcance Global', 
-                  value: globalViews.toLocaleString('pt-BR'), 
-                  sub: `${globalLikes.toLocaleString('pt-BR')} Curtidas`, 
-                  icon: TrendingUp, 
-                  color: 'text-amber-500', 
-                  bg: 'bg-amber-500/10',
-                  desc: 'Total de Visualizações Aprovadas'
-                },
-                { 
-                  label: 'Posts Enviados', 
-                  value: postsToday, 
-                  sub: `${avgPosts7d} média / dia`, 
-                  icon: Zap, 
-                  color: 'text-emerald-500', 
-                  bg: 'bg-emerald-500/10',
-                  desc: dailyPostTrend === 'up' ? 'Aumento em relação a ontem' : 'Queda em relação a ontem',
-                  trend: dailyPostTrend
-                },
-                { 
-                  label: 'Governança & Auditoria', 
-                  value: `${approvalRate}%`, 
-                  sub: `${auditEfficiency} min / audit`, 
-                  icon: ShieldCheck, 
-                  color: 'text-blue-500', 
-                  bg: 'bg-blue-500/10',
-                  desc: 'Taxa de Aprovação vs. Tempo'
-                },
-                { 
-                  label: 'Saúde da Comunidade', 
-                  value: newUsers7d, 
-                  sub: `${inactiveUsers.length} inativos (3d)`, 
-                  icon: Users, 
-                  color: 'text-pink-500', 
-                  bg: 'bg-pink-500/10',
-                  desc: 'Novos integrantes (7 dias)'
-                },
-              ].map((stat, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.1 }}
-                  className="p-8 rounded-[40px] bg-zinc-950 border border-zinc-900 hover:border-amber-500/30 transition-all group relative overflow-hidden h-full flex flex-col justify-between"
-                >
-                  <div className={`absolute top-0 right-0 w-32 h-32 ${stat.bg} blur-[60px] opacity-20 pointer-events-none group-hover:opacity-60 transition-opacity`} />
-                  
-                  <div className="relative z-10">
-                    <div className="flex items-center justify-between mb-6">
-                      <div className={`w-14 h-14 rounded-2xl ${stat.bg} flex items-center justify-center ${stat.color} shadow-lg shadow-black/40`}>
-                        <stat.icon className="w-7 h-7" />
-                      </div>
-                      {stat.trend && (
-                        <div className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest flex items-center gap-1 ${stat.trend === 'up' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
-                          {stat.trend === 'up' ? '↑ Crescendo' : '↓ Estável'}
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">{stat.label}</p>
-                      <h4 className="text-4xl font-black text-white tracking-tight leading-none my-2">{stat.value}</h4>
-                      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-                        <span className={stat.color}>{stat.sub}</span>
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mt-8 pt-4 border-t border-zinc-900/50 relative z-10">
-                    <p className="text-[9px] font-black text-zinc-700 uppercase tracking-widest leading-none">{stat.desc}</p>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              {/* Daily Post Activity Chart */}
-              <div className="lg:col-span-2 p-8 rounded-[40px] bg-zinc-950 border border-zinc-900">
-                <div className="flex items-center justify-between mb-8">
-                  <div>
-                    <h4 className="text-lg font-black uppercase text-white tracking-tight">Atividade Semanal (Posts)</h4>
-                    <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Volume diário enviado ao sistema</p>
-                  </div>
-                  <Calendar className="w-6 h-6 text-zinc-800" />
-                </div>
-                
-                <div className="flex items-end justify-between gap-2 h-40 pt-4">
-                  {dailyPostCounts.map((d, i) => {
-                    const maxCount = Math.max(...dailyPostCounts.map(x => x.count), 1);
-                    const height = (d.count / maxCount) * 100;
-                    return (
-                      <div key={i} className="flex-1 flex flex-col items-center gap-4 group">
-                        <div className="w-full relative flex flex-col justify-end h-full">
-                          <motion.div 
-                            initial={{ height: 0 }}
-                            animate={{ height: `${height}%` }}
-                            transition={{ duration: 1, delay: i * 0.05 }}
-                            className={`w-full rounded-t-xl transition-all ${i === 6 ? 'gold-bg border-t border-white/20' : 'bg-zinc-900 group-hover:bg-zinc-800 border-t border-white/5'}`}
-                          >
-                             {d.count > 0 && (
-                               <div className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-white text-black text-[9px] font-black px-2 py-0.5 rounded shadow-xl whitespace-nowrap z-20">
-                                 {d.count} POSTS
-                               </div>
-                             )}
-                          </motion.div>
-                        </div>
-                        <span className={`text-[10px] font-black uppercase tracking-tighter ${i === 6 ? 'gold-gradient' : 'text-zinc-600'}`}>{d.day}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Inactive Users Preview */}
-              <div className="p-8 rounded-[40px] bg-zinc-950 border border-zinc-900 flex flex-col">
-                <div className="flex items-center justify-between mb-8">
-                  <div>
-                    <h4 className="text-lg font-black uppercase text-white tracking-tight">Fila de Inatividade</h4>
-                    <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest text-red-500/70">Integrantes sem postar há 3 dias</p>
-                  </div>
-                  <UserX className="w-6 h-6 text-red-500/30" />
-                </div>
-                
-                <div className="flex-1 space-y-3 overflow-y-auto max-h-[220px] custom-scrollbar pr-1">
-                  {inactiveUsers.slice(0, 10).map((u, i) => (
-                    <div key={u.uid} className="flex items-center justify-between p-3 rounded-2xl bg-black border border-zinc-900 group">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg overflow-hidden border border-zinc-800">
-                          <img src={u.photoURL || `https://ui-avatars.com/api/?name=${u.displayName}`} alt="" className="w-full h-full object-cover" />
-                        </div>
-                        <span className="text-[10px] font-black text-zinc-400 uppercase truncate max-w-[100px]">{u.displayName}</span>
-                      </div>
-                      <span className="text-[8px] font-bold text-zinc-700 uppercase tracking-widest">Sem posts</span>
-                    </div>
-                  ))}
-                  {inactiveUsers.length === 0 && (
-                    <div className="h-full flex flex-col items-center justify-center text-center py-10">
-                      <ShieldCheck className="w-8 h-8 text-emerald-500/20 mb-2" />
-                      <p className="text-[9px] font-black text-zinc-700 uppercase">Todos os ativos postaram!</p>
-                    </div>
-                  )}
-                </div>
-                
-                <button 
-                  onClick={() => setTab('USERS_APPROVED')}
-                  className="mt-6 w-full py-4 rounded-2xl border border-zinc-800 text-[9px] font-black uppercase tracking-widest text-zinc-500 hover:text-white hover:border-zinc-700 transition-all"
-                >
-                  Ver todos os {inactiveUsers.length} inativos
-                </button>
-              </div>
-            </div>
-
-            {/* Middle Section: Distribution & Status */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Distribution Card */}
-              <div className="lg:col-span-2 p-8 rounded-[40px] bg-zinc-950 border border-zinc-900">
-                <div className="flex items-center justify-between mb-8">
-                  <div>
-                    <h4 className="text-lg font-black uppercase text-white tracking-tight">Status de Triagem</h4>
-                    <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Distribuição de vídeos por status</p>
-                  </div>
-                </div>
-                
-                <div className="space-y-6">
-                  {(() => {
-                    const total = posts.length || 1;
-                    const statuses = [
-                      { label: 'Aprovados', count: posts.filter(p => p.status === 'approved' || p.status === 'synced').length, color: 'bg-emerald-500' },
-                      { label: 'Pendentes', count: posts.filter(p => p.status === 'pending').length, color: 'bg-amber-500' },
-                      { label: 'Rejeitados', count: posts.filter(p => p.status === 'rejected').length, color: 'bg-red-500' },
-                    ];
-
-                    return (
-                      <>
-                        <div className="flex h-3 w-full bg-zinc-900 rounded-full overflow-hidden border border-zinc-800">
-                          {statuses.map((s, i) => (
-                            <div 
-                              key={i} 
-                              style={{ width: `${(s.count / total) * 100}%` }} 
-                              className={`${s.color} transition-all duration-1000 ease-out`}
-                            />
-                          ))}
-                        </div>
-                        <div className="grid grid-cols-3 gap-4">
-                          {statuses.map((s, i) => (
-                            <div key={i} className="space-y-1">
-                              <div className="flex items-center gap-2">
-                                <div className={`w-2 h-2 rounded-full ${s.color}`} />
-                                <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">{s.label}</span>
-                              </div>
-                              <p className="text-xl font-black text-white">{s.count} <span className="text-[10px] font-bold text-zinc-600 opacity-50">({Math.round((s.count / total) * 100)}%)</span></p>
-                            </div>
-                          ))}
-                        </div>
-                      </>
-                    );
-                  })()}
-                </div>
-              </div>
-
-              {/* System Health Card */}
-              <div className="p-8 rounded-[40px] gold-bg border border-white/10 group overflow-hidden relative">
-                <div className="absolute top-0 right-0 w-40 h-40 bg-white/20 blur-[80px] -mr-20 -mt-20 rounded-full" />
-                <h4 className="text-lg font-black uppercase text-black tracking-tight mb-1 relative z-10">Integridade</h4>
-                <p className="text-[10px] font-black text-black/60 uppercase tracking-widest mb-8 relative z-10">Status operacional</p>
-                
-                <div className="space-y-6 relative z-10">
-                  <div className="p-4 rounded-2xl bg-black/5 border border-black/10 flex items-center justify-between">
-                    <span className="text-[10px] font-black text-black uppercase">Firebase Auth</span>
-                    <span className="text-[10px] font-black text-black px-2 py-1 bg-white/40 rounded-lg">ATIVO</span>
-                  </div>
-                  <div className="p-4 rounded-2xl bg-black/5 border border-black/10 flex items-center justify-between">
-                    <span className="text-[10px] font-black text-black uppercase">Cloud Firestore</span>
-                    <span className="text-[10px] font-black text-black px-2 py-1 bg-white/40 rounded-lg">OTIMIZADO</span>
-                  </div>
-                  <div className="p-4 rounded-2xl bg-black/5 border border-black/10 flex items-center justify-between">
-                    <span className="text-[10px] font-black text-black uppercase">Sincronização</span>
-                    <span className="text-[10px] font-black text-black px-2 py-1 bg-white/40 rounded-lg flex items-center gap-1.5 leading-none">
-                      <div className="w-1.5 h-1.5 rounded-full bg-black animate-pulse" />
-                      AUTO
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
         {tab === 'ACESSOS' && userRole === 'admin' && (
           <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-3xl max-w-xl mx-auto w-full">
             <h3 className="text-xl font-black uppercase mb-2">Criar Novo Funcionário/Acesso</h3>
@@ -5196,58 +4764,22 @@ const AdminPanel = ({
 
         {tab === 'FINANCEIRO' && (
           <div className="space-y-6">
-            <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-10">
-              <div className="space-y-1">
-                <h3 className="text-2xl font-black uppercase tracking-tighter gold-gradient leading-none">Gestão Financeira</h3>
-                <p className="text-zinc-500 font-bold text-[10px] uppercase tracking-[0.2em] opacity-80">Controle de pagamentos e auditoria por competição.</p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-4 bg-zinc-900/30 p-2 rounded-3xl border border-zinc-800/50">
-                <div className="flex flex-col gap-1 px-2">
-                  <label className="text-[8px] font-black text-zinc-600 uppercase tracking-[0.2em] ml-1">Competição Alvo:</label>
-                  <select
-                    value={financeCompId}
-                    onChange={(e) => setFinanceCompId(e.target.value)}
-                    className="bg-black border border-zinc-800 rounded-xl py-2 px-4 text-[10px] font-black text-amber-500 outline-none focus:border-amber-500 transition-all min-w-[220px] cursor-pointer hover:bg-zinc-900"
-                  >
-                    {competitions.map(c => (
-                      <option key={c.id} value={c.id}>{c.title} {c.isActive ? '• ATIVA' : ''}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="flex p-1 bg-black rounded-2xl border border-zinc-800">
-                  {[
-                    { id: 'RESUMO', label: 'DASHBOARD', icon: BarChart3 },
-                    { id: 'PENDING', label: 'PENDENTES', icon: Zap },
-                    { id: 'REALIZED', label: 'REALIZADOS', icon: CheckCircle2 }
-                  ].map((t) => (
-                    <button
-                      key={t.id}
-                      onClick={() => { setFinanceTab(t.id as any); setAuditUserId(null); }}
-                      className={`px-5 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all flex items-center gap-2 ${
-                        financeTab === t.id ? 'gold-bg text-black shadow-lg shadow-amber-500/10' : 'text-zinc-600 hover:text-zinc-400'
-                      }`}
-                    >
-                      <t.icon className="w-3.5 h-3.5" />
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
+            <div className="flex flex-col gap-1 mb-10">
+              <h3 className="text-xl font-black uppercase tracking-tighter gold-gradient">Gestão Financeira e Premiações</h3>
+              <p className="text-zinc-600 font-bold text-[10px] uppercase tracking-[0.2em]">Painel administrativo de pagamentos e auditoria.</p>
             </div>
 
-            <div className="bg-zinc-950 border border-zinc-900 rounded-[40px] overflow-hidden min-h-[600px] shadow-2xl relative">
+            <div className="bg-zinc-950/50 border border-zinc-900 rounded-[40px] overflow-hidden">
               {auditUserId ? (
-                <div className="animate-in fade-in slide-in-from-right-4 duration-500">
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                   <div className="p-8 border-b border-zinc-900 bg-zinc-900/20 flex flex-col md:flex-row justify-between items-center gap-6">
                     <div className="flex items-center gap-5">
-                      <div className="w-14 h-14 rounded-2xl gold-bg flex items-center justify-center shadow-xl shadow-amber-500/10">
-                        <UserIcon className="w-7 h-7 text-black" />
+                      <div className="w-12 h-12 rounded-2xl gold-bg flex items-center justify-center">
+                        <UserIcon className="w-6 h-6 text-black" />
                       </div>
                       <div>
-                        <h4 className="text-xl font-black uppercase tracking-tight text-white mb-0.5">{approvedUsers.find(u => u.uid === auditUserId)?.displayName}</h4>
-                        <p className="text-[10px] font-black text-amber-500/70 uppercase tracking-widest">Auditoria de Desempenho Social</p>
+                        <h4 className="text-lg font-black uppercase tracking-tight text-white">{approvedUsers.find(u => u.uid === auditUserId)?.displayName}</h4>
+                        <p className="text-[10px] font-black text-amber-500/70 uppercase tracking-widest">Auditoria de Desempenho e Links</p>
                       </div>
                     </div>
 
@@ -5255,8 +4787,8 @@ const AdminPanel = ({
                       {(() => {
                         const user = approvedUsers.find(u => u.uid === auditUserId);
                         return user && (
-                          <div className="flex items-center gap-3 bg-black border border-zinc-800 rounded-2xl px-6 py-3 ml-4 group">
-                            <span className="text-[9px] font-black text-zinc-600 uppercase tracking-widest group-hover:text-amber-500 transition-colors">PIX KEY:</span>
+                          <div className="flex items-center gap-3 bg-black border border-zinc-800 rounded-2xl px-5 py-3 ml-4">
+                            <span className="text-[9px] font-black text-zinc-600 uppercase tracking-widest">PIX:</span>
                             <input
                               type="text"
                               defaultValue={user.pixKey || ''}
@@ -5271,14 +4803,14 @@ const AdminPanel = ({
                                   } catch (e) { alert('Erro ao salvar PIX'); }
                                 }
                               }}
-                              className={`bg-transparent border-none p-0 text-[11px] font-black text-white focus:ring-0 outline-none w-48 selection:bg-amber-500 selection:text-black ${userRole !== 'admin' ? 'cursor-not-allowed opacity-50 text-zinc-500' : 'cursor-text'}`}
+                              className={`bg-transparent border-none p-0 text-[11px] font-black text-amber-500 focus:ring-0 outline-none w-48 ${userRole !== 'admin' ? 'cursor-not-allowed opacity-50' : 'cursor-text'}`}
                             />
                           </div>
                         );
                       })()}
                       <button
                         onClick={() => setAuditUserId(null)}
-                        className="px-8 py-3.5 bg-zinc-900 text-zinc-400 font-black rounded-2xl text-[10px] flex items-center gap-3 hover:bg-zinc-800 hover:text-white transition-all uppercase tracking-widest border border-zinc-800"
+                        className="px-6 py-3 bg-zinc-800 text-white font-black rounded-2xl text-[10px] flex items-center gap-3 hover:bg-zinc-700 transition-all uppercase tracking-widest"
                       >
                         <ChevronLeft className="w-4 h-4" /> VOLTAR À LISTA
                       </button>
@@ -5286,56 +4818,45 @@ const AdminPanel = ({
                   </div>
 
                   <div className="min-h-[400px]">
-                    <ListHeader columns={['REDES', 'LINK DO VÍDEO', 'STATUS', 'MÉTRICAS', 'CONTROLE']} gridClass="grid-cols-[80px_1fr_120px_150px_200px]" />
+                      columns={['PLATAFORMA', 'LINK DO VÍDEO', 'STATUS', 'MÉTRICAS', 'AÇÕES']}
                     <div className="max-h-[600px] overflow-y-auto custom-scrollbar">
                       {posts.filter(p => p.userId === auditUserId).map(post => (
-                        <div key={post.id} className="grid grid-cols-[80px_1fr_120px_150px_200px] gap-4 items-center py-4 px-8 hover:bg-white/[0.02] transition-all border-b border-zinc-900/50 last:border-0">
+                        <div key={post.id} className="grid grid-cols-[80px_1fr_120px_150px_180px] gap-4 items-center py-3 px-8 hover:bg-white/[0.03] transition-all border-b border-zinc-900/50 last:border-0 h-16">
                           <div className="flex justify-center">
-                            <div className={`p-2.5 rounded-xl bg-zinc-900/50 border border-zinc-800/50 ${
-                              post.platform === 'tiktok' ? 'text-amber-500' :
-                              post.platform === 'youtube' ? 'text-red-500' :
-                              'text-pink-500'
-                            }`}>
-                              {post.platform === 'tiktok' ? <Zap className="w-4 h-4" /> :
-                               post.platform === 'youtube' ? <TrendingUp className="w-4 h-4" /> :
-                               <Camera className="w-4 h-4" />}
-                            </div>
+                            {post.platform === 'tiktok' ? <Zap className="w-5 h-5 text-amber-500" /> :
+                              post.platform === 'youtube' ? <TrendingUp className="w-5 h-5 text-red-500" /> :
+                                <Camera className="w-5 h-5 text-pink-500" />}
                           </div>
                           <div className="min-w-0">
-                            <p className="font-bold text-[11px] truncate text-zinc-500 select-all hover:text-zinc-200 transition-colors">{post.url}</p>
+                            <p className="font-bold text-[11px] truncate text-zinc-400 select-all">{post.url}</p>
                           </div>
                           <div className="text-center">
-                            <span className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest ${
-                                post.status === 'approved' || post.status === 'synced' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' :
-                                post.status === 'rejected' ? 'bg-red-500/10 text-red-500 border border-red-500/20' :
-                                'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+                            <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-widest ${post.status === 'approved' ? 'bg-emerald-500/10 text-emerald-500' :
+                                post.status === 'rejected' ? 'bg-red-500/10 text-red-500' :
+                                  'bg-amber-500/10 text-amber-500'
                               }`}>
-                              {post.status.toUpperCase()}
+                              {post.status === 'approved' ? 'APROVADO' : post.status === 'rejected' ? 'REJEITADO' : 'PENDENTE'}
                             </span>
                           </div>
-                          <div className="flex items-center justify-center gap-5">
-                            <div className="flex flex-col items-center">
-                              <span className="text-[11px] font-black text-white">{(post.views || 0).toLocaleString()}</span>
-                              <span className="text-[8px] font-black text-zinc-600 uppercase">Views</span>
-                            </div>
-                            <div className="flex flex-col items-center">
-                              <span className="text-[11px] font-black text-white">{(post.likes || 0).toLocaleString()}</span>
-                              <span className="text-[8px] font-black text-zinc-600 uppercase">Likes</span>
-                            </div>
+                          <div className="flex items-center justify-center gap-4">
+                            <span className="text-zinc-600 font-bold text-[10px] uppercase tracking-widest flex items-center gap-1.5"><Eye className="w-3.5 h-3.5 opacity-50" /> {(post.views || 0).toLocaleString()}</span>
+                            <span className="text-zinc-600 font-bold text-[10px] uppercase tracking-widest flex items-center gap-1.5"><Heart className="w-3.5 h-3.5 opacity-50" /> {(post.likes || 0).toLocaleString()}</span>
                           </div>
-                          <div className="flex items-center justify-end gap-2.5">
-                            <a href={post.url} target="_blank" rel="noreferrer" className="p-3 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-500 hover:text-white hover:border-zinc-700 transition-all">
+                          <div className="flex items-center justify-end gap-2">
+                            <a href={post.url} target="_blank" rel="noreferrer" className="p-2 rounded-xl bg-zinc-900 text-zinc-500 hover:text-white hover:bg-zinc-800 transition-all">
                               <ExternalLink className="w-4 h-4" />
                             </a>
                             <button
                               onClick={() => handlePostStatus(post.id, 'approved')}
-                              className={`p-3 rounded-xl border transition-all ${post.status === 'approved' ? 'bg-emerald-500 border-emerald-400 text-black shadow-lg shadow-emerald-500/20' : 'bg-emerald-500/5 border-emerald-500/20 text-emerald-500 hover:bg-emerald-500 hover:text-black'}`}
+                              className={`p-2 rounded-xl transition-all ${post.status === 'approved' ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/20' : 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-black'}`}
+                              title="Aprovar Vídeo"
                             >
                               <CheckCircle2 className="w-4 h-4" />
                             </button>
                             <button
                               onClick={() => handlePostStatus(post.id, 'rejected')}
-                              className={`p-3 rounded-xl border transition-all ${post.status === 'rejected' ? 'bg-red-500 border-red-400 text-black shadow-lg shadow-red-500/20' : 'bg-red-500/5 border-red-500/20 text-red-500 hover:bg-red-500 hover:text-black'}`}
+                              className={`p-2 rounded-xl transition-all ${post.status === 'rejected' ? 'bg-red-500 text-black shadow-lg shadow-red-500/20' : 'bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-black'}`}
+                              title="Rejeitar Vídeo"
                             >
                               <XCircle className="w-4 h-4" />
                             </button>
@@ -5343,224 +4864,74 @@ const AdminPanel = ({
                         </div>
                       ))}
                       {posts.filter(p => p.userId === auditUserId).length === 0 && (
-                        <div className="py-32 text-center flex flex-col items-center justify-center">
-                          <History className="w-12 h-12 text-zinc-900 mb-4" />
-                          <p className="text-zinc-700 font-black uppercase text-xs tracking-widest">Nenhum post registrado</p>
+                        <div className="py-20 text-center">
+                          <p className="text-zinc-700 font-black uppercase text-[10px] tracking-[0.3em]">Nenhum vídeo registrado.</p>
                         </div>
                       )}
                     </div>
                   </div>
                 </div>
               ) : (
-                <div className="animate-in fade-in duration-700">
-                    {financeTab === 'RESUMO' && (
-                      <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 p-8 space-y-8">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                          {/* Financial Stats Cards */}
-                          <div className="p-8 rounded-[40px] bg-zinc-950 border border-zinc-900 group relative overflow-hidden">
-                            <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 blur-[60px]" />
-                            <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-500 mb-6">
-                              <Trophy className="w-6 h-6" />
-                            </div>
-                            <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-1">Total Confirmado (Pago)</p>
-                            <h4 className="text-3xl font-black text-white tracking-tight">R$ {totalPaidGlobal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h4>
-                          </div>
+                <div className="animate-in fade-in duration-500">
+                  <div className="flex flex-col gap-4 mb-6">
+                    <div className="flex p-1 bg-zinc-900 rounded-xl border border-zinc-800 self-start w-fit">
+                      <button onClick={() => setFinanceTab('PENDING')} className={`px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-widest transition-all ${financeTab === 'PENDING' ? 'bg-amber-500/20 text-amber-500' : 'text-zinc-500 hover:text-zinc-300'}`}>Pagamento Pendente</button>
+                      <button onClick={() => setFinanceTab('REALIZED')} className={`px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-widest transition-all ${financeTab === 'REALIZED' ? 'bg-emerald-500/20 text-emerald-500' : 'text-zinc-500 hover:text-zinc-300'}`}>Pagamento Realizado</button>
+                    </div>
 
-                          <div className="p-8 rounded-[40px] bg-zinc-950 border border-zinc-900 group relative overflow-hidden">
-                            <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 blur-[60px]" />
-                            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center text-amber-500 mb-6">
-                              <Zap className="w-6 h-6" />
-                            </div>
-                            <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-1">Projeção de Saída (Pendente)</p>
-                            <h4 className="text-3xl font-black text-amber-500 tracking-tight">R$ {totalPendingGlobal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h4>
-                          </div>
-
-                          <div className="p-8 rounded-[40px] bg-zinc-900 border border-zinc-800 group relative overflow-hidden">
-                            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 blur-[60px]" />
-                            <div className="w-12 h-12 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-500 mb-6">
-                              <BarChart3 className="w-6 h-6" />
-                            </div>
-                            <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-1">Custo Médio por Post (CPP)</p>
-                            <h4 className="text-3xl font-black text-white tracking-tight">R$ {cpp.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h4>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                          {/* ROI Rankings */}
-                          <div className="p-8 rounded-[40px] bg-zinc-950 border border-zinc-900">
-                            <div className="flex items-center justify-between mb-8">
-                              <div>
-                                <h4 className="text-lg font-black uppercase text-white tracking-tight">Top 5 Criadores (ROI)</h4>
-                                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest text-amber-500/80">Views geradas por cada R$ 1,00 pago</p>
-                              </div>
-                              <Award className="w-6 h-6 text-amber-500 opacity-50" />
-                            </div>
-                            <div className="space-y-4">
-                              {topROIUsers.map((u: any, i) => (
-                                <div key={u.uid} className="flex items-center justify-between p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800/50">
-                                  <div className="flex items-center gap-4">
-                                    <span className="text-xs font-black text-zinc-700 w-4">{i + 1}º</span>
-                                    <div className="w-10 h-10 rounded-xl overflow-hidden border border-zinc-800">
-                                      <img src={u.photoURL || `https://ui-avatars.com/api/?name=${u.displayName}`} alt="" className="w-full h-full object-cover" />
-                                    </div>
-                                    <div>
-                                      <p className="text-xs font-black text-zinc-200 uppercase">{u.displayName}</p>
-                                      <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">{u.totalViewsCount?.toLocaleString()} views totais • {u.postsCount || 0} posts</p>
-                                    </div>
-                                  </div>
-                                  <div className="text-right">
-                                    <p className="text-sm font-black text-emerald-500">{u.roi.toFixed(0)} <span className="text-[9px] text-zinc-600">V/R$</span></p>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-
-                          {/* Top Earnings */}
-                          <div className="p-8 rounded-[40px] bg-zinc-950 border border-zinc-900">
-                            <div className="flex items-center justify-between mb-8">
-                              <div>
-                                <h4 className="text-lg font-black uppercase text-white tracking-tight">Maiores Ganhadores</h4>
-                                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Acumulado Histórico (Lifetime)</p>
-                              </div>
-                              <Trophy className="w-6 h-6 text-emerald-500 opacity-50" />
-                            </div>
-                            <div className="space-y-4">
-                              {[...approvedUsers]
-                                .sort((a, b) => (b.lifetimeEarnings || 0) - (a.lifetimeEarnings || 0))
-                                .slice(0, 5)
-                                .map((u, i) => (
-                                  <div key={u.uid} className="flex items-center justify-between p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800/50">
-                                    <div className="flex items-center gap-4">
-                                      <span className="text-xs font-black text-zinc-700 w-4">{i + 1}º</span>
-                                      <div className="w-10 h-10 rounded-xl overflow-hidden border border-zinc-800">
-                                        <img src={u.photoURL || `https://ui-avatars.com/api/?name=${u.displayName}`} alt="" className="w-full h-full object-cover" />
-                                      </div>
-                                      <div>
-                                        <p className="text-xs font-black text-zinc-200 uppercase">{u.displayName}</p>
-                                        <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">
-                                          {u.email.split('@')[0]} • {posts.filter(p => p.userId === u.uid && (p.status === 'approved' || p.status === 'synced')).length} posts
-                                        </p>
-                                      </div>
-                                    </div>
-                                    <div className="text-right">
-                                      <p className="text-sm font-black text-white">R$ {(u.lifetimeEarnings || 0).toLocaleString('pt-BR')}</p>
-                                    </div>
-                                  </div>
-                                ))}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Competition Financial Breakdown */}
-                        <div className="p-8 rounded-[40px] bg-zinc-950 border border-zinc-900">
-                          <div className="flex items-center justify-between mb-8">
-                            <div>
-                              <h4 className="text-lg font-black uppercase text-white tracking-tight">Performance por Competição</h4>
-                              <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Premiações e Balanços</p>
-                            </div>
-                          </div>
-
-                          <div className="space-y-4">
-                            {competitions.map(comp => {
-                              const compTotal = approvedUsers.reduce((sum, u) => sum + (u.competitionStats?.[comp.id]?.balance || 0) + (u.competitionStats?.[comp.id]?.paidTotal || 0), 0);
-                              const compPaid = approvedUsers.reduce((sum, u) => sum + (u.competitionStats?.[comp.id]?.paidTotal || 0), 0);
-                              const percent = compTotal > 0 ? (compPaid / compTotal) * 100 : 0;
-
-                              return (
-                                <div key={comp.id} className="p-5 rounded-3xl bg-zinc-900/40 border border-zinc-900 hover:border-zinc-800 transition-all">
-                                  <div className="flex items-center justify-between mb-3">
-                                    <div className="flex items-center gap-3">
-                                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${comp.isActive ? 'bg-emerald-500/10 text-emerald-500' : 'bg-zinc-800 text-zinc-600'}`}>
-                                        <Trophy className="w-5 h-5" />
-                                      </div>
-                                      <div>
-                                        <h5 className="font-black text-sm uppercase text-zinc-200">{comp.title}</h5>
-                                        <p className="text-[9px] font-black text-zinc-600 uppercase tracking-[0.2em]">{comp.isActive ? 'Em andamento' : 'Finalizada'}</p>
-                                      </div>
-                                    </div>
-                                    <div className="text-right">
-                                      <p className="text-xs font-black text-white">R$ {compTotal.toLocaleString('pt-BR')}</p>
-                                      <p className="text-[9px] font-bold text-zinc-600 uppercase tracking-widest">{Math.round(percent)}% Pago</p>
-                                    </div>
-                                  </div>
-                                  <div className="h-1.5 w-full bg-zinc-950 rounded-full overflow-hidden">
-                                    <motion.div 
-                                      initial={{ width: 0 }}
-                                      animate={{ width: `${percent}%` }}
-                                      transition={{ duration: 1, ease: 'easeOut' }}
-                                      className={`h-full ${percent >= 100 ? 'bg-emerald-500' : 'bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.3)]'}`} 
-                                    />
-                                  </div>
-                                </div>
-                              );
-                            })}
-                            {competitions.length === 0 && (
-                              <div className="py-20 text-center border-2 border-dashed border-zinc-900 rounded-[32px]">
-                                 <p className="text-[10px] font-black text-zinc-700 uppercase tracking-widest">Nenhuma competição registrada para análise financeira.</p>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {(financeTab === 'PENDING' || financeTab === 'REALIZED') && (
-                      <div className="animate-in fade-in duration-500">
-                        <div className="flex items-center gap-2 bg-zinc-900/50 p-1.5 rounded-xl border border-zinc-800/50 overflow-x-auto custom-scrollbar w-full md:w-fit pb-1 md:pb-1.5 mb-6">
-                          {competitions.length === 0 && (
-                            <span className="px-4 py-2 text-zinc-600 font-black text-[10px] uppercase tracking-widest">Nenhuma competição cadastrada</span>
-                          )}
-                          {competitions.map(comp => (
-                            <button
-                              key={comp.id}
-                              onClick={() => setFinanceCompId(comp.id)}
-                              className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all whitespace-nowrap flex items-center gap-1.5 ${financeCompId === comp.id ? 'bg-amber-500/10 text-amber-500 shadow-md border border-amber-500/20' : 'text-zinc-500 hover:text-amber-400 hover:bg-amber-500/5'}`}
-                            >
-                              <Trophy className="w-3.5 h-3.5" /> {comp.title}
-                            </button>
+                    <div className="flex items-center gap-2 bg-zinc-900/50 p-1.5 rounded-xl border border-zinc-800/50 overflow-x-auto custom-scrollbar w-full md:w-fit pb-1 md:pb-1.5">
+                      {competitions.length === 0 && (
+                        <span className="px-4 py-2 text-zinc-600 font-black text-[10px] uppercase tracking-widest">Nenhuma competição cadastrada</span>
+                      )}
+                      {competitions.map(comp => (
+                        <button
+                          key={comp.id}
+                          onClick={() => setFinanceCompId(comp.id)}
+                          className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all whitespace-nowrap flex items-center gap-1.5 ${financeCompId === comp.id ? 'bg-amber-500/10 text-amber-500 shadow-md border border-amber-500/20' : 'text-zinc-500 hover:text-amber-400 hover:bg-amber-500/5'}`}
+                        >
+                          <Trophy className="w-3.5 h-3.5" /> {comp.title}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <ListHeader columns={['INTEGRANTE', 'CHAVE PIX', 'SALDO', 'STATUS', 'GERENCIAR']} gridClass="grid-cols-[1.5fr_1fr_1.5fr_150px_220px]" />
+                  <div className="max-h-[700px] overflow-y-auto custom-scrollbar">
+                    {(() => {
+                      const filteredUsers = approvedUsers.filter(u => {
+                        const b = financeCompId ? (u.competitionStats?.[financeCompId]?.balance || 0) : 0;
+                        const paid = financeCompId ? (u.competitionStats?.[financeCompId]?.paidTotal || 0) : 0;
+                        if (financeTab === 'PENDING') return b > 0;
+                        // REALIZED: teve pagamento confirmado nesta competição
+                        return paid > 0 && b <= 0;
+                      });
+                      
+                      return (
+                        <>
+                          {filteredUsers.map(u => (
+                            <FinancialRow 
+                              key={u.uid} 
+                              user={u} 
+                              onViewLinks={setAuditUserId} 
+                              compId={financeCompId} 
+                              isPaidView={financeTab === 'REALIZED'}
+                            />
                           ))}
-                        </div>
-                        
-                        <ListHeader columns={['INTEGRANTE', 'CHAVE PIX', 'SALDO', 'STATUS', 'GERENCIAR']} gridClass="grid-cols-[1.5fr_1fr_1.5fr_150px_220px]" />
-                        <div className="max-h-[700px] overflow-y-auto custom-scrollbar">
-                          {(() => {
-                            const filteredUsers = approvedUsers.filter(u => {
-                              const b = financeCompId ? (u.competitionStats?.[financeCompId]?.balance || 0) : 0;
-                              const paid = financeCompId ? (u.competitionStats?.[financeCompId]?.paidTotal || 0) : 0;
-                              if (financeTab === 'PENDING') return b > 0;
-                              // REALIZED: teve pagamento confirmado nesta competição
-                              return paid > 0 && b <= 0;
-                            });
-                            
-                            return (
-                              <>
-                                {filteredUsers.map(u => (
-                                  <FinancialRow 
-                                    key={u.uid} 
-                                    user={u} 
-                                    onViewLinks={setAuditUserId} 
-                                    compId={financeCompId} 
-                                    isPaidView={financeTab === 'REALIZED'}
-                                  />
-                                ))}
-                                
-                                {filteredUsers.length === 0 && (
-                                  <div className="py-32 text-center">
-                                    <div className="w-16 h-16 bg-zinc-900 rounded-full flex items-center justify-center mx-auto mb-4 border border-zinc-800">
-                                      <Users className="w-8 h-8 text-zinc-700" />
-                                    </div>
-                                    <p className="text-zinc-700 font-black uppercase text-[10px] tracking-[0.3em]">
-                                      Nenhum integrante {financeTab === 'PENDING' ? 'com pagamento pendente' : 'sem pagamentos pendentes'} nesta aba.
-                                    </p>
-                                  </div>
-                                )}
-                              </>
-                            );
-                          })()}
-                        </div>
-                      </div>
-                    )}
+                          
+                          {filteredUsers.length === 0 && (
+                            <div className="py-32 text-center">
+                              <div className="w-16 h-16 bg-zinc-900 rounded-full flex items-center justify-center mx-auto mb-4 border border-zinc-800">
+                                <Users className="w-8 h-8 text-zinc-700" />
+                              </div>
+                              <p className="text-zinc-700 font-black uppercase text-[10px] tracking-[0.3em]">
+                                Nenhum integrante {financeTab === 'PENDING' ? 'com pagamento pendente' : 'sem pagamentos pendentes'} nesta aba.
+                              </p>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
                 </div>
               )}
             </div>

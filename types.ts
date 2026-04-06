@@ -1,5 +1,5 @@
 export type Platform = 'tiktok' | 'youtube' | 'instagram';
-export type PostStatus = 'pending' | 'approved' | 'rejected';
+export type PostStatus = 'pending' | 'approved' | 'rejected' | 'synced' | 'banned';
 export type UserRole = 'admin' | 'auditor' | 'administrativo' | 'user';
 
 export interface User {
@@ -26,6 +26,7 @@ export interface User {
   password?: string;
   lifetimeEarnings?: number;
   pixKey?: string;
+  approvedAt?: number;
   // Social media handles
   tiktok?: string;
   instagram?: string;
@@ -46,6 +47,8 @@ export interface User {
     dailySaves: number;
     dailyPosts: number;
     dailyInstaPosts: number;
+    balance?: number;
+    paidTotal?: number;
   }>;
 }
 
@@ -75,6 +78,8 @@ export interface Post {
   shares: number;
   saves: number;
   timestamp: number;
+  competitionId?: string;
+  approvedAt?: number;
 }
 
 export interface Season {
