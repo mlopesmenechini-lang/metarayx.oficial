@@ -1,7 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, setPersistence, browserLocalPersistence, onAuthStateChanged } from 'firebase/auth';
 
-import { getFirestore, doc, getDoc, getDocs, collection, onSnapshot, setDoc, updateDoc, deleteDoc, query, where, orderBy, limit, getDocFromServer, addDoc, serverTimestamp } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, getDocs, collection, onSnapshot, setDoc, updateDoc, deleteDoc, query, where, orderBy, limit, getDocFromServer, addDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import fallbackFirebaseConfig from './firebase-applet-config.json';
 
 const firebaseConfig = {
@@ -14,7 +14,7 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || fallbackFirebaseConfig.measurementId,
 };
 
-// Debug: Mostrar apenas início e fim da chave para segurança
+// Debug: Mostrar apenas in├¡cio e fim da chave para seguran├ºa
 console.log('Firebase Init - Project:', firebaseConfig.projectId);
 if (firebaseConfig.apiKey) {
   console.log('API Key Check:', `${firebaseConfig.apiKey.slice(0, 5)}...${firebaseConfig.apiKey.slice(-4)}`);
@@ -97,5 +97,5 @@ async function testConnection() {
 }
 testConnection();
 
-export { doc, getDoc, getDocs, collection, onSnapshot, setDoc, updateDoc, deleteDoc, query, where, orderBy, limit, signInWithPopup, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, addDoc, serverTimestamp, onAuthStateChanged };
+export { doc, getDoc, getDocs, collection, onSnapshot, setDoc, updateDoc, deleteDoc, query, where, orderBy, limit, signInWithPopup, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, addDoc, serverTimestamp, onAuthStateChanged, writeBatch };
 

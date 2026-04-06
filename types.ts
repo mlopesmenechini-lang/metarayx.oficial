@@ -23,9 +23,30 @@ export interface User {
   dailyPosts: number;
   dailyInstaPosts?: number;
   photoURL?: string;
-  password?: string; // Added for administrative management
+  password?: string;
   lifetimeEarnings?: number;
   pixKey?: string;
+  // Social media handles
+  tiktok?: string;
+  instagram?: string;
+  youtube?: string;
+  userInstagram?: string[];
+  competitionStats?: Record<string, {
+    views: number;
+    likes: number;
+    comments: number;
+    shares: number;
+    saves: number;
+    posts: number;
+    instaPosts: number;
+    dailyViews: number;
+    dailyLikes: number;
+    dailyComments: number;
+    dailyShares: number;
+    dailySaves: number;
+    dailyPosts: number;
+    dailyInstaPosts: number;
+  }>;
 }
 
 export interface Transaction {
@@ -33,8 +54,12 @@ export interface Transaction {
   userId: string;
   amount: number;
   timestamp: number;
-  status: 'paid';
+  type?: 'credit' | 'debit';
+  description?: string;
+  status: 'paid' | 'pending' | 'credit';
   auditorId?: string;
+  userName?: string;
+  competitionId?: string;
 }
 
 export interface Post {
@@ -103,6 +128,11 @@ export interface Competition {
   mentions?: string;
   bonuses?: string;
   viewBonus?: number;
+  rankingMetric?: string;
+  goalTarget?: number;
+  goalMetric?: string;
+  instaBonus?: string;
+  lastDailyReset?: number;
 }
 
 export interface CompetitionRegistration {
