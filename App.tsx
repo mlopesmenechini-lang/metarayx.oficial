@@ -12,7 +12,7 @@ import {
   TrendingUp, Users, Zap, Calendar, MessageSquare, Menu, X, ChevronLeft, ExternalLink,
   Mail, Lock, User as UserIcon, Eye, EyeOff, Loader2, RefreshCw, Crown, Trash2,
   Heart, Share2, Bookmark, Bell, Check, Camera, BarChart3, ArrowLeft, BookOpen, Shield, Star, ChevronRight, Target,
-  Award, UserX, Sparkles, CreditCard, Coins, DollarSign, Info
+  Award, UserX, Sparkles, CreditCard, Coins, DollarSign, Info, Archive
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { syncViewsWithApify, syncSinglePostWithApify, updateUserMetrics, repairAllUserMetrics } from './services/apifyService';
@@ -1299,6 +1299,7 @@ const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [pendingUsers, setPendingUsers] = useState<User[]>([]);
   const [approvedUsers, setApprovedUsers] = useState<User[]>([]);
+  const [archivedUsers, setArchivedUsers] = useState<User[]>([]);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [globalSyncing, setGlobalSyncing] = useState(false);
   const [settings, setSettings] = useState<{ apifyKey: string }>({ apifyKey: '' });
@@ -1551,18 +1552,25 @@ const App: React.FC = () => {
     // Admin/Staff: Users Listeners
     let unsubPendingUsers = () => { };
     let unsubApprovedUsers = () => { };
+    let unsubArchivedUsers = () => { };
 
     if (isStaff) {
-      const pendingUsersQuery = query(collection(db, 'users'), where('isApproved', '==', false));
-      unsubPendingUsers = onSnapshot(pendingUsersQuery, (snapshot) => {
-        const users = snapshot.docs.map(doc => sanitizeObject(doc.data()) as User);
-        setPendingUsers(users.filter(u => !(u as any).isRejected));
+      // Listener para todos os usuários para distribuir por estado (mais simples que múltiplos filtros complexos no Firestore)
+      const usersQuery = query(collection(db, 'users'));
+      const unsubUsers = onSnapshot(usersQuery, (snapshot) => {
+        const allUsers = snapshot.docs.map(doc => sanitizeObject(doc.data()) as User);
+        
+        // PENDENTES: isApproved: false E não arquivado E não rejeitado
+        setPendingUsers(allUsers.filter(u => !u.isApproved && !u.isArchived && !(u as any).isRejected));
+        
+        // APROVADOS: isApproved: true E não arquivado
+        setApprovedUsers(allUsers.filter(u => u.isApproved && !u.isArchived));
+        
+        // ARQUIVADOS: isArchived: true
+        setArchivedUsers(allUsers.filter(u => u.isArchived));
       }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
-
-      const approvedUsersQuery = query(collection(db, 'users'), where('isApproved', '==', true));
-      unsubApprovedUsers = onSnapshot(approvedUsersQuery, (snapshot) => {
-        setApprovedUsers(snapshot.docs.map(doc => sanitizeObject(doc.data()) as User));
-      }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
+      
+      unsubPendingUsers = unsubUsers; // Alias para manter a lógica de limpeza original
     }
 
     // Suggestions Listener
@@ -1775,23 +1783,12 @@ const App: React.FC = () => {
   };
 
   const handleUserApproval = async (userId: string, isApproved: boolean) => {
-    if (!isApproved) {
-      setConfirmModal({
-        isOpen: true,
-        title: 'REMOVER USUÁRIO',
-        message: 'TEM CERTEZA QUE DESEJA REMOVER ESTE USUÁRIO? ELE PERDERÁ O ACESSO AO HUB.',
-        onConfirm: async () => {
-          try {
-            await updateDoc(doc(db, 'users', userId), { isApproved, approvedAt: isApproved ? Date.now() : undefined });
-          } catch (error) {
-            handleFirestoreError(error, OperationType.UPDATE, `users/${userId}`);
-          }
-        }
-      });
-      return;
-    }
     try {
-      await updateDoc(doc(db, 'users', userId), { isApproved, approvedAt: isApproved ? Date.now() : undefined });
+      await updateDoc(doc(db, 'users', userId), { 
+        isApproved, 
+        approvedAt: isApproved ? Date.now() : null,
+        isArchived: false // Sempre que aprova ou desativa, garante que não está arquivado
+      });
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `users/${userId}`);
     }
@@ -1800,25 +1797,46 @@ const App: React.FC = () => {
   const handleDeleteUser = async (userId: string) => {
     setConfirmModal({
       isOpen: true,
-      title: 'Remover Solicitação',
-      message: 'Tem certeza que deseja apagar os dados desta solicitação de acesso pendente? O usuário não poderá mais fazer login.',
+      title: 'EXCLUIR USUÁRIO',
+      message: 'TEM CERTEZA QUE DESEJA APAGAR PERMANENTEMENTE ESTE USUÁRIO E TODOS OS SEUS DADOS? ESTA AÇÃO NÃO PODE SER DESFEITA.',
       onConfirm: async () => {
         try {
           await deleteDoc(doc(db, 'users', userId));
-          alert('Solicitação removida com sucesso!');
+          alert('Usuário excluído com sucesso!');
         } catch (error: any) {
           console.error('Erro ao deletar usuário:', error);
           if (error.code === 'permission-denied') {
-            // Fallback: se não tiver permissão de deletar, marca como rejeitado
             try {
               await updateDoc(doc(db, 'users', userId), { isApproved: false, isRejected: true });
-              alert('Solicitação marcada como rejeitada. Para deletar definitivamente, publique as Regras atualizadas no Firebase Console.');
+              alert('O usuário não pôde ser excluído totalmente, mas foi marcado como rejeitado.');
             } catch (e2) {
-              alert('Erro ao remover solicitação. Verifique as regras do Firebase.');
+              alert('Erro ao remover usuário. Verifique as regras do Firebase.');
             }
           } else {
             alert(`Erro ao remover: ${error.message}`);
           }
+        }
+      }
+    });
+  };
+
+  const handleArchiveUser = async (userId: string, archive: boolean) => {
+    setConfirmModal({
+      isOpen: true,
+      title: archive ? 'ARQUIVAR USUÁRIO' : 'RESTAURAR USUÁRIO',
+      message: archive 
+        ? 'TEM CERTEZA QUE DESEJA ARQUIVAR ESTE USUÁRIO? ELE NÃO APARECERÁ MAIS NAS LISTAS ATIVAS, MAS SEUS DADOS SERÃO PRESERVADOS.' 
+        : 'DESEJA RESTAURAR ESTE USUÁRIO PARA A LISTA DE SOLICITAÇÕES PENDENTES?',
+      onConfirm: async () => {
+        try {
+          await updateDoc(doc(db, 'users', userId), { 
+            isArchived: archive,
+            isApproved: false // Ao arquivar ou restaurar, o usuário deve ser re-avaliado ou ficar inativo
+          });
+          alert(archive ? 'Usuário arquivado!' : 'Usuário restaurado para pendentes!');
+        } catch (error) {
+          console.error('Erro ao arquivar/restaurar usuário:', error);
+          alert('Erro ao processar ação.');
         }
       }
     });
@@ -2499,6 +2517,7 @@ const App: React.FC = () => {
                     posts={posts}
                     pendingUsers={pendingUsers}
                     approvedUsers={approvedUsers}
+                    archivedUsers={archivedUsers}
                     settings={settings}
                     competitions={competitions}
                     registrations={registrations}
@@ -2511,6 +2530,7 @@ const App: React.FC = () => {
                     handlePostStatus={handlePostStatus}
                     handleUserApproval={handleUserApproval}
                     handleDeleteUser={handleDeleteUser}
+                    handleArchiveUser={handleArchiveUser}
                     handleRegistrationStatus={handleRegistrationStatus}
                     handleDeleteRegistration={handleDeleteRegistration}
                     handleResetDailyRanking={handleResetDailyRanking}
@@ -4166,12 +4186,14 @@ const UserListRow = ({
   onViewLinks,
   onEdit,
   onRemove,
+  onArchive,
   onUpdateRole
 }: {
   user: User,
   onViewLinks: (uid: string) => void,
   onEdit: (user: User | any) => void,
   onRemove: (uid: string) => void,
+  onArchive: (uid: string) => void,
   onUpdateRole: (uid: string, role: UserRole) => void
 }) => (
   <div className="grid grid-cols-[1.5fr_1.2fr_1fr_220px] gap-4 items-center py-2 px-8 hover:bg-white/[0.03] transition-all group border-b border-zinc-900/50 last:border-0">
@@ -4207,14 +4229,17 @@ const UserListRow = ({
       >
         EDITAR
       </button>
-      <button onClick={() => onRemove(user.uid)} className="p-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-black transition-all">
+      <button onClick={() => onArchive(user.uid)} className="p-2 rounded-lg bg-amber-500/10 text-amber-500 hover:bg-amber-500 hover:text-black transition-all" title="Arquivar Usuário">
+        <Archive className="w-3.5 h-3.5" />
+      </button>
+      <button onClick={() => onRemove(user.uid)} className="p-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-black transition-all" title="Excluir Definitivamente">
         <Trash2 className="w-3.5 h-3.5" />
       </button>
     </div>
   </div>
 );
 
-const PendingUserRow = ({ user, onApprove, onRemove }: { user: User, onApprove: (uid: string) => void, onRemove: (uid: string) => void }) => (
+const PendingUserRow = ({ user, onApprove, onRemove, onArchive }: { user: User, onApprove: (uid: string) => void, onRemove: (uid: string) => void, onArchive: (uid: string) => void }) => (
   <div className="grid grid-cols-[1.5fr_1.5fr_200px] gap-4 items-center py-2 px-8 hover:bg-white/[0.03] transition-all group border-b border-zinc-900/50 last:border-0">
     <div className="flex items-center gap-3 min-w-0">
       <img src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}`} className="w-8 h-8 rounded-lg object-cover shrink-0" alt="" />
@@ -4225,7 +4250,28 @@ const PendingUserRow = ({ user, onApprove, onRemove }: { user: User, onApprove: 
       <button onClick={() => onApprove(user.uid)} className="px-4 py-1.5 rounded-lg bg-emerald-500 text-black font-black text-[10px] hover:scale-105 transition-all">
         APROVAR
       </button>
-      <button onClick={() => onRemove(user.uid)} className="p-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-black transition-all">
+      <button onClick={() => onArchive(user.uid)} className="p-2 rounded-lg bg-amber-500/10 text-amber-500 hover:bg-amber-500 hover:text-black transition-all" title="Arquivar Solicitação">
+        <Archive className="w-3.5 h-3.5" />
+      </button>
+      <button onClick={() => onRemove(user.uid)} className="p-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-black transition-all" title="Excluir Solicitação">
+        <Trash2 className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  </div>
+);
+
+const ArchivedUserRow = ({ user, onRestore, onRemove }: { user: User, onRestore: (uid: string) => void, onRemove: (uid: string) => void }) => (
+  <div className="grid grid-cols-[1.5fr_1.5fr_200px] gap-4 items-center py-2 px-8 hover:bg-white/[0.03] transition-all group border-b border-zinc-900/50 last:border-0 opacity-60">
+    <div className="flex items-center gap-3 min-w-0">
+      <img src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}`} className="w-8 h-8 rounded-lg object-cover shrink-0" alt="" />
+      <span className="font-black text-xs text-white truncate uppercase">{user.displayName}</span>
+    </div>
+    <div className="truncate text-xs font-bold text-zinc-500">{user.email}</div>
+    <div className="flex items-center justify-end gap-2">
+      <button onClick={() => onRestore(user.uid)} className="px-4 py-1.5 rounded-lg bg-amber-500 text-black font-black text-[10px] hover:scale-105 transition-all">
+        RESTAURAR
+      </button>
+      <button onClick={() => onRemove(user.uid)} className="p-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-black transition-all" title="Excluir Permanentemente">
         <Trash2 className="w-3.5 h-3.5" />
       </button>
     </div>
@@ -4405,6 +4451,7 @@ const AdminPanel = ({
   posts,
   pendingUsers,
   approvedUsers,
+  archivedUsers,
   settings,
   competitions,
   registrations,
@@ -4417,6 +4464,7 @@ const AdminPanel = ({
   handlePostStatus,
   handleUserApproval,
   handleDeleteUser,
+  handleArchiveUser,
   handleRegistrationStatus,
   handleDeleteRegistration,
   handleResetDailyRanking,
@@ -4497,6 +4545,7 @@ const AdminPanel = ({
   posts: Post[];
   pendingUsers: User[];
   approvedUsers: User[];
+  archivedUsers: User[];
   settings: { apifyKey: string };
   competitions: Competition[];
   registrations: CompetitionRegistration[];
@@ -4509,6 +4558,7 @@ const AdminPanel = ({
   handlePostStatus: (postId: string, status: PostStatus) => void;
   handleUserApproval: (userId: string, isApproved: boolean) => void;
   handleDeleteUser: (userId: string) => void;
+  handleArchiveUser: (userId: string, archive: boolean) => void;
   handleRegistrationStatus: (regId: string, status: 'approved' | 'rejected' | 'pending') => void;
   handleDeleteRegistration: (regId: string) => void;
   handleResetDailyRanking: (compId?: string) => void;
@@ -4585,7 +4635,7 @@ const AdminPanel = ({
   isCreatingAnn: boolean;
   setIsCreatingAnn: (v: boolean) => void;
 }) => {
-  const [tab, setTab] = useState<'VISAO_GERAL' | 'POSTS' | 'USERS' | 'USERS_APPROVED' | 'COMPETITIONS' | 'SYNC' | 'REGISTROS' | 'AVISOS' | 'FINANCEIRO' | 'ACESSOS' | 'SUGESTOES' | 'RESSINCRONIZACAO' | 'SINCRONIZACAO'>('VISAO_GERAL');
+  const [tab, setTab] = useState<'VISAO_GERAL' | 'POSTS' | 'USERS' | 'USERS_APPROVED' | 'COMPETITIONS' | 'SYNC' | 'REGISTROS' | 'AVISOS' | 'FINANCEIRO' | 'ACESSOS' | 'SUGESTOES' | 'RESSINCRONIZACAO' | 'SINCRONIZACAO' | 'ARCHIVED'>('VISAO_GERAL');
   const [selectedSyncCompId, setSelectedSyncCompId] = useState<string>('ALL');
   const [selectedResetCompId, setSelectedResetCompId] = useState<string>('');
   const [auditUserId, setAuditUserId] = useState<string | null>(null);
@@ -4987,6 +5037,15 @@ const AdminPanel = ({
             className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'USERS_APPROVED' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
           >
             APROVADOS ({approvedUsers.length})
+          </button>
+        )}
+        {/* ARQUIVADOS - visível apenas para admin */}
+        {userRole === 'admin' && (
+          <button
+            onClick={() => { setTab('ARCHIVED'); setAuditUserId(null); setSelectedCompId(null); setSyncDetailCompId(null); }}
+            className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'ARCHIVED' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
+          >
+            ARQUIVADOS ({archivedUsers.length})
           </button>
         )}
         {/* COMPETIÇÕES - visível apenas para admin */}
@@ -6251,7 +6310,8 @@ const AdminPanel = ({
                     user={u}
                     onViewLinks={setAuditUserId}
                     onEdit={setEditingUser}
-                    onRemove={(id) => handleUserApproval(id, false)}
+                    onRemove={handleDeleteUser}
+                    onArchive={() => handleArchiveUser(u.uid, true)}
                     onUpdateRole={handleUpdateUserRole}
                   />
                 ))}
@@ -6320,6 +6380,27 @@ const AdminPanel = ({
               </div>
             )}
           </div>
+        ) : tab === 'ARCHIVED' ? (
+          <div className="space-y-6">
+            <h3 className="text-xl font-black uppercase tracking-tight">Usuários Arquivados</h3>
+            <div className="space-y-1">
+              <ListHeader columns={['USUÁRIO', 'EMAIL', 'AÇÕES']} gridClass="grid-cols-[1.5fr_1.5fr_200px]" />
+              {archivedUsers.map(u => (
+                <ArchivedUserRow
+                  key={u.uid}
+                  user={u}
+                  onRestore={() => handleArchiveUser(u.uid, false)}
+                  onRemove={handleDeleteUser}
+                />
+              ))}
+              {archivedUsers.length === 0 && (
+                <div className="py-20 text-center space-y-4">
+                  <Archive className="w-12 h-12 text-zinc-800 mx-auto" />
+                  <p className="text-zinc-500 font-bold">Nenhum usuário arquivado.</p>
+                </div>
+              )}
+            </div>
+          </div>
         ) : tab === 'USERS' ? (
           <div className="space-y-6">
             <h3 className="text-xl font-black uppercase tracking-tight">Solicitações de Acesso</h3>
@@ -6330,6 +6411,7 @@ const AdminPanel = ({
                   key={u.uid}
                   user={u}
                   onApprove={(id) => handleUserApproval(id, true)}
+                  onArchive={() => handleArchiveUser(u.uid, true)}
                   onRemove={handleDeleteUser}
                 />
               ))}

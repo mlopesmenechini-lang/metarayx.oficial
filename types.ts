@@ -8,6 +8,7 @@ export interface User {
   email: string;
   role: UserRole;
   isApproved: boolean;
+  isArchived?: boolean;
   balance: number;
   totalViews: number;
   totalLikes: number;
