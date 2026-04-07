@@ -12,7 +12,7 @@ import {
   TrendingUp, Users, Zap, Calendar, MessageSquare, Menu, X, ChevronLeft, ExternalLink,
   Mail, Lock, User as UserIcon, Eye, EyeOff, Loader2, RefreshCw, Crown, Trash2,
   Heart, Share2, Bookmark, Bell, Check, Camera, BarChart3, ArrowLeft, BookOpen, Shield, Star, ChevronRight, Target,
-  Award, UserX, Sparkles, CreditCard, Coins
+  Award, UserX, Sparkles, CreditCard, Coins, DollarSign
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { syncViewsWithApify, syncSinglePostWithApify, updateUserMetrics, repairAllUserMetrics } from './services/apifyService';
@@ -6171,10 +6171,8 @@ const AdminPanel = ({
                 insta: acc.insta + (p.platform === 'instagram' ? 1 : 0)
               }), { views: 0, likes: 0, comments: 0, shares: 0, total: 0, insta: 0 });
 
-              // Cálculo Financeiro (ROI/CPM)
-              const compTransactions = transactions.filter(t => t.competitionId === selectedCompId && t.status !== 'rejected');
-              const totalSpent = compTransactions.reduce((sum, t) => sum + t.amount, 0);
-              const cpm = stats.views > 0 ? (totalSpent / (stats.views / 1000)) : 0;
+              // CPM não disponível neste contexto (sem dados de transações financeiras do admin)
+              const cpm = 0;
               const goalPercent = comp.goalTarget ? Math.min((stats.views / comp.goalTarget) * 100, 100) : 0;
 
               // Ranking Top 10 por Views nesta competição
