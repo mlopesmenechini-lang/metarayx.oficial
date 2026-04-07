@@ -4601,6 +4601,44 @@ const AdminPanel = ({
   const [newUserRole, setNewUserRole] = useState<'user' | 'auditor' | 'administrativo' | 'admin'>('user');
   const [creatingUser, setCreatingUser] = useState(false);
   const [syncDetailCompId, setSyncDetailCompId] = useState<string | null>(null);
+  const [validatedPostsLocal, setValidatedPostsLocal] = useState<string[]>([]);
+  const [metaCompId, setMetaCompId] = useState<string>(() => {
+    const active = competitions?.find(c => c.isActive);
+    return active ? active.id : (competitions && competitions.length > 0 ? competitions[0].id : '');
+  });
+
+  const formatGoalNumber = (num: number) => {
+    if (num >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+    return num.toLocaleString();
+  };
+
+  const selectedMetaComp = useMemo(() => 
+    competitions?.find(c => c.id === metaCompId),
+    [competitions, metaCompId]
+  );
+
+  const collectiveProgress = useMemo(() => {
+    if (!selectedMetaComp || !selectedMetaComp.goalTarget) return 0;
+    return approvedUsers.reduce((acc, user) => {
+      const stats = user.competitionStats?.[selectedMetaComp.id];
+      if (!stats) return acc;
+      return acc + (selectedMetaComp.goalMetric === 'likes' ? (stats.likes || 0) : (stats.views || 0));
+    }, 0);
+  }, [approvedUsers, selectedMetaComp]);
+
+  const socialCounts = useMemo(() => {
+    const counts = { tiktok: 0, instagram: 0, youtube: 0 };
+    approvedUsers.forEach(u => {
+      const tt = Array.isArray(u.tiktok) ? u.tiktok : (u.tiktok ? [u.tiktok] : []);
+      const ig = Array.isArray(u.instagram) ? u.instagram : (u.instagram ? [u.instagram] : []);
+      const yt = Array.isArray(u.youtube) ? u.youtube : (u.youtube ? [u.youtube] : []);
+      counts.tiktok += tt.length;
+      counts.instagram += ig.length;
+      counts.youtube += yt.length;
+    });
+    return counts;
+  }, [approvedUsers]);
 
   // --- BI & Performance Calculations ---
   const approvedPosts = posts.filter(p => p.status === 'approved' || p.status === 'synced');
@@ -5015,6 +5053,85 @@ const AdminPanel = ({
               <p className="text-zinc-500 font-bold text-[11px] uppercase tracking-[0.2em] opacity-80">Métricas em tempo real de toda a operação MetaRayx.</p>
             </div>
 
+            {/* Meta Coletiva da Dashboard Admin/Auditor */}
+            {selectedMetaComp && selectedMetaComp.goalTarget && selectedMetaComp.goalTarget > 0 && (
+              <div className="bg-zinc-950/40 border border-amber-500/20 rounded-[32px] p-6 lg:p-8 relative overflow-hidden group">
+                <div className="absolute inset-0 bg-amber-500/3 blur-3xl pointer-events-none group-hover:bg-amber-500/5 transition-all" />
+                
+                <div className="relative z-10">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-6">
+                    <div className="flex items-center gap-4">
+                      <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shadow-2xl shadow-amber-500/10">
+                        <Target className="w-7 h-7 text-amber-500" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-3">
+                          <p className="text-lg font-black text-amber-500 uppercase tracking-tight">Meta Coletiva do Ecossistema</p>
+                          {competitions.length > 1 && (
+                            <select 
+                              value={metaCompId} 
+                              onChange={(e) => setMetaCompId(e.target.value)}
+                              className="bg-zinc-900/50 border border-zinc-800 rounded-lg px-2 py-1 text-[9px] font-black text-amber-500 outline-none focus:border-amber-500 transition-all uppercase"
+                            >
+                              {competitions.filter(c => c.goalTarget && c.goalTarget > 0).map(c => (
+                                <option key={c.id} value={c.id}>{c.title}</option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-[0.2em]">Objetivo compartilhado entre todos os criadores registrados</p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col items-end">
+                      <div className="px-4 py-2 rounded-2xl bg-amber-500/5 border border-amber-500/10 flex items-center gap-3">
+                        <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Progresso:</span>
+                        <span className="text-xl font-black text-amber-400">
+                          {((collectiveProgress / selectedMetaComp.goalTarget) * 100).toFixed(1)}%
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-end">
+                    <div className="space-y-4">
+                      <div className="flex items-baseline gap-3">
+                        <span className="text-5xl font-black text-white tracking-tighter">{formatGoalNumber(collectiveProgress)}</span>
+                        <span className="text-sm font-black text-zinc-600 uppercase tracking-widest">/ {formatGoalNumber(selectedMetaComp.goalTarget)} {selectedMetaComp.goalMetric === 'likes' ? 'CURTIDAS' : 'VIEWS'}</span>
+                      </div>
+                      
+                      <div className="h-4 w-full bg-black rounded-full overflow-hidden border border-zinc-900 p-0.5">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${Math.min((collectiveProgress / selectedMetaComp.goalTarget) * 100, 100)}%` }}
+                          transition={{ duration: 1.5, ease: "easeOut" }}
+                          className="h-full rounded-full bg-gradient-to-r from-amber-600 via-amber-500 to-amber-400 relative"
+                        >
+                          <div className="absolute inset-0 bg-gradient-to-b from-white/20 to-transparent" />
+                          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full animate-[shimmer_2s_infinite]" />
+                        </motion.div>
+                      </div>
+                    </div>
+
+                    <div className="hidden md:flex flex-wrap gap-3 justify-end">
+                      <div className="p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800/50 flex flex-col items-center min-w-[120px]">
+                        <span className="text-[8px] font-black text-zinc-500 uppercase tracking-widest mb-1">MÉTRICA</span>
+                        <span className="text-xs font-black text-white uppercase">{selectedMetaComp.goalMetric}</span>
+                      </div>
+                      <div className="p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800/50 flex flex-col items-center min-w-[120px]">
+                        <span className="text-[8px] font-black text-zinc-500 uppercase tracking-widest mb-1">CRIADORES</span>
+                        <span className="text-xs font-black text-white">{approvedUsers.length}</span>
+                      </div>
+                      <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex flex-col items-center min-w-[120px]">
+                        <span className="text-[8px] font-black text-amber-500/70 uppercase tracking-widest mb-1">RENOVAÇÃO</span>
+                        <span className="text-xs font-black text-amber-500">{collectiveProgress >= selectedMetaComp.goalTarget ? 'LIBERADA' : 'BLOQUEADA'}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Quick Stats Grid - BI & Performance */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {[
@@ -5230,28 +5347,51 @@ const AdminPanel = ({
                 </div>
               </div>
 
-              {/* System Health Card */}
-              <div className="p-8 rounded-[40px] gold-bg border border-white/10 group overflow-hidden relative">
+              {/* Redes Sociais - Substituindo Integridade */}
+              <div className="p-8 rounded-[40px] gold-bg border border-white/10 group overflow-hidden relative flex flex-col justify-between">
                 <div className="absolute top-0 right-0 w-40 h-40 bg-white/20 blur-[80px] -mr-20 -mt-20 rounded-full" />
-                <h4 className="text-lg font-black uppercase text-black tracking-tight mb-1 relative z-10">Integridade</h4>
-                <p className="text-[10px] font-black text-black/60 uppercase tracking-widest mb-8 relative z-10">Status operacional</p>
-                
-                <div className="space-y-6 relative z-10">
-                  <div className="p-4 rounded-2xl bg-black/5 border border-black/10 flex items-center justify-between">
-                    <span className="text-[10px] font-black text-black uppercase">Firebase Auth</span>
-                    <span className="text-[10px] font-black text-black px-2 py-1 bg-white/40 rounded-lg">ATIVO</span>
+                <div>
+                  <h4 className="text-lg font-black uppercase text-black tracking-tight mb-1 relative z-10">Redes Sociais</h4>
+                  <p className="text-[10px] font-black text-black/60 uppercase tracking-widest mb-8 relative z-10">Contas registradas no hub</p>
+                  
+                  <div className="space-y-4 relative z-10">
+                    <div className="p-4 rounded-2xl bg-black/5 border border-black/10 flex items-center justify-between group/item hover:bg-black/10 transition-all">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-black/10 flex items-center justify-center">
+                          <Zap className="w-4 h-4 text-black" />
+                        </div>
+                        <span className="text-[10px] font-black text-black uppercase">TikTok</span>
+                      </div>
+                      <span className="text-lg font-black text-black">{socialCounts.tiktok}</span>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-black/5 border border-black/10 flex items-center justify-between group/item hover:bg-black/10 transition-all">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-black/10 flex items-center justify-center">
+                          <Camera className="w-4 h-4 text-black" />
+                        </div>
+                        <span className="text-[10px] font-black text-black uppercase">Instagram</span>
+                      </div>
+                      <span className="text-lg font-black text-black">{socialCounts.instagram}</span>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-black/5 border border-black/10 flex items-center justify-between group/item hover:bg-black/10 transition-all">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-black/10 flex items-center justify-center">
+                          <Eye className="w-4 h-4 text-black" />
+                        </div>
+                        <span className="text-[10px] font-black text-black uppercase">YouTube</span>
+                      </div>
+                      <span className="text-lg font-black text-black">{socialCounts.youtube}</span>
+                    </div>
                   </div>
-                  <div className="p-4 rounded-2xl bg-black/5 border border-black/10 flex items-center justify-between">
-                    <span className="text-[10px] font-black text-black uppercase">Cloud Firestore</span>
-                    <span className="text-[10px] font-black text-black px-2 py-1 bg-white/40 rounded-lg">OTIMIZADO</span>
-                  </div>
-                  <div className="p-4 rounded-2xl bg-black/5 border border-black/10 flex items-center justify-between">
-                    <span className="text-[10px] font-black text-black uppercase">Sincronização</span>
-                    <span className="text-[10px] font-black text-black px-2 py-1 bg-white/40 rounded-lg flex items-center gap-1.5 leading-none">
-                      <div className="w-1.5 h-1.5 rounded-full bg-black animate-pulse" />
-                      AUTO
-                    </span>
-                  </div>
+                </div>
+
+                <div className="mt-8 pt-4 border-t border-black/10 flex justify-between items-center relative z-10">
+                  <span className="text-[9px] font-black text-black/40 uppercase tracking-widest">Total Geral</span>
+                  <span className="text-xs font-black text-black uppercase tracking-tighter">
+                    {socialCounts.tiktok + socialCounts.instagram + socialCounts.youtube} Canais
+                  </span>
                 </div>
               </div>
             </div>
@@ -5453,6 +5593,19 @@ const AdminPanel = ({
                             </div>
                           </div>
                           <div className="flex items-center justify-end gap-2.5">
+                            <button 
+                              onClick={() => setValidatedPostsLocal(prev => 
+                                prev.includes(post.id) ? prev.filter(id => id !== post.id) : [...prev, post.id]
+                              )}
+                              className={`p-3 rounded-xl transition-all ${
+                                validatedPostsLocal.includes(post.id) 
+                                  ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/20' 
+                                  : 'bg-emerald-500/5 border border-emerald-500/10 text-emerald-500/40 hover:bg-emerald-500/10 hover:text-emerald-500'
+                              }`}
+                              title={validatedPostsLocal.includes(post.id) ? "Conteúdo Validado Localmente" : "Validar Conteúdo (Ilustrativo)"}
+                            >
+                              <ShieldCheck className="w-4 h-4" />
+                            </button>
                             <a href={post.url} target="_blank" rel="noreferrer" className="p-3 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-500 hover:text-white hover:border-zinc-700 transition-all">
                               <ExternalLink className="w-4 h-4" />
                             </a>
