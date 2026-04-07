@@ -5169,12 +5169,14 @@ const AdminPanel = ({
                   )}
                 </div>
                 
-                <button 
-                  onClick={() => setTab('USERS_APPROVED')}
-                  className="mt-6 w-full py-4 rounded-2xl border border-zinc-800 text-[9px] font-black uppercase tracking-widest text-zinc-500 hover:text-white hover:border-zinc-700 transition-all"
-                >
-                  Ver todos os {inactiveUsers.length} inativos
-                </button>
+                {userRole === 'admin' && (
+                  <button 
+                    onClick={() => setTab('USERS_APPROVED')}
+                    className="mt-6 w-full py-4 rounded-2xl border border-zinc-800 text-[9px] font-black uppercase tracking-widest text-zinc-500 hover:text-white hover:border-zinc-700 transition-all"
+                  >
+                    Ver todos os {inactiveUsers.length} inativos
+                  </button>
+                )}
               </div>
             </div>
 
