@@ -455,7 +455,7 @@ const AuthScreen = ({ onLoginSuccess }: { onLoginSuccess: (u: User) => void }) =
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   type="password"
-                  placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
+                  placeholder="********"
                   className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-sm font-bold focus:border-amber-500 outline-none transition-all"
                 />
               </div>
@@ -1418,7 +1418,7 @@ const App: React.FC = () => {
 
               const newUser: User = {
                 uid: firebaseUser.uid,
-                displayName: firebaseUser.displayName || 'Usuário Sem Nome',
+                displayName: firebaseUser.displayName || 'USUÁRIO SEM NOME',
                 email: firebaseUser.email || '',
                 role: (isFirstUser || isAdminEmail) ? 'admin' : 'user',
                 isApproved: (isFirstUser || isAdminEmail),
@@ -1748,8 +1748,8 @@ const App: React.FC = () => {
     if (!isApproved) {
       setConfirmModal({
         isOpen: true,
-        title: 'Remover Usuário',
-        message: 'Tem certeza que deseja remover este usuário? Ele perderá o acesso ao HUB.',
+        title: 'REMOVER USUÁRIO',
+        message: 'TEM CERTEZA QUE DESEJA REMOVER ESTE USUÁRIO? ELE PERDERÁ O ACESSO AO HUB.',
         onConfirm: async () => {
           try {
             await updateDoc(doc(db, 'users', userId), { isApproved, approvedAt: isApproved ? Date.now() : undefined });
@@ -4157,10 +4157,10 @@ const UserListRow = ({
         onChange={(e) => onUpdateRole(user.uid, e.target.value as any)}
         className="bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1 text-[9px] font-black uppercase text-amber-500 outline-none focus:border-amber-500 cursor-pointer w-full max-w-[120px]"
       >
-        <option value="user">ðŸ‘¤ USUÁRIO</option>
-        <option value="auditor">ðŸ” AUDITOR</option>
-        <option value="administrativo">ðŸ¢ ADMIN</option>
-        <option value="admin">ðŸ‘‘ DIRETORIA</option>
+        <option value="user">USUÁRIO</option>
+        <option value="auditor">AUDITOR</option>
+        <option value="administrativo">ADMINISTRATIVO</option>
+        <option value="admin">DIRETORIA</option>
       </select>
     </div>
     <div className="flex items-center justify-end gap-2">
@@ -6070,10 +6070,10 @@ const AdminPanel = ({
                         onChange={(e) => setEditRole(e.target.value as any)}
                         className="w-full bg-black border border-zinc-800 rounded-2xl py-4 px-6 text-sm font-bold focus:border-amber-500 outline-none transition-all text-zinc-300 cursor-pointer"
                       >
-                        <option value="user">👤 Usuário Comum (Criador de Conteúdo)</option>
-                        <option value="auditor">🔍 Auditor — Revisa vídeos postados</option>
-                        <option value="administrativo">🏢 Administrativo — Financeiro + Competições</option>
-                        <option value="admin">👑 Administrador (Diretoria) — Acesso total</option>
+                        <option value="user">USUÁRIO COMUM (CRIADOR DE CONTEÚDO)</option>
+                        <option value="auditor">AUDITOR — REVISA VÍDEOS POSTADOS</option>
+                        <option value="administrativo">ADMINISTRATIVO — FINANCEIRO + COMPETIÇÕES</option>
+                        <option value="admin">ADMINISTRADOR (DIRETORIA) — ACESSO TOTAL</option>
                       </select>
                       <p className="text-[9px] text-zinc-600 font-bold ml-1">⚠️ Alterar a função afeta imediatamente o acesso do usuário</p>
                     </div>
@@ -6227,7 +6227,7 @@ const AdminPanel = ({
                             <div>
                               <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-1">Meta da Competição</p>
                               <h4 className="text-sm font-black text-white uppercase tracking-tight">
-                                {comp.goalTarget ? `${comp.goalTarget.toLocaleString()} ${comp.goalMetric || 'VIEWS'}` : 'Nenhuma meta definida'}
+                                {comp.goalTarget ? `${comp.goalTarget.toLocaleString()} ${comp.goalMetric || 'VIEWS'}` : 'NENHUMA META DEFINIDA'}
                               </h4>
                             </div>
                             <div className="text-right">
@@ -6303,7 +6303,7 @@ const AdminPanel = ({
                           </div>
                         ))}
                         {sortedRanking.length === 0 && (
-                          <p className="text-center py-10 text-zinc-600 font-bold">Nenhum dado de ranking disponível.</p>
+                          <p className="text-center py-10 text-zinc-600 font-bold">NENHUM DADO DE RANKING DISPONÍVEL.</p>
                         )}
                       </div>
                     </div>
@@ -6345,7 +6345,7 @@ const AdminPanel = ({
                           )}
                           {comp.prizesMonthly && comp.prizesMonthly.length > 0 && (
                             <div className="p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800/50">
-                              <p className="text-[9px] font-black text-amber-500 uppercase mb-2">ðŸ† Ranking Mensal (Acumulado do Período)</p>
+                              <p className="text-[9px] font-black text-amber-500 uppercase mb-2">RANKING MENSAL (ACUMULADO DO PERÍODO)</p>
                               <div className="flex flex-wrap gap-2">
                                 {comp.prizesMonthly.map((p, idx) => (
                                   <span key={idx} className="text-[10px] font-bold bg-black px-2 py-1 rounded-lg border border-zinc-800">
@@ -6357,7 +6357,7 @@ const AdminPanel = ({
                           )}
                           {comp.prizesDaily && comp.prizesDaily.length > 0 && (
                             <div className="p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800/50">
-                              <p className="text-[9px] font-black text-blue-400 uppercase mb-2">📅 Premiação Diária (Views do Dia)</p>
+                              <p className="text-[9px] font-black text-blue-400 uppercase mb-2">PREMIAÇÃO DIÁRIA (VIEWS DO DIA)</p>
                               <div className="flex flex-wrap gap-2">
                                 {comp.prizesDaily.map((p, idx) => (
                                   <span key={idx} className="text-[10px] font-bold bg-black px-2 py-1 rounded-lg border border-zinc-800">
@@ -6369,7 +6369,7 @@ const AdminPanel = ({
                           )}
                           {comp.prizes && comp.prizes.length > 0 && (
                             <div className="p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800/50">
-                              <p className="text-[9px] font-black text-emerald-400 uppercase mb-2">📊 Ranking Mensal</p>
+                              <p className="text-[9px] font-black text-emerald-400 uppercase mb-2">RANKING MENSAL</p>
                               <div className="flex flex-wrap gap-2">
                                 {comp.prizes.map((p, idx) => (
                                   <span key={idx} className="text-[10px] font-bold bg-black px-2 py-1 rounded-lg border border-zinc-800">
@@ -6381,7 +6381,7 @@ const AdminPanel = ({
                           )}
                           {comp.prizesInstagram && comp.prizesInstagram.length > 0 && (
                             <div className="p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800/50">
-                              <p className="text-[9px] font-black text-pink-500 uppercase mb-2">📸 Instagram (Quantidade de Posts)</p>
+                              <p className="text-[9px] font-black text-pink-500 uppercase mb-2">INSTAGRAM (QUANTIDADE DE POSTS)</p>
                               <div className="flex flex-wrap gap-2">
                                 {comp.prizesInstagram.map((p, idx) => (
                                   <span key={idx} className="text-[10px] font-bold bg-black px-2 py-1 rounded-lg border border-zinc-800">
