@@ -1303,6 +1303,12 @@ const App: React.FC = () => {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [globalSyncing, setGlobalSyncing] = useState(false);
   const [settings, setSettings] = useState<{ apifyKey: string }>({ apifyKey: '' });
+  const [timerConfig, setTimerConfig] = useState<{ enabled: boolean; endTime: number | null; targetTime: string; message: string }>({
+    enabled: false,
+    endTime: null,
+    targetTime: '20:15',
+    message: ''
+  });
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [postToDelete, setPostToDelete] = useState<string | null>(null);
   const [compToDelete, setCompToDelete] = useState<string | null>(null);
@@ -1518,10 +1524,24 @@ const App: React.FC = () => {
       setCompetitions(snapshot.docs.map(doc => sanitizeObject({ id: doc.id, ...doc.data() }) as Competition));
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'competitions'));
 
+    // Timer Config Listener (público)
+    const unsubTimer = onSnapshot(doc(db, 'settings', 'timer'), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setTimerConfig({
+          enabled: data.enabled || false,
+          endTime: data.endTime || null,
+          targetTime: data.targetTime || '20:15',
+          message: data.message || ''
+        });
+      }
+    }, (error) => console.error('Erro ao carregar timer:', error));
+
     return () => {
       unsubRankings();
       unsubAnn();
       unsubComp();
+      unsubTimer();
     };
   }, [user?.uid]);
 
@@ -1553,8 +1573,16 @@ const App: React.FC = () => {
     let unsubPendingUsers = () => { };
     let unsubApprovedUsers = () => { };
     let unsubArchivedUsers = () => { };
+    let unsubSettings = () => { };
 
     if (isStaff) {
+      // Listener para as configurações globais (ex: chave API)
+      unsubSettings = onSnapshot(doc(db, 'config', 'settings'), (docSnap) => {
+        if (docSnap.exists()) {
+          setSettings(docSnap.data() as { apifyKey: string });
+        }
+      }, (error) => console.error('Erro ao carregar configurações:', error));
+
       // Listener para todos os usuários para distribuir por estado (mais simples que múltiplos filtros complexos no Firestore)
       const usersQuery = query(collection(db, 'users'));
       const unsubUsers = onSnapshot(usersQuery, (snapshot) => {
@@ -1585,6 +1613,7 @@ const App: React.FC = () => {
       unsubPendingUsers();
       unsubApprovedUsers();
       unsubSuggestions();
+      unsubSettings();
     };
   }, [user, user?.role]);
 
@@ -2197,6 +2226,16 @@ const App: React.FC = () => {
     }
   };
 
+  const handleUpdateTimer = async (config: { enabled: boolean; endTime: number | null; targetTime: string; message: string }) => {
+    try {
+      await setDoc(doc(db, 'settings', 'timer'), config);
+      setNotification({ message: 'Configurações do timer atualizadas!', type: 'success' });
+    } catch (error) {
+      console.error('Erro ao atualizar timer:', error);
+      setNotification({ message: 'Erro ao atualizar timer.', type: 'error' });
+    }
+  };
+
   const handleCreateAnnouncement = async () => {
     if (!annMsg) return;
     try {
@@ -2430,6 +2469,7 @@ const App: React.FC = () => {
 
         {/* Main Content */}
         <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
+          <TimerBanner config={timerConfig} />
           <AnnouncementBanner
             announcement={announcements.filter(a => a.isActive !== false && !acknowledgedAnnouncements.includes(a.id))[0]}
             onAcknowledge={handleAcknowledgeAnnouncement}
@@ -2522,6 +2562,8 @@ const App: React.FC = () => {
                     competitions={competitions}
                     registrations={registrations}
                     announcements={announcements}
+                    timerConfig={timerConfig}
+                    handleUpdateTimer={handleUpdateTimer}
                     onSettingsUpdate={(s) => setSettings(s)}
                     editingCompId={editingCompId}
                     setEditingCompId={setEditingCompId}
@@ -4456,6 +4498,8 @@ const AdminPanel = ({
   competitions,
   registrations,
   announcements,
+  timerConfig,
+  handleUpdateTimer,
   onSettingsUpdate,
   editingCompId,
   setEditingCompId,
@@ -4550,6 +4594,8 @@ const AdminPanel = ({
   competitions: Competition[];
   registrations: CompetitionRegistration[];
   announcements: Announcement[];
+  timerConfig: { enabled: boolean; endTime: number | null; message: string };
+  handleUpdateTimer: (config: { enabled: boolean; endTime: number | null; message: string }) => Promise<void>;
   onSettingsUpdate: (s: { apifyKey: string }) => void;
   editingCompId: string | null;
   setEditingCompId: (val: string | null) => void;
@@ -4829,6 +4875,20 @@ const AdminPanel = ({
     setCreatingUser(false);
   };
 
+  const handleSaveApiKey = async () => {
+    if (!apifyKey) {
+      alert('Por favor, insira uma chave antes de salvar.');
+      return;
+    }
+    try {
+      await setDoc(doc(db, 'config', 'settings'), { apifyKey });
+      onSettingsUpdate({ apifyKey });
+      alert('✅ Chave API salva com sucesso!');
+    } catch (error: any) {
+      alert(`❌ Erro ao salvar chave: ${error.message}`);
+    }
+  };
+
   useEffect(() => {
     if (settings.apifyKey && !apifyKey) {
       setApifyKey(settings.apifyKey);
@@ -4889,6 +4949,34 @@ const AdminPanel = ({
     }
   };
 
+  const handleSyncApprovedSequentially = async () => {
+    if (!apifyKey) {
+      alert('Por favor, insira sua chave Apify para sincronizar.');
+      return;
+    }
+    const approvedPosts = posts.filter(p => p.status === 'approved');
+    if (approvedPosts.length === 0) {
+      alert('Nenhum vídeo aprovado para sincronizar.');
+      return;
+    }
+
+    setSyncing(true);
+    try {
+      for (const post of approvedPosts) {
+        setSyncingPostId(post.id);
+        await syncSinglePostWithApify(apifyKey, post);
+        // Important: Update status to synced after successful sync
+        await updateDoc(doc(db, 'posts', post.id), { status: 'synced' });
+      }
+      alert('Sincronização sequencial de todos os vídeos aprovados concluída!');
+    } catch (error: any) {
+      alert(`Erro na sincronização sequencial: ${error.message}`);
+    } finally {
+      setSyncing(false);
+      setSyncingPostId(null);
+    }
+  };
+
   const handleStatusToggle = async (postId: string, newStatus: PostStatus, userId: string) => {
     try {
       await updateDoc(doc(db, 'posts', postId), { status: newStatus });
@@ -4936,15 +5024,23 @@ const AdminPanel = ({
 
         {userRole === 'admin' && (
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 bg-zinc-900/50 p-4 rounded-3xl border border-zinc-800/50">
-            <div className="relative flex-1 sm:w-64">
-              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-              <input
-                type="text"
-                value={apifyKey}
-                onChange={(e) => setApifyKey(e.target.value)}
-                placeholder="Insira sua Chave API aqui"
-                className="w-full bg-black border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-xs font-bold focus:border-amber-500 outline-none transition-all"
-              />
+            <div className="flex items-center gap-2 flex-1 sm:w-80">
+              <div className="relative flex-1">
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                <input
+                  type="text"
+                  value={apifyKey}
+                  onChange={(e) => setApifyKey(e.target.value)}
+                  placeholder="Insira sua Chave API aqui"
+                  className="w-full bg-black border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-xs font-bold focus:border-amber-500 outline-none transition-all"
+                />
+              </div>
+              <button
+                onClick={handleSaveApiKey}
+                className="px-4 py-3 gold-bg text-black font-black rounded-xl hover:scale-105 active:scale-95 transition-all shadow-lg shadow-amber-500/20 text-[10px] uppercase"
+              >
+                Salvar
+              </button>
             </div>
             <div className="flex flex-col gap-1.5 sm:w-64">
               <label className="text-[9px] font-black text-zinc-500 uppercase tracking-widest ml-1 text-center">Resetar Ranking Diário de:</label>
@@ -5073,6 +5169,15 @@ const AdminPanel = ({
             className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'AVISOS' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
           >
             AVISOS
+          </button>
+        )}
+        {/* TIMER - visível apenas para admin */}
+        {userRole === 'admin' && (
+          <button
+            onClick={() => { setTab('TIMER'); setSyncDetailCompId(null); }}
+            className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'TIMER' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
+          >
+            TIMER
           </button>
         )}
         {/* FINANCEIRO - visível para admin, auditor e administrativo */}
@@ -6097,9 +6202,19 @@ const AdminPanel = ({
               </div>
             ) : (
               <div className="space-y-6">
-                <div className="space-y-2">
-                  <h3 className="text-2xl font-black uppercase gold-gradient">Sincronização por Competição</h3>
-                  <p className="text-zinc-500 font-bold text-xs uppercase tracking-widest">Selecione uma competição para sincronizar os links aprovados.</p>
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-zinc-900/30 p-8 rounded-[40px] border border-zinc-800/50">
+                  <div className="space-y-2">
+                    <h3 className="text-2xl font-black uppercase gold-gradient">Sincronização por Competição</h3>
+                    <p className="text-zinc-500 font-bold text-xs uppercase tracking-widest">Selecione uma competição ou processe todos de forma sequencial.</p>
+                  </div>
+                  <button
+                    onClick={handleSyncApprovedSequentially}
+                    disabled={syncing}
+                    className="px-10 py-5 gold-bg text-black font-black rounded-2xl hover:scale-[1.02] transition-all flex items-center justify-center gap-3 shadow-2xl shadow-amber-500/20 disabled:opacity-50"
+                  >
+                    {syncing ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
+                    SINCRONIZAR TUDO (SEQUENCIAL)
+                  </button>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {competitions.map(comp => {
@@ -7560,6 +7675,108 @@ const AdminPanel = ({
               )}
             </div>
           </div>
+        ) : tab === 'TIMER' ? (
+          <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="flex flex-col gap-2">
+              <h3 className="text-2xl font-black uppercase tracking-tight gold-gradient">Configuração do Cronômetro</h3>
+              <p className="text-zinc-500 font-bold text-[10px] uppercase tracking-widest">Configure o contador regressivo global.</p>
+            </div>
+
+            <div className="p-8 rounded-[40px] glass border border-zinc-800 space-y-8 relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-8 opacity-5">
+                <Clock className="w-40 h-40" />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 relative z-10">
+                <div className="space-y-4">
+                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                    <Zap className="w-3 h-3 text-amber-500" /> Status do Timer
+                  </label>
+                  <div 
+                    onClick={() => handleUpdateTimer({ ...timerConfig, enabled: !timerConfig.enabled })}
+                    className={`w-full p-6 rounded-3xl border cursor-pointer transition-all flex items-center justify-between ${timerConfig.enabled ? 'bg-amber-500/10 border-amber-500/50' : 'bg-zinc-900/50 border-zinc-800 hover:border-zinc-700'}`}
+                  >
+                    <div className="space-y-1">
+                      <p className={`text-sm font-black uppercase ${timerConfig.enabled ? 'text-amber-500' : 'text-zinc-500'}`}>
+                        {timerConfig.enabled ? 'Timer Ativado' : 'Timer Desativado'}
+                      </p>
+                      <p className="text-[10px] font-bold text-zinc-600 uppercase">Visível para todos os usuários</p>
+                    </div>
+                    <div className={`w-12 h-6 rounded-full relative transition-all ${timerConfig.enabled ? 'bg-amber-500' : 'bg-zinc-800'}`}>
+                      <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${timerConfig.enabled ? 'right-1' : 'left-1'}`} />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                    <Clock className="w-3 h-3 text-amber-500" /> Horário Diário (24h)
+                  </label>
+                  <input
+                    type="time"
+                    value={timerConfig.targetTime || '20:15'}
+                    onChange={(e) => {
+                      handleUpdateTimer({ ...timerConfig, targetTime: e.target.value, endTime: null });
+                    }}
+                    className="w-full bg-black border border-zinc-800 rounded-3xl py-6 px-8 text-xl font-black text-amber-500 focus:border-amber-500 outline-none transition-all shadow-inner text-center"
+                  />
+                  <p className="text-[9px] text-zinc-600 font-bold uppercase tracking-widest px-1 text-center">O cronômetro reiniciará automaticamente todos os dias neste horário.</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 relative z-10">
+                <div className="space-y-4">
+                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                    <Calendar className="w-3 h-3 text-zinc-500" /> Ou Data Específica (Legacy)
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={timerConfig.endTime ? new Date(timerConfig.endTime).toISOString().slice(0, 16) : ''}
+                    onChange={(e) => {
+                      const date = e.target.value ? new Date(e.target.value).getTime() : null;
+                      handleUpdateTimer({ ...timerConfig, endTime: date, targetTime: '' });
+                    }}
+                    className="w-full bg-zinc-900/30 border border-zinc-800/50 rounded-3xl py-4 px-6 text-xs text-zinc-500 font-bold focus:border-amber-500/50 outline-none transition-all"
+                  />
+                </div>
+
+                <div className="space-y-4">
+                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                    <MessageSquare className="w-3 h-3 text-amber-500" /> Mensagem Exibida
+                  </label>
+                  <input
+                    type="text"
+                    value={timerConfig.message}
+                    onChange={(e) => handleUpdateTimer({ ...timerConfig, message: e.target.value })}
+                    placeholder="Ex: Novos desafios liberados em:"
+                    className="w-full bg-black border border-zinc-800 rounded-3xl py-6 px-8 text-sm font-bold focus:border-amber-500 outline-none transition-all shadow-inner"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-zinc-900/50 flex items-center gap-4 relative z-10">
+                <div className={`p-4 rounded-2xl ${timerConfig.enabled ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'} border border-current/20 flex items-center gap-3 flex-1`}>
+                  {timerConfig.enabled ? (
+                    <>
+                      <CheckCircle2 className="w-5 h-5" />
+                      <div>
+                        <p className="text-[10px] font-black uppercase">Sistema Ativo</p>
+                        <p className="text-[9px] font-bold opacity-70">O timer está configurado para resetar às {timerConfig.targetTime || '20:15'}.</p>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="w-5 h-5" />
+                      <div>
+                        <p className="text-[10px] font-black uppercase">Sistema Inativo</p>
+                        <p className="text-[9px] font-bold opacity-70">O timer está oculto no cabeçalho.</p>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
         ) : null}
       </div>
     </div>
@@ -8080,5 +8297,98 @@ const AnnouncementBanner = ({
     )}
   </AnimatePresence>
 );
+
+const TimerBanner = ({ config }: { config: { enabled: boolean; endTime: number | null; message: string; targetTime?: string } }) => {
+  const [timeLeft, setTimeLeft] = useState<{ d: number; h: number; m: number; s: number } | null>(null);
+
+  useEffect(() => {
+    if (!config.enabled) {
+      setTimeLeft(null);
+      return;
+    }
+
+    const update = () => {
+      const now = new Date();
+      let target: Date;
+
+      if (config.targetTime) {
+        // Lógica de Timer Diário Recorrente
+        const [hours, minutes] = config.targetTime.split(':').map(Number);
+        target = new Date();
+        target.setHours(hours || 0, minutes || 0, 0, 0);
+
+        if (now > target) {
+          target.setDate(target.getDate() + 1);
+        }
+      } else if (config.endTime) {
+        // Lógica de Timer Estático (legado)
+        target = new Date(config.endTime);
+      } else {
+        setTimeLeft(null);
+        return;
+      }
+
+      const diff = target.getTime() - now.getTime();
+
+      if (diff <= 0) {
+        setTimeLeft(null);
+        return;
+      }
+
+      const d = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const s = Math.floor((diff % (1000 * 60)) / 1000);
+
+      setTimeLeft({ d, h, m, s });
+    };
+
+    update();
+    const timer = setInterval(update, 1000);
+    return () => clearInterval(timer);
+  }, [config]);
+
+  if (!timeLeft) return null;
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ height: 0, opacity: 0 }}
+        animate={{ height: 'auto', opacity: 1 }}
+        exit={{ height: 0, opacity: 0 }}
+        className="bg-black border-b border-amber-500/20 relative overflow-hidden shrink-0 group"
+      >
+        <div className="absolute inset-0 bg-amber-500/5 group-hover:bg-amber-500/10 transition-colors pointer-events-none" />
+        <div className="max-w-[1400px] mx-auto px-6 py-2 flex items-center justify-center gap-6 relative z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shadow-[0_0_10px_rgba(245,158,11,0.5)]" />
+            <p className="text-[10px] font-black text-amber-500/80 uppercase tracking-widest">{config.message || 'Contagem Regressiva:'}</p>
+          </div>
+
+          <div className="flex items-center gap-4">
+            {[
+              { label: 'd', value: timeLeft.d },
+              { label: 'h', value: timeLeft.h },
+              { label: 'm', value: timeLeft.m },
+              { label: 's', value: timeLeft.s },
+            ].map((unit, i) => (
+              <div key={i} className="flex items-baseline gap-1">
+                <span className="text-xl font-black text-white tracking-tighter tabular-nums drop-shadow-lg">
+                  {unit.value.toString().padStart(2, '0')}
+                </span>
+                <span className="text-[8px] font-black text-amber-500 uppercase">{unit.label}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20">
+            <Zap className="w-3 h-3 text-amber-500" />
+            <span className="text-[8px] font-black text-amber-500 uppercase tracking-widest">Tempo Real</span>
+          </div>
+        </div>
+      </motion.div>
+    </AnimatePresence>
+  );
+};
 
 export default App;
