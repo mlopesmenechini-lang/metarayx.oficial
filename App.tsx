@@ -1902,10 +1902,12 @@ const App: React.FC = () => {
             const newRootDailyViews = otherComps.reduce((acc, [_, s]) => acc + (s.dailyViews || 0), 0);
             const newRootDailyLikes = otherComps.reduce((acc, [_, s]) => acc + (s.dailyLikes || 0), 0);
             const newRootDailyPosts = otherComps.reduce((acc, [_, s]) => acc + (s.dailyPosts || 0), 0);
+            const newRootDailyInstaPosts = otherComps.reduce((acc, [_, s]) => acc + (s.dailyInstaPosts || 0), 0);
             
             dataToUpdate.dailyViews = newRootDailyViews;
             dataToUpdate.dailyLikes = newRootDailyLikes;
             dataToUpdate.dailyPosts = newRootDailyPosts;
+            dataToUpdate.dailyInstaPosts = newRootDailyInstaPosts;
 
             batch.update(doc(db, 'users', u.uid), dataToUpdate);
           });
@@ -3720,7 +3722,7 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId }: { rankings: U
         if (rankingType === 'DAILY') {
           return selectedCompetition?.rankingMetric === 'likes' ? (stats.dailyLikes || 0) > 0 : (stats.dailyViews || 0) > 0;
         }
-        if (rankingType === 'INSTAGRAM') return (stats.instaPosts || 0) > 0;
+        if (rankingType === 'INSTAGRAM') return (stats.dailyInstaPosts || 0) > 0;
         return selectedCompetition?.rankingMetric === 'likes' ? (stats.likes || 0) > 0 : (stats.views || 0) > 0;
       })
       .sort((a, b) => {
@@ -3731,7 +3733,7 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId }: { rankings: U
         if (rankingType === 'DAILY') {
           return selectedCompetition?.rankingMetric === 'likes' ? (statsB.dailyLikes || 0) - (statsA.dailyLikes || 0) : (statsB.dailyViews || 0) - (statsA.dailyViews || 0);
         }
-        if (rankingType === 'INSTAGRAM') return (statsB.instaPosts || 0) - (statsA.instaPosts || 0);
+        if (rankingType === 'INSTAGRAM') return (statsB.dailyInstaPosts || 0) - (statsA.dailyInstaPosts || 0);
         return selectedCompetition?.rankingMetric === 'likes' ? (statsB.likes || 0) - (statsA.likes || 0) : (statsB.views || 0) - (statsA.views || 0);
       })
       .slice(0, rankingType === 'INSTAGRAM' ? 3 : 10);
