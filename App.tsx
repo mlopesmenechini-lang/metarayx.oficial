@@ -605,40 +605,48 @@ const Dashboard = ({ user, announcements, rankings, competitions, registrations,
         </div>
         
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="glass shadow-2xl shadow-amber-500/5 hover:border-amber-500/50 transition-all border border-amber-500/20 p-6 rounded-[32px] relative overflow-hidden group flex flex-col justify-between min-h-[140px]">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-amber-500/20 transition-all" />
+          <div className="glass shadow-2xl shadow-amber-500/5 hover:border-amber-500/50 transition-all border border-amber-500/20 p-6 rounded-[32px] relative group flex flex-col justify-between min-h-[140px]">
+            <div className="absolute inset-0 overflow-hidden rounded-[32px] pointer-events-none">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-amber-500/20 transition-all" />
+              <TrendingUp className="absolute -bottom-4 -right-4 w-24 h-24 text-amber-500/10 group-hover:scale-110 transition-transform duration-500" />
+            </div>
             <h3 className="text-[10px] font-black text-amber-500 uppercase tracking-widest relative z-10 flex items-center">
               LUCRO ACUMULADO <InfoTooltip text="Total de ganhos que você já acumulou na plataforma até hoje." />
             </h3>
             <p className="text-2xl md:text-3xl font-black text-white relative z-10">R$ {showBalances ? (user.lifetimeEarnings || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '***'}</p>
-            <TrendingUp className="absolute -bottom-4 -right-4 w-24 h-24 text-amber-500/10 group-hover:scale-110 transition-transform duration-500" />
           </div>
 
-          <div className="glass border border-cyan-500/20 hover:border-cyan-500/50 transition-all p-6 rounded-[32px] relative overflow-hidden group flex flex-col justify-between min-h-[140px]">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/10 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-cyan-500/20 transition-all" />
+          <div className="glass border border-cyan-500/20 hover:border-cyan-500/50 transition-all p-6 rounded-[32px] relative group flex flex-col justify-between min-h-[140px]">
+            <div className="absolute inset-0 overflow-hidden rounded-[32px] pointer-events-none">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/10 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-cyan-500/20 transition-all" />
+              <Eye className="absolute -bottom-4 -right-4 w-24 h-24 text-cyan-500/10 group-hover:scale-110 transition-transform duration-500" />
+            </div>
             <h3 className="text-[10px] font-black text-cyan-500 uppercase tracking-widest relative z-10 flex items-center">
               TOTAL DE VIEWS <InfoTooltip text="Soma das visualizações de todos os seus vídeos aprovados e sincronizados." />
             </h3>
             <p className="text-2xl md:text-3xl font-black text-white relative z-10">{(user.totalViews || 0).toLocaleString()}</p>
-            <Eye className="absolute -bottom-4 -right-4 w-24 h-24 text-cyan-500/10 group-hover:scale-110 transition-transform duration-500" />
           </div>
 
-          <div className="glass border border-pink-500/20 hover:border-pink-500/50 transition-all p-6 rounded-[32px] relative overflow-hidden group flex flex-col justify-between min-h-[140px]">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-pink-500/10 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-pink-500/20 transition-all" />
+          <div className="glass border border-pink-500/20 hover:border-pink-500/50 transition-all p-6 rounded-[32px] relative group flex flex-col justify-between min-h-[140px]">
+            <div className="absolute inset-0 overflow-hidden rounded-[32px] pointer-events-none">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-pink-500/10 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-pink-500/20 transition-all" />
+              <Heart className="absolute -bottom-4 -right-4 w-24 h-24 text-pink-500/10 group-hover:scale-110 transition-transform duration-500" />
+            </div>
             <h3 className="text-[10px] font-black text-pink-500 uppercase tracking-widest relative z-10 flex items-center">
               TOTAL DE LIKES <InfoTooltip text="Soma das curtidas de todos os seus vídeos aprovados e sincronizados." />
             </h3>
             <p className="text-2xl md:text-3xl font-black text-white relative z-10">{(user.totalLikes || 0).toLocaleString()}</p>
-            <Heart className="absolute -bottom-4 -right-4 w-24 h-24 text-pink-500/10 group-hover:scale-110 transition-transform duration-500" />
           </div>
 
-          <div className="glass border border-zinc-700/50 hover:border-zinc-500 transition-all p-6 rounded-[32px] relative overflow-hidden group flex flex-col justify-between min-h-[140px]">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-white/10 transition-all" />
+          <div className="glass border border-zinc-700/50 hover:border-zinc-500 transition-all p-6 rounded-[32px] relative group flex flex-col justify-between min-h-[140px]">
+            <div className="absolute inset-0 overflow-hidden rounded-[32px] pointer-events-none">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-white/10 transition-all" />
+              <Camera className="absolute -bottom-4 -right-4 w-24 h-24 text-white/5 group-hover:scale-110 transition-transform duration-500" />
+            </div>
             <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest relative z-10 flex items-center">
               VÍDEOS SINCRONIZADOS <InfoTooltip text="Quantidade de vídeos seus que já foram validados e processados pelo sistema." />
             </h3>
             <p className="text-2xl md:text-3xl font-black text-white relative z-10">{(user.totalPosts || 0).toLocaleString()}</p>
-            <Camera className="absolute -bottom-4 -right-4 w-24 h-24 text-white/5 group-hover:scale-110 transition-transform duration-500" />
           </div>
         </div>
       </div>
@@ -5057,9 +5065,11 @@ const AdminPanel = ({
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.1 }}
-                  className="p-8 rounded-[40px] bg-zinc-950 border border-zinc-900 hover:border-amber-500/30 transition-all group relative overflow-hidden h-full flex flex-col justify-between"
+                  className="p-8 rounded-[40px] bg-zinc-950 border border-zinc-900 hover:border-amber-500/30 transition-all group relative h-full flex flex-col justify-between"
                 >
-                  <div className={`absolute top-0 right-0 w-32 h-32 ${stat.bg} blur-[60px] opacity-20 pointer-events-none group-hover:opacity-60 transition-opacity`} />
+                  <div className="absolute inset-0 overflow-hidden rounded-[40px] pointer-events-none">
+                    <div className={`absolute top-0 right-0 w-32 h-32 ${stat.bg} blur-[60px] opacity-20 group-hover:opacity-60 transition-opacity`} />
+                  </div>
                   
                   <div className="relative z-10">
                     <div className="flex items-center justify-between mb-6">
@@ -5468,8 +5478,10 @@ const AdminPanel = ({
                       <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 p-8 space-y-8">
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                           {/* Financial Stats Cards */}
-                          <div className="p-8 rounded-[40px] bg-zinc-950 border border-zinc-900 group relative overflow-hidden">
-                            <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 blur-[60px]" />
+                          <div className="p-8 rounded-[40px] bg-zinc-950 border border-zinc-900 group relative">
+                            <div className="absolute inset-0 overflow-hidden rounded-[40px] pointer-events-none">
+                              <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 blur-[60px]" />
+                            </div>
                             <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-500 mb-6">
                               <Trophy className="w-6 h-6" />
                             </div>
@@ -5479,8 +5491,10 @@ const AdminPanel = ({
                             <h4 className="text-3xl font-black text-white tracking-tight">R$ {totalPaidGlobal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h4>
                           </div>
 
-                          <div className="p-8 rounded-[40px] bg-zinc-950 border border-zinc-900 group relative overflow-hidden">
-                            <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 blur-[60px]" />
+                          <div className="p-8 rounded-[40px] bg-zinc-950 border border-zinc-900 group relative">
+                            <div className="absolute inset-0 overflow-hidden rounded-[40px] pointer-events-none">
+                              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 blur-[60px]" />
+                            </div>
                             <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center text-amber-500 mb-6">
                               <Zap className="w-6 h-6" />
                             </div>
@@ -5490,8 +5504,10 @@ const AdminPanel = ({
                             <h4 className="text-3xl font-black text-amber-500 tracking-tight">R$ {totalPendingGlobal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h4>
                           </div>
 
-                          <div className="p-8 rounded-[40px] bg-zinc-900 border border-zinc-800 group relative overflow-hidden">
-                            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 blur-[60px]" />
+                          <div className="p-8 rounded-[40px] bg-zinc-900 border border-zinc-800 group relative">
+                            <div className="absolute inset-0 overflow-hidden rounded-[40px] pointer-events-none">
+                              <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 blur-[60px]" />
+                            </div>
                             <div className="w-12 h-12 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-500 mb-6">
                               <BarChart3 className="w-6 h-6" />
                             </div>
