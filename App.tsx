@@ -18,6 +18,36 @@ import { motion, AnimatePresence } from 'motion/react';
 import { syncViewsWithApify, syncSinglePostWithApify, updateUserMetrics, repairAllUserMetrics } from './services/apifyService';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth as getSecondaryAuth, createUserWithEmailAndPassword as createSecondaryUser, signOut as signSecondaryOut } from 'firebase/auth';
+
+const sanitizeString = (text: string) => {
+  if (typeof text !== 'string') return text;
+  return text
+    .replace(/Ã¡/g, 'á').replace(/Ã£/g, 'ã').replace(/Ã§/g, 'ç').replace(/Ãµ/g, 'õ')
+    .replace(/Ã©/g, 'é').replace(/Ãª/g, 'ê').replace(/Ã³/g, 'ó').replace(/Ã­/g, 'í')
+    .replace(/TÃ-tulo/g, 'Título').replace(/Âº/g, 'º').replace(/Ãº/g, 'ú').replace(/Ã¢/g, 'â')
+    .replace(/Ã\x8D/g, 'Í').replace(/Ã\x87/g, 'Ç').replace(/Ã\x95/g, 'Õ').replace(/Ã\x81/g, 'Á')
+    .replace(/Ã\x89/g, 'É').replace(/Ã\x93/g, 'Ó').replace(/Ã\x8A/g, 'Ê').replace(/Ã\x9A/g, 'Ú')
+    .replace(/ANÃLISE/g, 'ANÁLISE').replace(/CONCLUÃDO/g, 'CONCLUÍDO').replace(/UsuÃ¡rio/g, 'Usuário')
+    .replace(/Ã€/g, 'À').replace(/AÃ§Ãµes/g, 'Ações').replace(/USUÃ¡RIOS/g, 'USUÁRIOS')
+    .replace(/USUÃ¡RIO/g, 'USUÁRIO').replace(/NÃ£o/g, 'Não').replace(/Ã-/g, 'í');
+};
+
+const sanitizeObject = (obj: any): any => {
+  if (typeof obj === 'string') return sanitizeString(obj);
+  if (Array.isArray(obj)) return obj.map(sanitizeObject);
+  if (obj && typeof obj === 'object') {
+    // Preserve Firestore Timestamps and other special objects
+    if (typeof obj.toDate === 'function') return obj;
+    
+    // Process plain objects
+    const newObj: any = {};
+    for (const key in obj) {
+      newObj[key] = sanitizeObject(obj[key]);
+    }
+    return newObj;
+  }
+  return obj;
+};
 import fbConfig from './firebase-applet-config.json';
 
 // Error Boundary Component
@@ -297,7 +327,7 @@ const AuthScreen = ({ onLoginSuccess }: { onLoginSuccess: (u: User) => void }) =
       await signInWithPopup(auth, googleProvider);
     } catch (err: any) {
       if (err.code === 'auth/network-request-failed') {
-        setError('Erro de conexÃ£o ou Provedor Google nÃ£o habilitado no Firebase Console.');
+        setError('Erro de conexão ou Provedor Google não habilitado no Firebase Console.');
       } else {
         setError(err.message);
       }
@@ -341,7 +371,7 @@ const AuthScreen = ({ onLoginSuccess }: { onLoginSuccess: (u: User) => void }) =
       }
     } catch (err: any) {
       if (err.code === 'auth/network-request-failed') {
-        setError('Erro de conexÃ£o ou Provedor E-mail/Senha nÃ£o habilitado no Firebase Console.');
+        setError('Erro de conexão ou Provedor E-mail/Senha não habilitado no Firebase Console.');
       } else {
         setError(err.message);
       }
@@ -492,21 +522,31 @@ const Dashboard = ({ user, announcements, rankings, competitions, registrations,
 
   const handleRegister = async (compId: string) => {
     if (!acceptedRules) {
-      alert('VocÃª precisa aceitar as regras para participar!');
+      alert('Você precisa aceitar as regras para participar!');
       return;
     }
     try {
-      const newReg: Omit<CompetitionRegistration, 'id'> = {
-        competitionId: compId,
-        userId: user.uid,
-        userName: user.displayName,
-        userEmail: user.email,
-        status: 'pending',
-        acceptedRules: true,
-        timestamp: Date.now()
-      };
-      await addDoc(collection(db, 'competition_registrations'), newReg);
-      alert('SolicitaÃ§Ã£o de inscriÃ§Ã£o enviada! Aguarde a aprovaÃ§Ã£o da diretoria.');
+      const existingReg = registrations.find(r => r.competitionId === compId && r.userId === user.uid);
+      if (existingReg && existingReg.status === 'rejected') {
+        const regRef = doc(db, 'competition_registrations', existingReg.id);
+        await updateDoc(regRef, {
+          status: 'pending',
+          timestamp: Date.now()
+        });
+        alert('Nova solicitação enviada! Aguarde a aprovação da diretoria.');
+      } else {
+        const newReg: Omit<CompetitionRegistration, 'id'> = {
+          competitionId: compId,
+          userId: user.uid,
+          userName: user.displayName,
+          userEmail: user.email,
+          status: 'pending',
+          acceptedRules: true,
+          timestamp: Date.now()
+        };
+        await addDoc(collection(db, 'competition_registrations'), newReg);
+        alert('Solicitação de inscrição enviada! Aguarde a aprovação da diretoria.');
+      }
       setSelectedComp(null);
       setAcceptedRules(false);
     } catch (error) {
@@ -582,79 +622,109 @@ const Dashboard = ({ user, announcements, rankings, competitions, registrations,
       </div>
 
       {/* 🎯 Foco Central: Competições */}
-      {competitions.filter(c => c.isActive).length > 0 && (
+      {competitions.length > 0 && (
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-black tracking-tight uppercase flex items-center gap-3">
               <Target className="w-6 h-6 text-amber-500" /> Foco Atual
             </h2>
             <div className="flex items-center gap-2 text-[10px] font-black text-amber-500 bg-amber-500/10 px-3 py-1.5 rounded-full border border-amber-500/20 shadow-lg">
-              <Zap className="w-3 h-3" /> COMPETIÇÕES ATIVAS
+              <Zap className="w-3 h-3" /> COMPETIÇÕES
             </div>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {competitions.filter(c => c.isActive).map(comp => (
-              <motion.div
-                key={comp.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="group relative h-64 rounded-[40px] overflow-hidden border border-zinc-800 shadow-2xl cursor-pointer"
-                onClick={() => setSelectedComp(comp)}
-              >
-                <img src={comp.bannerUrl} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt="" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
+            {competitions.map(comp => {
+              const compStatus = comp.status || (comp.isActive ? 'active' : 'inactive');
+              const isLocked = compStatus === 'upcoming' || compStatus === 'inactive';
 
-                <div className="absolute inset-0 p-8 flex flex-col justify-end space-y-4">
-                  <div className="space-y-1">
-                    <h3 className="text-3xl font-black tracking-tighter uppercase leading-none">{comp.title}</h3>
-                    <p className="text-zinc-300 text-xs font-bold line-clamp-2 max-w-md">{comp.description}</p>
-                  </div>
+              return (
+                <motion.div
+                  key={comp.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={`group relative h-64 rounded-[40px] overflow-hidden border ${isLocked ? 'border-zinc-900 shadow-none cursor-not-allowed opacity-80' : 'border-zinc-800 shadow-2xl cursor-pointer'}`}
+                  onClick={() => {
+                    if (!isLocked) {
+                      setSelectedComp(comp);
+                    }
+                  }}
+                >
+                  <img src={comp.bannerUrl} className={`absolute inset-0 w-full h-full object-cover transition-transform duration-700 ${!isLocked && 'group-hover:scale-110'} ${compStatus === 'inactive' ? 'grayscale opacity-80' : ''}`} alt="" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
 
-                  <div className="flex flex-wrap items-center gap-3">
-                    {comp.prizes.slice(0, 3).map((prize, idx) => (
-                      <div key={idx} className="flex items-center gap-2 bg-white/10 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/10">
-                        <Trophy className={`w-4 h-4 ${idx === 0 ? 'text-amber-400' : idx === 1 ? 'text-zinc-300' : 'text-amber-700'}`} />
-                        <div className="flex flex-col">
-                          <span className="text-[8px] font-black text-zinc-400 uppercase leading-none">{prize.label}</span>
-                          <span className="text-xs font-black text-white">R$ {prize.value.toLocaleString()}</span>
+                  {isLocked && (
+                    <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
+                       <Lock className={`w-16 h-16 ${compStatus === 'upcoming' ? 'text-amber-500' : 'text-zinc-600'}`} />
+                    </div>
+                  )}
+
+                  <div className="absolute inset-0 p-8 flex flex-col justify-end space-y-4">
+                    <div className="space-y-1 relative z-10">
+                      <h3 className="text-3xl font-black tracking-tighter uppercase leading-none">{comp.title}</h3>
+                      <p className="text-zinc-300 text-xs font-bold line-clamp-2 max-w-md">{comp.description}</p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3 relative z-10">
+                      {comp.prizes.slice(0, 3).map((prize, idx) => (
+                        <div key={idx} className={`flex items-center gap-2 backdrop-blur-md px-4 py-2 rounded-2xl border ${isLocked ? 'bg-black/50 border-white/5 opacity-50' : 'bg-white/10 border-white/10'}`}>
+                          <Trophy className={`w-4 h-4 ${idx === 0 ? 'text-amber-400' : idx === 1 ? 'text-zinc-300' : 'text-amber-700'}`} />
+                          <div className="flex flex-col">
+                            <span className="text-[8px] font-black text-zinc-400 uppercase leading-none">{prize.label}</span>
+                            <span className="text-xs font-black text-white">R$ {prize.value.toLocaleString()}</span>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
 
-                <div className="absolute top-6 right-6">
-                  {(() => {
-                    const reg = registrations.find(r => r.competitionId === comp.id && r.userId === user.uid);
-                    if (!reg) {
+                  <div className="absolute top-6 right-6 z-10">
+                    {(() => {
+                      if (compStatus === 'upcoming') {
+                        return (
+                          <div className="bg-amber-500 text-black px-4 py-1.5 rounded-full text-[10px] font-black shadow-xl uppercase tracking-widest">
+                            EM BREVE
+                          </div>
+                        );
+                      }
+                      if (compStatus === 'inactive') {
+                        return (
+                          <div className="bg-zinc-800 text-zinc-400 px-4 py-1.5 rounded-full text-[10px] font-black shadow-xl uppercase tracking-widest">
+                            FINALIZADA
+                          </div>
+                        );
+                      }
+
+                      const reg = registrations.find(r => r.competitionId === comp.id && r.userId === user.uid);
+                      if (!reg) {
+                        return (
+                          <div className="bg-amber-500 text-black px-6 py-2 rounded-full text-xs font-black shadow-xl hover:scale-105 transition-all">
+                            VER DETALHES
+                          </div>
+                        );
+                      }
                       return (
-                        <div className="bg-amber-500 text-black px-6 py-2 rounded-full text-xs font-black shadow-xl hover:scale-105 transition-all">
-                          VER DETALHES
+                        <div className={`px-4 py-1.5 rounded-full text-[10px] font-black shadow-xl ${reg.status === 'approved' ? 'bg-emerald-500 text-black' :
+                            reg.status === 'rejected' ? 'bg-red-500 text-white' :
+                              'bg-amber-500/20 text-amber-500 border border-amber-500/30'
+                          }`}>
+                          {reg.status === 'approved' ? 'PARTICIPANDO' :
+                            reg.status === 'rejected' ? 'RECUSADO' : 'AGUARDANDO APROVAÇÃO'}
                         </div>
                       );
-                    }
-                    return (
-                      <div className={`px-4 py-1.5 rounded-full text-[10px] font-black shadow-xl ${reg.status === 'approved' ? 'bg-emerald-500 text-black' :
-                          reg.status === 'rejected' ? 'bg-red-500 text-white' :
-                            'bg-amber-500/20 text-amber-500 border border-amber-500/30'
-                        }`}>
-                        {reg.status === 'approved' ? 'PARTICIPANDO' :
-                          reg.status === 'rejected' ? 'RECUSADO' : 'AGUARDANDO APROVAÇÃO'}
-                      </div>
-                    );
-                  })()}
-                </div>
-              </motion.div>
-            ))}
+                    })()}
+                  </div>
+                </motion.div>
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* 🏅 Competições e Pódio (Lado a Lado) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start pb-10">
+      {/* 🏅 Competições e Pódio */}
+      <div className="grid grid-cols-1 gap-6 items-start pb-10">
         
-        {/* Elite do Mês (Ocupa 2 colunas) */}
-        <div className="lg:col-span-2 glass border border-zinc-800 rounded-[40px] p-8">
+        {/* Elite do Mês */}
+        <div className="glass border border-zinc-800 rounded-[40px] p-8">
           {sortedMonthly.length > 0 ? (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
@@ -752,45 +822,7 @@ const Dashboard = ({ user, announcements, rankings, competitions, registrations,
           )}
         </div>
 
-        {/* 🔔 Avisos da Diretoria (Ocupa 1 coluna) */}
-        <div className="lg:col-span-1 rounded-[40px] space-y-4">
-          <div className="flex items-center gap-2 mb-4">
-            <Bell className="w-5 h-5 text-amber-500" />
-            <h3 className="text-lg font-black uppercase tracking-tight">Mural</h3>
-          </div>
-          
-          {announcements.filter(a => a.isActive !== false).length > 0 ? (
-            <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2 scrollbar-hide">
-              {announcements.filter(a => a.isActive !== false).map(ann => (
-                <motion.div
-                  key={ann.id}
-                  initial={{ x: 20, opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  className="p-6 rounded-3xl bg-amber-500/10 border border-amber-500/20 flex flex-col gap-3 relative overflow-hidden group hover:bg-amber-500/20 transition-all"
-                >
-                  <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full -mr-12 -mt-12 blur-2xl" />
-                  <div className="flex items-center justify-between">
-                    <div className="p-2 rounded-xl bg-amber-500/20 text-amber-500">
-                      <AlertCircle className="w-4 h-4" />
-                    </div>
-                    <p className="text-[9px] text-amber-500 border border-amber-500/20 px-2 py-0.5 rounded-lg uppercase font-black">
-                      {new Date(ann.timestamp).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <div className="space-y-1 relative z-10">
-                    <h4 className="font-black text-amber-500 uppercase tracking-tight text-sm">{ann.title || 'AVISO IMPORTANTE'}</h4>
-                    <p className="text-xs font-bold text-amber-100/80 leading-relaxed">{ann.message}</p>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          ) : (
-            <div className="py-10 text-center glass rounded-3xl border border-zinc-800">
-              <Clock className="w-8 h-8 text-zinc-700 mx-auto mb-2" />
-              <p className="text-zinc-600 font-bold text-xs uppercase tracking-widest">Nenhum aviso no momento</p>
-            </div>
-          )}
-        </div>
+
       </div>
 
       {/* Competition Details Modal */}
@@ -831,17 +863,17 @@ const Dashboard = ({ user, announcements, rankings, competitions, registrations,
                     <p className="text-xs font-bold text-amber-500">{selectedComp.hashtags || 'Nenhuma'}</p>
                   </div>
                   <div className="p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
-                    <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">MarcaÃ§Ãµes</p>
+                    <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">Marcações</p>
                     <p className="text-xs font-bold text-amber-500">{selectedComp.mentions || 'Nenhuma'}</p>
                   </div>
                   <div className="p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
-                    <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">BÃ´nus</p>
+                    <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">Bônus</p>
                     <p className="text-xs font-bold text-emerald-500">{selectedComp.bonuses || 'Nenhum'}</p>
                   </div>
                 </div>
 
                 <div className="space-y-4">
-                  <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">Regras da CompetiÃ§Ã£o</h4>
+                  <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">Regras da Competição</h4>
                   <div className="p-6 rounded-3xl bg-zinc-900/30 border border-zinc-800/50 text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap font-medium">
                     {selectedComp.rules || selectedComp.description}
                   </div>
@@ -850,13 +882,13 @@ const Dashboard = ({ user, announcements, rankings, competitions, registrations,
                 <div className="space-y-6">
                   {selectedComp.prizesMonthly && selectedComp.prizesMonthly.length > 0 && (
                     <div className="space-y-4">
-                      <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">PremiaÃ§Ã£o Mensal (Tempo de CompetiÃ§Ã£o)</h4>
+                      <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">Premiação Mensal (Tempo de Competição)</h4>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {selectedComp.prizesMonthly.map((prize, idx) => (
                           <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
                             <div className="flex items-center gap-3">
                               <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-[10px] font-black text-zinc-500">
-                                {prize.position}Âº
+                                {prize.position}º
                               </div>
                               <span className="text-xs font-bold">{prize.label}</span>
                             </div>
@@ -869,13 +901,13 @@ const Dashboard = ({ user, announcements, rankings, competitions, registrations,
 
                   {selectedComp.prizesDaily && selectedComp.prizesDaily.length > 0 && (
                     <div className="space-y-4">
-                      <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">PremiaÃ§Ã£o DiÃ¡ria</h4>
+                      <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">Premiação Diária</h4>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {selectedComp.prizesDaily.map((prize, idx) => (
                           <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
                             <div className="flex items-center gap-3">
                               <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-[10px] font-black text-zinc-500">
-                                {prize.position}Âº
+                                {prize.position}º
                               </div>
                               <span className="text-xs font-bold">{prize.label}</span>
                             </div>
@@ -888,13 +920,13 @@ const Dashboard = ({ user, announcements, rankings, competitions, registrations,
 
                   {selectedComp.prizesInstagram && selectedComp.prizesInstagram.length > 0 && (
                     <div className="space-y-4">
-                      <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">PremiaÃ§Ã£o Instagram (Quantidade)</h4>
+                      <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">Premiação Instagram (Quantidade)</h4>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {selectedComp.prizesInstagram.map((prize, idx) => (
                           <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
                             <div className="flex items-center gap-3">
                               <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-[10px] font-black text-zinc-500">
-                                {prize.position}Âº
+                                {prize.position}º
                               </div>
                               <span className="text-xs font-bold">{prize.label}</span>
                             </div>
@@ -907,13 +939,13 @@ const Dashboard = ({ user, announcements, rankings, competitions, registrations,
 
                   {(!selectedComp.prizesDaily && !selectedComp.prizesMonthly && !selectedComp.prizesInstagram) && (
                     <div className="space-y-4">
-                      <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">PremiaÃ§Ã£o</h4>
+                      <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">Premiação</h4>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {selectedComp.prizes.map((prize, idx) => (
                           <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
                             <div className="flex items-center gap-3">
                               <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-[10px] font-black text-zinc-500">
-                                {prize.position}Âº
+                                {prize.position}º
                               </div>
                               <span className="text-xs font-bold">{prize.label}</span>
                             </div>
@@ -927,39 +959,49 @@ const Dashboard = ({ user, announcements, rankings, competitions, registrations,
               </div>
 
               <div className="p-8 bg-zinc-950 border-t border-zinc-900 space-y-6">
-                {!registrations.find(r => r.competitionId === selectedComp.id && r.userId === user.uid) ? (
-                  <>
-                    <label className="flex items-start gap-4 cursor-pointer group">
-                      <div className="relative flex items-center mt-1">
-                        <input
-                          type="checkbox"
-                          checked={acceptedRules}
-                          onChange={(e) => setAcceptedRules(e.target.checked)}
-                          className="peer h-5 w-5 appearance-none rounded border-2 border-zinc-800 bg-zinc-900 transition-all checked:border-amber-500 checked:bg-amber-500"
-                        />
-                        <Check className="absolute h-3.5 w-3.5 text-black opacity-0 transition-opacity peer-checked:opacity-100 left-0.5" />
-                      </div>
-                      <span className="text-xs font-bold text-zinc-500 group-hover:text-zinc-300 transition-colors">
-                        Eu li e aceito todas as regras e condiÃ§Ãµes desta competiÃ§Ã£o.
-                      </span>
-                    </label>
-                    <button
-                      onClick={() => handleRegister(selectedComp.id)}
-                      disabled={!acceptedRules}
-                      className={`w-full py-5 font-black rounded-2xl transition-all shadow-xl ${
-                        acceptedRules 
-                          ? 'gold-bg text-black hover:scale-[1.02] shadow-amber-500/20' 
-                          : 'bg-zinc-800 text-zinc-500 cursor-not-allowed opacity-50'
-                      }`}
-                    >
-                      SOLICITAR INSCRIÇÃO
-                    </button>
-                  </>
-                ) : (
-                  <div className="text-center py-2">
-                    <p className="text-amber-500 font-black uppercase tracking-widest text-sm">VocÃª jÃ¡ solicitou inscriÃ§Ã£o nesta competiÃ§Ã£o</p>
-                  </div>
-                )}
+                {(() => {
+                  const existingReg = registrations.find(r => r.competitionId === selectedComp.id && r.userId === user.uid);
+                  if (!existingReg || existingReg.status === 'rejected') {
+                    return (
+                      <>
+                        <label className="flex items-start gap-4 cursor-pointer group">
+                          <div className="relative flex items-center mt-1">
+                            <input
+                              type="checkbox"
+                              checked={acceptedRules}
+                              onChange={(e) => setAcceptedRules(e.target.checked)}
+                              className="peer h-5 w-5 appearance-none rounded border-2 border-zinc-800 bg-zinc-900 transition-all checked:border-amber-500 checked:bg-amber-500"
+                            />
+                            <Check className="absolute h-3.5 w-3.5 text-black opacity-0 transition-opacity peer-checked:opacity-100 left-0.5" />
+                          </div>
+                          <span className="text-xs font-bold text-zinc-500 group-hover:text-zinc-300 transition-colors">
+                            Eu li e aceito todas as regras e condições desta competição.
+                          </span>
+                        </label>
+                        <button
+                          onClick={() => handleRegister(selectedComp.id)}
+                          disabled={!acceptedRules}
+                          className={`w-full py-5 font-black rounded-2xl transition-all shadow-xl ${
+                            acceptedRules 
+                              ? 'gold-bg text-black hover:scale-[1.02] shadow-amber-500/20' 
+                              : 'bg-zinc-800 text-zinc-500 cursor-not-allowed opacity-50'
+                          }`}
+                        >
+                          {existingReg?.status === 'rejected' ? 'SOLICITAR NOVAMENTE' : 'SOLICITAR INSCRIÇÃO'}
+                        </button>
+                      </>
+                    );
+                  }
+                  return (
+                    <div className="text-center py-2">
+                      <p className="text-amber-500 font-black uppercase tracking-widest text-sm">
+                        {existingReg.status === 'approved' 
+                          ? 'Você já está participando desta competição' 
+                          : 'Você já solicitou inscrição nesta competição'}
+                      </p>
+                    </div>
+                  );
+                })()}
               </div>
             </motion.div>
           </div>
@@ -1257,28 +1299,28 @@ const App: React.FC = () => {
   const [compEndDate, setCompEndDate] = useState('');
   const [compBanner, setCompBanner] = useState('');
   const [compPrizes, setCompPrizes] = useState<{ position: number; value: number; label: string; }[]>([
-    { position: 1, value: 0, label: '1Âº Lugar' },
-    { position: 2, value: 0, label: '2Âº Lugar' },
-    { position: 3, value: 0, label: '3Âº Lugar' }
+    { position: 1, value: 0, label: '1º Lugar' },
+    { position: 2, value: 0, label: '2º Lugar' },
+    { position: 3, value: 0, label: '3º Lugar' }
   ]);
   const [compPositions, setCompPositions] = useState(3);
   const [compPositionsDaily, setCompPositionsDaily] = useState(3);
   const [compPrizesDaily, setCompPrizesDaily] = useState<{ position: number; value: number; label: string; }[]>([
-    { position: 1, value: 0, label: '1Âº DiÃ¡rio' },
-    { position: 2, value: 0, label: '2Âº DiÃ¡rio' },
-    { position: 3, value: 0, label: '3Âº DiÃ¡rio' }
+    { position: 1, value: 0, label: '1º Diário' },
+    { position: 2, value: 0, label: '2º Diário' },
+    { position: 3, value: 0, label: '3º Diário' }
   ]);
   const [compPositionsMonthly, setCompPositionsMonthly] = useState(3);
   const [compPrizesMonthly, setCompPrizesMonthly] = useState<{ position: number; value: number; label: string; }[]>([
-    { position: 1, value: 0, label: '1Âº Mensal' },
-    { position: 2, value: 0, label: '2Âº Mensal' },
-    { position: 3, value: 0, label: '3Âº Mensal' }
+    { position: 1, value: 0, label: '1º Mensal' },
+    { position: 2, value: 0, label: '2º Mensal' },
+    { position: 3, value: 0, label: '3º Mensal' }
   ]);
   const [compPositionsInstagram, setCompPositionsInstagram] = useState(3);
   const [compPrizesInstagram, setCompPrizesInstagram] = useState<{ position: number; value: number; label: string; }[]>([
-    { position: 1, value: 0, label: '1Âº Insta' },
-    { position: 2, value: 0, label: '2Âº Insta' },
-    { position: 3, value: 0, label: '3Âº Insta' }
+    { position: 1, value: 0, label: '1º Insta' },
+    { position: 2, value: 0, label: '2º Insta' },
+    { position: 3, value: 0, label: '3º Insta' }
   ]);
   const [isCreatingComp, setIsCreatingComp] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -1288,6 +1330,10 @@ const App: React.FC = () => {
   const [annTitle, setAnnTitle] = useState('');
   const [annMsg, setAnnMsg] = useState('');
   const [isCreatingAnn, setIsCreatingAnn] = useState(false);
+  const [acknowledgedAnnouncements, setAcknowledgedAnnouncements] = useState<string[]>(() => {
+    const saved = localStorage.getItem('acknowledgedAnnouncements');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [suggestionMsg, setSuggestionMsg] = useState('');
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
@@ -1351,7 +1397,7 @@ const App: React.FC = () => {
       if (firebaseUser) {
         const timeout = setTimeout(() => {
           if (loading) {
-            setLoadError('Tempo de conexÃ£o excedido. Verifique se o Database estÃ¡ ativo.');
+            setLoadError('Tempo de conexão excedido. Verifique se o Database está ativo.');
           }
         }, 15000);
 
@@ -1365,14 +1411,14 @@ const App: React.FC = () => {
               setProfileName(userData.displayName || '');
               setProfilePhoto(userData.photoURL || '');
             } else {
-              // LÃ³gica de Primeiro Admin
+              // Lógica de Primeiro Admin
               const usersSnap = await getDocs(query(collection(db, 'users'), limit(1)));
               const isFirstUser = usersSnap.empty;
               const isAdminEmail = firebaseUser.email === 'matheusmenechini18@gmail.com' || firebaseUser.email === 'hypedosmemes@gmail.com';
 
               const newUser: User = {
                 uid: firebaseUser.uid,
-                displayName: firebaseUser.displayName || 'UsuÃ¡rio Sem Nome',
+                displayName: firebaseUser.displayName || 'Usuário Sem Nome',
                 email: firebaseUser.email || '',
                 role: (isFirstUser || isAdminEmail) ? 'admin' : 'user',
                 isApproved: (isFirstUser || isAdminEmail),
@@ -1419,26 +1465,26 @@ const App: React.FC = () => {
   }, []);
 
 
-  // Real-time Data Listeners â€” dados pÃºblicos (carrega assim que autenticado)
+  // Real-time Data Listeners â€” dados públicos (carrega assim que autenticado)
   useEffect(() => {
     if (!user) return;
 
-    // Rankings Listener (pÃºblico â€” nÃ£o depende de aprovaÃ§Ã£o)
+    // Rankings Listener (público â€” não depende de aprovação)
     const rankingsQuery = query(collection(db, 'users'), where('isApproved', '==', true));
     const unsubRankings = onSnapshot(rankingsQuery, (snapshot) => {
-      setRankings(snapshot.docs.map(doc => doc.data() as User));
+      setRankings(snapshot.docs.map(doc => sanitizeObject({ id: doc.id, ...doc.data() }) as User));
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
 
-    // Announcements Listener (pÃºblico)
+    // Announcements Listener (público)
     const annQuery = query(collection(db, 'announcements'), orderBy('timestamp', 'desc'));
     const unsubAnn = onSnapshot(annQuery, (snapshot) => {
-      setAnnouncements(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Announcement)));
+      setAnnouncements(snapshot.docs.map(doc => sanitizeObject({ id: doc.id, ...doc.data() }) as Announcement));
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'announcements'));
 
-    // Competitions Listener (pÃºblico)
+    // Competitions Listener (público)
     const compQuery = query(collection(db, 'competitions'), orderBy('timestamp', 'desc'), limit(10));
     const unsubComp = onSnapshot(compQuery, (snapshot) => {
-      setCompetitions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Competition)));
+      setCompetitions(snapshot.docs.map(doc => sanitizeObject({ id: doc.id, ...doc.data() }) as Competition));
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'competitions'));
 
     return () => {
@@ -1448,19 +1494,19 @@ const App: React.FC = () => {
     };
   }, [user?.uid]);
 
-  // Real-time Data Listeners â€” dados privados (depende de aprovaÃ§Ã£o)
+  // Real-time Data Listeners â€” dados privados (depende de aprovação)
   useEffect(() => {
     if (!user) return;
     const isStaff = user.role === 'admin' || user.role === 'auditor' || user.role === 'administrativo';
     if (!user.isApproved && !isStaff) return;
 
     // Posts Listener (My Posts or All for Admin)
-    const postsQuery = user.role === 'admin'
+    const postsQuery = (user.role === 'admin' || user.role === 'auditor' || user.role === 'administrativo')
       ? query(collection(db, 'posts'), orderBy('timestamp', 'desc'), limit(100))
       : query(collection(db, 'posts'), where('userId', '==', user.uid), orderBy('timestamp', 'desc'), limit(50));
 
     const unsubPosts = onSnapshot(postsQuery, (snapshot) => {
-      setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Post)));
+      setPosts(snapshot.docs.map(doc => sanitizeObject({ id: doc.id, ...doc.data() }) as Post));
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'posts'));
 
     // Registrations Listener
@@ -1469,7 +1515,7 @@ const App: React.FC = () => {
       : query(collection(db, 'competition_registrations'), where('userId', '==', user.uid));
 
     const unsubReg = onSnapshot(regQuery, (snapshot) => {
-      setRegistrations(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CompetitionRegistration)));
+      setRegistrations(snapshot.docs.map(doc => sanitizeObject({ id: doc.id, ...doc.data() }) as CompetitionRegistration));
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'competition_registrations'));
 
     // Admin/Staff: Users Listeners
@@ -1479,20 +1525,20 @@ const App: React.FC = () => {
     if (isStaff) {
       const pendingUsersQuery = query(collection(db, 'users'), where('isApproved', '==', false));
       unsubPendingUsers = onSnapshot(pendingUsersQuery, (snapshot) => {
-        const users = snapshot.docs.map(doc => doc.data() as User);
+        const users = snapshot.docs.map(doc => sanitizeObject(doc.data()) as User);
         setPendingUsers(users.filter(u => !(u as any).isRejected));
       }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
 
       const approvedUsersQuery = query(collection(db, 'users'), where('isApproved', '==', true));
       unsubApprovedUsers = onSnapshot(approvedUsersQuery, (snapshot) => {
-        setApprovedUsers(snapshot.docs.map(doc => doc.data() as User));
+        setApprovedUsers(snapshot.docs.map(doc => sanitizeObject(doc.data()) as User));
       }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
     }
 
     // Suggestions Listener
     const suggestionsQuery = query(collection(db, 'suggestions'), orderBy('timestamp', 'desc'));
     const unsubSuggestions = onSnapshot(suggestionsQuery, (snapshot) => {
-      setSuggestions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Suggestion)));
+      setSuggestions(snapshot.docs.map(doc => sanitizeObject({ id: doc.id, ...doc.data() }) as Suggestion));
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'suggestions'));
 
     return () => {
@@ -1502,7 +1548,7 @@ const App: React.FC = () => {
       unsubApprovedUsers();
       unsubSuggestions();
     };
-  }, [user]);
+  }, [user, user?.role]);
 
 
   const handleDeletePost = async (postId: string) => {
@@ -1563,7 +1609,7 @@ const App: React.FC = () => {
         dailyPosts: totals.dailyPosts
       });
 
-      setNotification({ message: 'VÃ­deo removido com sucesso!', type: 'success' });
+      setNotification({ message: 'Vídeo removido com sucesso!', type: 'success' });
       setPostToDelete(null);
     } catch (error) {
       console.error('Erro ao excluir post:', error);
@@ -1589,7 +1635,7 @@ const App: React.FC = () => {
             <div className="w-20 h-20 bg-red-500/20 rounded-3xl flex items-center justify-center mx-auto mb-4">
               <AlertCircle className="w-10 h-10 text-red-500" />
             </div>
-            <h2 className="text-2xl font-black text-white uppercase">Falha na ConexÃ£o</h2>
+            <h2 className="text-2xl font-black text-white uppercase">Falha na Conexão</h2>
             <p className="text-zinc-500 font-bold text-sm leading-relaxed">
               {loadError}
             </p>
@@ -1658,10 +1704,10 @@ const App: React.FC = () => {
     try {
       await deleteDoc(doc(db, 'competitions', id));
       setCompToDelete(null);
-      alert('CompetiÃ§Ã£o excluÃ­da com sucesso!');
+      alert('Competição excluída com sucesso!');
     } catch (error) {
       console.error('Error deleting competition:', error);
-      alert('Erro ao excluir competiÃ§Ã£o.');
+      alert('Erro ao excluir competição.');
     }
   };
 
@@ -1685,6 +1731,12 @@ const App: React.FC = () => {
       return;
     }
     try {
+      // TRAVA DE STATUS: Não permitir que um vídeo 'synced' volte para 'approved'
+      if (post?.status === 'synced' && status === 'approved') {
+        console.log(`[Status Lock] Bloqueada reversão de 'synced' para 'approved' no post ${postId}`);
+        return;
+      }
+      
       await updateDoc(doc(db, 'posts', postId), { status, approvedAt: Date.now() });
       if (post) await updateUserMetrics(post.userId);
     } catch (error) {
@@ -1696,8 +1748,8 @@ const App: React.FC = () => {
     if (!isApproved) {
       setConfirmModal({
         isOpen: true,
-        title: 'Remover UsuÃ¡rio',
-        message: 'Tem certeza que deseja remover este usuário? Ele perderÃ¡ o acesso ao HUB.',
+        title: 'Remover Usuário',
+        message: 'Tem certeza que deseja remover este usuário? Ele perderá o acesso ao HUB.',
         onConfirm: async () => {
           try {
             await updateDoc(doc(db, 'users', userId), { isApproved, approvedAt: isApproved ? Date.now() : undefined });
@@ -1718,21 +1770,21 @@ const App: React.FC = () => {
   const handleDeleteUser = async (userId: string) => {
     setConfirmModal({
       isOpen: true,
-      title: 'Remover SolicitaÃ§Ã£o',
-      message: 'Tem certeza que deseja apagar os dados desta solicitaÃ§Ã£o de acesso pendente? O usuário nÃ£o poderÃ¡ mais fazer login.',
+      title: 'Remover Solicitação',
+      message: 'Tem certeza que deseja apagar os dados desta solicitação de acesso pendente? O usuário não poderá mais fazer login.',
       onConfirm: async () => {
         try {
           await deleteDoc(doc(db, 'users', userId));
-          alert('SolicitaÃ§Ã£o removida com sucesso!');
+          alert('Solicitação removida com sucesso!');
         } catch (error: any) {
           console.error('Erro ao deletar usuário:', error);
           if (error.code === 'permission-denied') {
-            // Fallback: se nÃ£o tiver permissÃ£o de deletar, marca como rejeitado
+            // Fallback: se não tiver permissão de deletar, marca como rejeitado
             try {
               await updateDoc(doc(db, 'users', userId), { isApproved: false, isRejected: true });
-              alert('SolicitaÃ§Ã£o marcada como rejeitada. Para deletar definitivamente, publique as Regras atualizadas no Firebase Console.');
+              alert('Solicitação marcada como rejeitada. Para deletar definitivamente, publique as Regras atualizadas no Firebase Console.');
             } catch (e2) {
-              alert('Erro ao remover solicitaÃ§Ã£o. Verifique as regras do Firebase.');
+              alert('Erro ao remover solicitação. Verifique as regras do Firebase.');
             }
           } else {
             alert(`Erro ao remover: ${error.message}`);
@@ -1779,17 +1831,25 @@ const App: React.FC = () => {
             if (total > 0) {
               balanceIncrements[u.uid] = {
                 amount: (balanceIncrements[u.uid]?.amount || 0) + total,
-                desc: `Prêmio Diário ${targetComp.title} (${i + 1}º lugar) + Bônus`
+                desc: `PRÊMIO DIÁRIO ${targetComp.title.toUpperCase()} (${i + 1}º LUGAR)${bonusFromViews > 0 ? ' + BÔNUS' : ''}`
               };
             }
           });
 
           if (instaWinner && targetComp.prizesInstagram?.[0]) {
             const prize = targetComp.prizesInstagram[0].value || 0;
-            balanceIncrements[instaWinner.uid] = {
-              amount: (balanceIncrements[instaWinner.uid]?.amount || 0) + prize,
-              desc: (balanceIncrements[instaWinner.uid]?.desc || '') + ' + Prêmio Insta'
-            };
+            const existing = balanceIncrements[instaWinner.uid];
+            if (existing) {
+              existing.amount += prize;
+              if (!existing.desc.includes('+ BÔNUS')) {
+                existing.desc += ' + BÔNUS';
+              }
+            } else {
+              balanceIncrements[instaWinner.uid] = {
+                amount: prize,
+                desc: `PRÊMIO INSTA ${targetComp.title.toUpperCase()} + BÔNUS`
+              };
+            }
           }
 
           console.log('--- RESET DAILY RANKING LOG ---');
@@ -1957,7 +2017,7 @@ const App: React.FC = () => {
 
   const handleCreateCompetition = async () => {
     if (!compTitle || !compBanner) {
-      alert('TÃ­tulo e Banner sÃ£o obrigatÃ³rios!');
+      alert('Título e Banner são obrigatórios!');
       return;
     }
 
@@ -1986,10 +2046,10 @@ const App: React.FC = () => {
 
       if (editingCompId) {
         await updateDoc(doc(db, 'competitions', editingCompId), compData);
-        alert('CompetiÃ§Ã£o atualizada com sucesso!');
+        alert('Competição atualizada com sucesso!');
       } else {
         await addDoc(collection(db, 'competitions'), compData);
-        alert('CompetiÃ§Ã£o criada com sucesso!');
+        alert('Competição criada com sucesso!');
       }
 
       setIsCreatingComp(false);
@@ -2013,28 +2073,28 @@ const App: React.FC = () => {
       setCompPositionsMonthly(3);
       setCompPositionsInstagram(3);
       setCompPrizes([
-        { position: 1, value: 0, label: '1Âº Lugar' },
-        { position: 2, value: 0, label: '2Âº Lugar' },
-        { position: 3, value: 0, label: '3Âº Lugar' }
+        { position: 1, value: 0, label: '1º Lugar' },
+        { position: 2, value: 0, label: '2º Lugar' },
+        { position: 3, value: 0, label: '3º Lugar' }
       ]);
       setCompPrizesDaily([
-        { position: 1, value: 0, label: '1Âº DiÃ¡rio' },
-        { position: 2, value: 0, label: '2Âº DiÃ¡rio' },
-        { position: 3, value: 0, label: '3Âº DiÃ¡rio' }
+        { position: 1, value: 0, label: '1º Diário' },
+        { position: 2, value: 0, label: '2º Diário' },
+        { position: 3, value: 0, label: '3º Diário' }
       ]);
       setCompPrizesMonthly([
-        { position: 1, value: 0, label: '1Âº Mensal' },
-        { position: 2, value: 0, label: '2Âº Mensal' },
-        { position: 3, value: 0, label: '3Âº Mensal' }
+        { position: 1, value: 0, label: '1º Mensal' },
+        { position: 2, value: 0, label: '2º Mensal' },
+        { position: 3, value: 0, label: '3º Mensal' }
       ]);
       setCompPrizesInstagram([
-        { position: 1, value: 0, label: '1Âº Insta' },
-        { position: 2, value: 0, label: '2Âº Insta' },
-        { position: 3, value: 0, label: '3Âº Insta' }
+        { position: 1, value: 0, label: '1º Insta' },
+        { position: 2, value: 0, label: '2º Insta' },
+        { position: 3, value: 0, label: '3º Insta' }
       ]);
     } catch (error) {
       console.error('Error saving competition:', error);
-      alert('Erro ao salvar competiÃ§Ã£o.');
+      alert('Erro ao salvar competição.');
     }
   };
 
@@ -2080,7 +2140,7 @@ const App: React.FC = () => {
 
       await updateDoc(doc(db, 'users', editingUser.uid), updates);
       setEditingUser(null);
-      alert('UsuÃ¡rio atualizado com sucesso!');
+      alert('Usuário atualizado com sucesso!');
     } catch (error) {
       console.error('Error editing user:', error);
       alert('Erro ao editar usuário.');
@@ -2110,7 +2170,7 @@ const App: React.FC = () => {
     setConfirmModal({
       isOpen: true,
       title: 'Remover Aviso',
-      message: 'Tem certeza que deseja remover este aviso? Esta aÃ§Ã£o Ã© permanente.',
+      message: 'Tem certeza que deseja remover este aviso? Esta ação é permanente.',
       onConfirm: async () => {
         try {
           await deleteDoc(doc(db, 'announcements', id));
@@ -2135,17 +2195,17 @@ const App: React.FC = () => {
         status: 'pending'
       });
       setSuggestionMsg('');
-      alert('Sua sugestÃ£o foi enviada com sucesso! Obrigado por nos ajudar a melhorar.');
+      alert('Sua sugestão foi enviada com sucesso! Obrigado por nos ajudar a melhorar.');
     } catch (error) {
       console.error('Error sending suggestion:', error);
-      alert('Erro ao enviar sugestÃ£o. Tente novamente mais tarde.');
+      alert('Erro ao enviar sugestão. Tente novamente mais tarde.');
     }
   };
 
   const handleUpdateSuggestionStatus = async (id: string, status: Suggestion['status']) => {
     try {
       await updateDoc(doc(db, 'suggestions', id), { status });
-      alert('Status da sugestÃ£o atualizado!');
+      alert('Status da sugestão atualizado!');
     } catch (error) {
       console.error('Error updating suggestion:', error);
       alert('Erro ao atualizar status.');
@@ -2165,32 +2225,43 @@ const App: React.FC = () => {
   const handleDeleteSuggestion = async (id: string) => {
     setConfirmModal({
       isOpen: true,
-      title: 'Remover SugestÃ£o',
-      message: 'Tem certeza que deseja remover esta sugestÃ£o?',
+      title: 'Remover Sugestão',
+      message: 'Tem certeza que deseja remover esta sugestão?',
       onConfirm: async () => {
         try {
           await deleteDoc(doc(db, 'suggestions', id));
-          alert('SugestÃ£o removida!');
+          alert('Sugestão removida!');
         } catch (error) {
           console.error('Error deleting suggestion:', error);
-          alert('Erro ao remover sugestÃ£o.');
+          alert('Erro ao remover sugestão.');
         }
       }
     });
   };
 
-  const toggleCompetitionStatus = async (id: string, isActive: boolean) => {
+  const handleUpdateCompetitionStatus = async (id: string, newStatus: 'active' | 'inactive' | 'upcoming') => {
     try {
-      await updateDoc(doc(db, 'competitions', id), { isActive });
+      await updateDoc(doc(db, 'competitions', id), { 
+        status: newStatus,
+        isActive: newStatus === 'active'
+      });
     } catch (error) {
-      console.error('Error updating competition:', error);
+      console.error('Error updating competition status:', error);
     }
   };
+  
+  const handleAcknowledgeAnnouncement = (id: string) => {
+    setAcknowledgedAnnouncements(prev => {
+      const next = [...prev, id];
+      localStorage.setItem('acknowledgedAnnouncements', JSON.stringify(next));
+      return next;
+    });
+  };
 
-  const handleRegistrationStatus = async (regId: string, status: 'approved' | 'rejected') => {
+  const handleRegistrationStatus = async (regId: string, status: 'approved' | 'rejected' | 'pending') => {
     try {
       await updateDoc(doc(db, 'competition_registrations', regId), { status });
-      alert(`InscriÃ§Ã£o ${status === 'approved' ? 'aprovada' : 'rejeitada'}!`);
+      alert(`Inscrição ${status === 'approved' ? 'aprovada' : status === 'pending' ? 'revertida para pendente' : 'rejeitada'}!`);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `competition_registrations/${regId}`);
     }
@@ -2199,12 +2270,12 @@ const App: React.FC = () => {
   const handleDeleteRegistration = async (regId: string) => {
     setConfirmModal({
       isOpen: true,
-      title: 'Remover InscriÃ§Ã£o',
-      message: 'Tem certeza que deseja remover esta inscriÃ§Ã£o oficial? O usuÃ¡rio perderá o acesso a esta competiÃ§Ã£o e sairá do ranking.',
+      title: 'Remover Inscrição',
+      message: 'Tem certeza que deseja remover esta inscrição oficial? O usuário perderá o acesso a esta competição e sairá do ranking.',
       onConfirm: async () => {
         try {
           await deleteDoc(doc(db, 'competition_registrations', regId));
-          alert('InscriÃ§Ã£o removida com sucesso!');
+          alert('Inscrição removida com sucesso!');
         } catch (error) {
           handleFirestoreError(error, OperationType.DELETE, `competition_registrations/${regId}`);
         }
@@ -2222,7 +2293,7 @@ const App: React.FC = () => {
         <div className="w-24 h-24 gold-bg rounded-3xl flex items-center justify-center mb-8 shadow-2xl">
           <Clock className="w-12 h-12 text-black" />
         </div>
-        <h1 className="text-3xl font-black gold-gradient mb-4">AGUARDANDO APROVAÃ‡ÃƒO</h1>
+        <h1 className="text-3xl font-black gold-gradient mb-4">AGUARDANDO APROVAÇÃO</h1>
         <p className="text-zinc-400 max-w-sm mb-8">
           Sua conta foi criada com sucesso! Agora a diretoria precisa aprovar seu acesso ao Hub MetaRayx.
         </p>
@@ -2231,7 +2302,7 @@ const App: React.FC = () => {
             onClick={() => window.location.reload()}
             className="w-full px-8 py-4 gold-bg text-black font-black rounded-xl hover:scale-[1.02] transition-all shadow-xl"
           >
-            JÃ FUI APROVADO? RECARREGAR
+            JÁ FUI APROVADO? RECARREGAR
           </button>
           <button
             onClick={handleLogout}
@@ -2278,13 +2349,13 @@ const App: React.FC = () => {
               {(user.role === 'admin' || user.role === 'auditor' || user.role === 'administrativo') && (
                 <NavItem active={view === 'ADMIN'} onClick={() => setView('ADMIN')} icon={<ShieldCheck />} label={
                   user.role === 'admin' ? "Diretoria" :
-                    user.role === 'administrativo' ? "Administrativo" : "Auditoria"
+                    user.role === 'administrativo' ? "Administrativo" : "Gestão"
                 } />
               )}
               <NavItem active={view === 'SETTINGS'} onClick={() => setView('SETTINGS')} icon={<Settings />} label="Configurações" />
 
               <div className="pt-2">
-                <NavItem active={view === 'SUGGESTIONS'} onClick={() => setView('SUGGESTIONS')} icon={<MessageSquare />} label="SugestÃµes" />
+                <NavItem active={view === 'SUGGESTIONS'} onClick={() => setView('SUGGESTIONS')} icon={<MessageSquare />} label="Sugestões" />
               </div>
             </nav>
 
@@ -2309,6 +2380,10 @@ const App: React.FC = () => {
 
         {/* Main Content */}
         <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
+          <AnnouncementBanner
+            announcement={announcements.filter(a => a.isActive !== false && !acknowledgedAnnouncements.includes(a.id))[0]}
+            onAcknowledge={handleAcknowledgeAnnouncement}
+          />
           {/* Header */}
           <header className="h-20 glass border-b border-zinc-800/50 flex items-center justify-between px-6 lg:px-10 shrink-0">
             <button className="lg:hidden" onClick={() => setIsSidebarOpen(true)}>
@@ -2407,7 +2482,7 @@ const App: React.FC = () => {
                     handleRegistrationStatus={handleRegistrationStatus}
                     handleDeleteRegistration={handleDeleteRegistration}
                     handleResetDailyRanking={handleResetDailyRanking}
-                    toggleCompetitionStatus={toggleCompetitionStatus}
+                    handleUpdateCompetitionStatus={handleUpdateCompetitionStatus}
                     handleBannerUpload={handleBannerUpload}
                     handleCreateCompetition={handleCreateCompetition}
                     handleEditCompClick={handleEditCompClick}
@@ -2539,6 +2614,8 @@ const App: React.FC = () => {
         onClose={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
       />
 
+
+
       {/* Post Delete Confirmation Modal */}
       <AnimatePresence>
         {postToDelete && (
@@ -2560,9 +2637,9 @@ const App: React.FC = () => {
                 <Trash2 className="w-10 h-10 text-red-500" />
               </div>
               <div className="space-y-2">
-                <h3 className="text-2xl font-black tracking-tight">Excluir VÃ­deo?</h3>
+                <h3 className="text-2xl font-black tracking-tight">Excluir Vídeo?</h3>
                 <p className="text-zinc-500 font-bold text-sm">
-                  Esta aÃ§Ã£o Ã© permanente e removerÃ¡ as estatÃ­sticas deste vídeo do seu ranking.
+                  Esta ação é permanente e removerá as estatísticas deste vídeo do seu ranking.
                 </p>
               </div>
               <div className="flex flex-col gap-3">
@@ -2570,7 +2647,7 @@ const App: React.FC = () => {
                   onClick={() => handleDeletePost(postToDelete)}
                   className="w-full py-4 bg-red-500 text-white font-black rounded-2xl hover:bg-red-600 transition-all"
                 >
-                  SIM, EXCLUIR VÃDEO
+                  SIM, EXCLUIR VÍDEO
                 </button>
                 <button
                   onClick={() => setPostToDelete(null)}
@@ -2605,9 +2682,9 @@ const App: React.FC = () => {
                 <Trophy className="w-10 h-10 text-red-500" />
               </div>
               <div className="space-y-2">
-                <h3 className="text-2xl font-black tracking-tight">Excluir CompetiÃ§Ã£o?</h3>
+                <h3 className="text-2xl font-black tracking-tight">Excluir Competição?</h3>
                 <p className="text-zinc-500 font-bold text-sm">
-                  Esta aÃ§Ã£o Ã© permanente e removerÃ¡ a competiÃ§Ã£o e todos os seus dados.
+                  Esta ação é permanente e removerá a competição e todos os seus dados.
                 </p>
               </div>
               <div className="flex flex-col gap-3">
@@ -2615,7 +2692,7 @@ const App: React.FC = () => {
                   onClick={() => deleteCompetition(compToDelete)}
                   className="w-full py-4 bg-red-500 text-white font-black rounded-2xl hover:bg-red-600 transition-all"
                 >
-                  SIM, EXCLUIR COMPETIÃ‡ÃƒO
+                  SIM, EXCLUIR COMPETIÇÃO
                 </button>
                 <button
                   onClick={() => setCompToDelete(null)}
@@ -3226,17 +3303,17 @@ const PostSubmit = ({ user, competitions, registrations, setView, lockedCompetit
       const userInstagram = Array.isArray(user.instagram) ? user.instagram : (user.instagram ? [user.instagram] : []);
 
       if (platform === 'tiktok' && userTiktoks.length === 0) {
-        setError('VocÃª precisa cadastrar pelo menos um @ do TikTok nas configuraÃ§Ãµes antes de enviar links.');
+        setError('Você precisa cadastrar pelo menos um @ do TikTok nas configurações antes de enviar links.');
         setSubmitting(false);
         return;
       }
       if (platform === 'youtube' && userYoutube.length === 0) {
-        setError('VocÃª precisa cadastrar seu canal do YouTube nas configuraÃ§Ãµes antes de enviar links.');
+        setError('Você precisa cadastrar seu canal do YouTube nas configurações antes de enviar links.');
         setSubmitting(false);
         return;
       }
       if (platform === 'instagram' && userInstagram.length === 0) {
-        setError('VocÃª precisa cadastrar pelo menos um @ do Instagram nas configuraÃ§Ãµes antes de enviar links.');
+        setError('Você precisa cadastrar pelo menos um @ do Instagram nas configurações antes de enviar links.');
         setSubmitting(false);
         return;
       }
@@ -3691,7 +3768,7 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId }: { rankings: U
 
   const typeLabels: Record<string, string> = {
     DAILY: 'Ranking Diário',
-    TOTAL: 'Ranking Geral',
+    TOTAL: 'Ranking Mensal',
     INSTAGRAM: 'Ranking Instagram'
   };
 
@@ -3799,7 +3876,7 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId }: { rankings: U
         <div className="flex items-center gap-1 bg-zinc-900/60 p-1 rounded-xl border border-zinc-800/50 w-fit">
           {[
             { key: 'DAILY', label: 'Diário' },
-            { key: 'TOTAL', label: 'Geral' },
+            { key: 'TOTAL', label: 'Mensal' },
             { key: 'INSTAGRAM', label: 'Instagram', icon: <Camera className="w-3 h-3" /> },
           ].map(tab => (
             <button
@@ -4080,7 +4157,7 @@ const UserListRow = ({
         onChange={(e) => onUpdateRole(user.uid, e.target.value as any)}
         className="bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1 text-[9px] font-black uppercase text-amber-500 outline-none focus:border-amber-500 cursor-pointer w-full max-w-[120px]"
       >
-        <option value="user">ðŸ‘¤ USUÃRIO</option>
+        <option value="user">ðŸ‘¤ USUÁRIO</option>
         <option value="auditor">ðŸ” AUDITOR</option>
         <option value="administrativo">ðŸ¢ ADMIN</option>
         <option value="admin">ðŸ‘‘ DIRETORIA</option>
@@ -4262,9 +4339,10 @@ const FinancialRow = ({ user, onViewLinks, compId, isPaidView }: { user: User, o
       <div className="flex items-center justify-end gap-3">
         <button
           onClick={() => onViewLinks(user.uid)}
-          className="px-4 py-2.5 rounded-2xl bg-zinc-900 border border-zinc-800 text-zinc-500 font-black text-[10px] hover:text-white hover:bg-zinc-800 hover:border-zinc-700 transition-all flex items-center gap-2.5 uppercase tracking-widest shadow-xl"
+          className="p-2 rounded-xl bg-zinc-900/60 border border-zinc-800 text-zinc-500 hover:text-white hover:border-zinc-600 transition-all"
+          title="Ver links postados"
         >
-          <BarChart3 className="w-4 h-4" /> AUDITAR
+          <BarChart3 className="w-4 h-4" />
         </button>
         {!isPaidView && (
           <button
@@ -4310,7 +4388,7 @@ const AdminPanel = ({
   handleRegistrationStatus,
   handleDeleteRegistration,
   handleResetDailyRanking,
-  toggleCompetitionStatus,
+  handleUpdateCompetitionStatus,
   handleBannerUpload,
   handleCreateCompetition,
   handleEditCompClick,
@@ -4399,10 +4477,10 @@ const AdminPanel = ({
   handlePostStatus: (postId: string, status: PostStatus) => void;
   handleUserApproval: (userId: string, isApproved: boolean) => void;
   handleDeleteUser: (userId: string) => void;
-  handleRegistrationStatus: (regId: string, status: 'approved' | 'rejected') => void;
+  handleRegistrationStatus: (regId: string, status: 'approved' | 'rejected' | 'pending') => void;
   handleDeleteRegistration: (regId: string) => void;
   handleResetDailyRanking: (compId?: string) => void;
-  toggleCompetitionStatus: (id: string, isActive: boolean) => void;
+  handleUpdateCompetitionStatus: (id: string, status: 'active' | 'inactive' | 'upcoming') => void;
   handleBannerUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleCreateCompetition: () => void;
   handleEditCompClick: (comp: Competition) => void;
@@ -4640,6 +4718,7 @@ const AdminPanel = ({
   const pendingPosts = posts.filter(p => p.status === 'pending');
   const pendingRegistrations = registrations.filter(r => r.status === 'pending');
   const approvedRegistrations = registrations.filter(r => r.status === 'approved');
+  const rejectedRegistrations = registrations.filter(r => r.status === 'rejected');
   const [repairing, setRepairing] = useState(false);
 
   const handleRepairMetrics = async () => {
@@ -4795,8 +4874,8 @@ const AdminPanel = ({
         >
           DASHBOARD
         </button>
-        {/* POSTS - visível apenas para admin e auditor */}
-        {(userRole === 'admin' || userRole === 'auditor') && (
+        {/* POSTS - visível apenas para admin */}
+        {userRole === 'admin' && (
           <button
             onClick={() => { setTab('POSTS'); setAuditUserId(null); setSelectedCompId(null); setSyncDetailCompId(null); }}
             className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'POSTS' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
@@ -4804,8 +4883,8 @@ const AdminPanel = ({
             POSTS ({posts.filter(p => p.status === 'pending').length})
           </button>
         )}
-        {/* SINCRONIZAÇÃO - Novo fluxo */}
-        {(userRole === 'admin' || userRole === 'auditor') && (
+        {/* SINCRONIZAÇÃO - visível apenas para admin */}
+        {userRole === 'admin' && (
           <button
             onClick={() => { setTab('SINCRONIZACAO'); setAuditUserId(null); setSelectedCompId(null); setSyncDetailCompId(null); }}
             className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'SINCRONIZACAO' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
@@ -4819,7 +4898,7 @@ const AdminPanel = ({
             onClick={() => { setTab('RESSINCRONIZACAO'); setAuditUserId(null); setSelectedCompId(null); setSyncDetailCompId(null); }}
             className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'RESSINCRONIZACAO' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
           >
-            RESSINCRONIZAÇÃO ({posts.filter(p => p.status === 'synced').length})
+            RESSINCRONIZAÇÃO ({posts.filter(p => p.status === 'synced' || p.status === 'banned').length})
           </button>
         )}
         {/* USERS - visível apenas para admin */}
@@ -4840,8 +4919,8 @@ const AdminPanel = ({
             APROVADOS ({approvedUsers.length})
           </button>
         )}
-        {/* COMPETIÇÕES - visível para admin e auditor */}
-        {(userRole === 'admin' || userRole === 'auditor') && (
+        {/* COMPETIÇÕES - visível apenas para admin */}
+        {userRole === 'admin' && (
           <button
             onClick={() => { setTab('COMPETITIONS'); setAuditUserId(null); setSelectedCompId(null); setSyncDetailCompId(null); }}
             className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'COMPETITIONS' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
@@ -4927,7 +5006,7 @@ const AdminPanel = ({
                   trend: dailyPostTrend
                 },
                 { 
-                  label: 'Governança & Auditoria', 
+                  label: 'Governança & Gestão', 
                   value: `${approvalRate}%`, 
                   sub: `${auditEfficiency} min / audit`, 
                   icon: ShieldCheck, 
@@ -5138,7 +5217,7 @@ const AdminPanel = ({
         {tab === 'ACESSOS' && userRole === 'admin' && (
           <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-3xl max-w-xl mx-auto w-full">
             <h3 className="text-xl font-black uppercase mb-2">Criar Novo Funcionário/Acesso</h3>
-            <p className="text-xs font-bold text-zinc-500 mb-6">Crie um acesso direto para Auditores, Administradores ou Usuários sem sair da sua conta atual.</p>
+            <p className="text-xs font-bold text-zinc-500 mb-6">Crie um acesso direto para Gestores, Administradores ou Usuários sem sair da sua conta atual.</p>
 
             <div className="space-y-4">
               <div>
@@ -5149,8 +5228,8 @@ const AdminPanel = ({
                   className="w-full bg-black border border-zinc-800 px-4 py-3 rounded-xl focus:border-amber-500 outline-none transition-all font-bold text-sm text-zinc-300"
                 >
                   <option value="user">👤 Usuário Comum (Criador de Conteúdo)</option>
-                  <option value="auditor">🔍 Auditor — Revisa vídeos postados</option>
-                  <option value="administrativo">🏢 Administrativo — Auditoria + Financeiro + Acesso como usuário</option>
+                  <option value="auditor">🔍 Gestor — Controle de Campanhas</option>
+                  <option value="administrativo">🏢 Administrativo — Gestão + Financeiro + Acesso como usuário</option>
                   <option value="admin">👑 Administrador (Diretoria) — Acesso total</option>
                 </select>
               </div>
@@ -5199,7 +5278,7 @@ const AdminPanel = ({
             <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-10">
               <div className="space-y-1">
                 <h3 className="text-2xl font-black uppercase tracking-tighter gold-gradient leading-none">Gestão Financeira</h3>
-                <p className="text-zinc-500 font-bold text-[10px] uppercase tracking-[0.2em] opacity-80">Controle de pagamentos e auditoria por competição.</p>
+                <p className="text-zinc-500 font-bold text-[10px] uppercase tracking-[0.2em] opacity-80">Controle de pagamentos e gestão por competição.</p>
               </div>
 
               <div className="flex flex-wrap items-center gap-4 bg-zinc-900/30 p-2 rounded-3xl border border-zinc-800/50">
@@ -5247,7 +5326,7 @@ const AdminPanel = ({
                       </div>
                       <div>
                         <h4 className="text-xl font-black uppercase tracking-tight text-white mb-0.5">{approvedUsers.find(u => u.uid === auditUserId)?.displayName}</h4>
-                        <p className="text-[10px] font-black text-amber-500/70 uppercase tracking-widest">Auditoria de Desempenho Social</p>
+                        <p className="text-[10px] font-black text-amber-500/70 uppercase tracking-widest">Gestão de Performance Social</p>
                       </div>
                     </div>
 
@@ -5302,7 +5381,13 @@ const AdminPanel = ({
                             </div>
                           </div>
                           <div className="min-w-0">
-                            <p className="font-bold text-[11px] truncate text-zinc-500 select-all hover:text-zinc-200 transition-colors">{post.url}</p>
+                            <a
+                              href={post.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="font-bold text-[11px] truncate text-blue-400 hover:text-blue-300 underline underline-offset-2 transition-colors block"
+                              title={post.url}
+                            >{post.url}</a>
                           </div>
                           <div className="text-center">
                             <span className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest ${
@@ -5327,12 +5412,6 @@ const AdminPanel = ({
                             <a href={post.url} target="_blank" rel="noreferrer" className="p-3 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-500 hover:text-white hover:border-zinc-700 transition-all">
                               <ExternalLink className="w-4 h-4" />
                             </a>
-                            <button
-                              onClick={() => handlePostStatus(post.id, 'approved')}
-                              className={`p-3 rounded-xl border transition-all ${post.status === 'approved' ? 'bg-emerald-500 border-emerald-400 text-black shadow-lg shadow-emerald-500/20' : 'bg-emerald-500/5 border-emerald-500/20 text-emerald-500 hover:bg-emerald-500 hover:text-black'}`}
-                            >
-                              <CheckCircle2 className="w-4 h-4" />
-                            </button>
                             <button
                               onClick={() => handlePostStatus(post.id, 'rejected')}
                               className={`p-3 rounded-xl border transition-all ${post.status === 'rejected' ? 'bg-red-500 border-red-400 text-black shadow-lg shadow-red-500/20' : 'bg-red-500/5 border-red-500/20 text-red-500 hover:bg-red-500 hover:text-black'}`}
@@ -5466,6 +5545,11 @@ const AdminPanel = ({
                               const compTotal = approvedUsers.reduce((sum, u) => sum + (u.competitionStats?.[comp.id]?.balance || 0) + (u.competitionStats?.[comp.id]?.paidTotal || 0), 0);
                               const compPaid = approvedUsers.reduce((sum, u) => sum + (u.competitionStats?.[comp.id]?.paidTotal || 0), 0);
                               const percent = compTotal > 0 ? (compPaid / compTotal) * 100 : 0;
+                              
+                              // Métricas Portfolio por Competição
+                              const compPosts = posts.filter(p => p.competitionId === comp.id && (p.status === 'approved' || p.status === 'synced'));
+                              const compViews = compPosts.reduce((sum, p) => sum + (p.views || 0), 0);
+                              const compCpm = compViews > 0 ? (compTotal / (compViews / 1000)) : 0;
 
                               return (
                                 <div key={comp.id} className="p-5 rounded-3xl bg-zinc-900/40 border border-zinc-900 hover:border-zinc-800 transition-all">
@@ -5481,7 +5565,8 @@ const AdminPanel = ({
                                     </div>
                                     <div className="text-right">
                                       <p className="text-xs font-black text-white">R$ {compTotal.toLocaleString('pt-BR')}</p>
-                                      <p className="text-[9px] font-bold text-zinc-600 uppercase tracking-widest">{Math.round(percent)}% Pago</p>
+                                      <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">{compViews.toLocaleString()} VIEWS • CPM R$ {compCpm.toFixed(2)}</p>
+                                      <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest mt-1">{Math.round(percent)}% Pago</p>
                                     </div>
                                   </div>
                                   <div className="h-1.5 w-full bg-zinc-950 rounded-full overflow-hidden">
@@ -5818,9 +5903,9 @@ const AdminPanel = ({
 
             <div className="grid grid-cols-1 gap-4">
               {posts.filter(p => {
-                const isApproved = p.status === 'approved' || p.status === 'banned';
+                const isSynced = p.status === 'synced' || p.status === 'banned';
                 const matchesComp = selectedSyncCompId === 'ALL' || p.competitionId === selectedSyncCompId;
-                return isApproved && matchesComp;
+                return isSynced && matchesComp;
               }).map(post => (
                 <div key={post.id} className="p-6 rounded-3xl glass flex flex-col md:flex-row items-center gap-6">
                   <div className="w-16 h-16 rounded-2xl bg-zinc-900 flex items-center justify-center shrink-0">
@@ -5831,8 +5916,8 @@ const AdminPanel = ({
                   <div className="flex-1 min-w-0 text-center md:text-left">
                     <div className="flex items-center gap-2 mb-1 justify-center md:justify-start">
                       <p className="text-sm font-black text-zinc-300 uppercase tracking-tight">{post.userName}</p>
-                      <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase ${post.status === 'approved' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
-                        {post.status === 'approved' ? 'SINCRONIZADO' : 'BANIDO'}
+                      <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase ${post.status === 'synced' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
+                        {post.status === 'synced' ? 'SINCRONIZADO' : 'BANIDO'}
                       </span>
                     </div>
                     <p className="font-bold truncate text-zinc-500 mb-2 text-xs">{post.url}</p>
@@ -5848,9 +5933,9 @@ const AdminPanel = ({
                       <select
                         value={post.status}
                         onChange={(e) => handleStatusToggle(post.id, e.target.value as PostStatus, post.userId)}
-                        className={`bg-zinc-900 border-2 rounded-xl py-2 px-3 text-[10px] font-black outline-none transition-all cursor-pointer ${post.status === 'approved' ? 'border-emerald-500/50 text-emerald-500' : 'border-red-500/50 text-red-500'}`}
+                        className={`bg-zinc-900 border-2 rounded-xl py-2 px-3 text-[10px] font-black outline-none transition-all cursor-pointer ${post.status === 'synced' ? 'border-emerald-500/50 text-emerald-500' : 'border-red-500/50 text-red-500'}`}
                       >
-                        <option value="approved">✅ SINCRONIZADO</option>
+                        <option value="synced">✅ SINCRONIZADO</option>
                         <option value="banned">🚫 BANIDO</option>
                       </select>
                     </div>
@@ -5878,13 +5963,13 @@ const AdminPanel = ({
           </div>
         ) : tab === 'USERS_APPROVED' ? (
           <div className="space-y-6">
-            <h3 className="text-xl font-black uppercase tracking-tight">UsuÃ¡rios Aprovados</h3>
+            <h3 className="text-xl font-black uppercase tracking-tight">Usuários Aprovados</h3>
             {auditUserId ? (
               <div className="border border-zinc-800 rounded-3xl p-6 bg-zinc-950">
                 {/* ... auditoria view content ... */}
                 <div className="flex justify-between items-center mb-6">
                   <div>
-                    <h3 className="text-xl font-black uppercase text-amber-500">Links do UsuÃ¡rio</h3>
+                    <h3 className="text-xl font-black uppercase text-amber-500">Links do Usuário</h3>
                     <p className="text-xs text-zinc-500 font-bold tracking-widest uppercase">
                       Visualizando postagens de {approvedUsers.find(u => u.uid === auditUserId)?.displayName}
                     </p>
@@ -5893,7 +5978,7 @@ const AdminPanel = ({
                     onClick={() => setAuditUserId(null)}
                     className="px-4 py-2 bg-zinc-800 text-white font-bold rounded-xl text-xs flex items-center gap-2 hover:bg-zinc-700"
                   >
-                    <X className="w-4 h-4" /> VOLTAR Ã€ LISTA
+                    <X className="w-4 h-4" /> VOLTAR À LISTA
                   </button>
                 </div>
 
@@ -5930,7 +6015,7 @@ const AdminPanel = ({
                           <button
                             onClick={() => handlePostStatus(post.id, 'rejected')}
                             className={`p-2 rounded-xl transition-all ${post.status === 'rejected' ? 'bg-red-500 text-black' : 'bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-black'}`}
-                            title="Rejeitar VÃ­deo"
+                            title="Rejeitar Vídeo"
                           >
                             <XCircle className="w-5 h-5" />
                           </button>
@@ -5945,7 +6030,7 @@ const AdminPanel = ({
               </div>
             ) : (
               <div className="space-y-1">
-                <ListHeader columns={['USUÃRIO', 'EMAIL', 'CARGO', 'AÃ‡Ã•ES']} gridClass="grid-cols-[1.5fr_1.2fr_1fr_220px]" />
+                <ListHeader columns={['USUÁRIO', 'EMAIL', 'CARGO', 'AÇÕES']} gridClass="grid-cols-[1.5fr_1.2fr_1fr_220px]" />
                 {approvedUsers.map(u => (
                   <UserListRow
                     key={u.uid}
@@ -6025,7 +6110,7 @@ const AdminPanel = ({
           <div className="space-y-6">
             <h3 className="text-xl font-black uppercase tracking-tight">Solicitações de Acesso</h3>
             <div className="space-y-1">
-              <ListHeader columns={['USUÃRIO', 'EMAIL', 'AÃ‡Ã•ES']} gridClass="grid-cols-[1.5fr_1.5fr_200px]" />
+              <ListHeader columns={['USUÁRIO', 'EMAIL', 'AÇÕES']} gridClass="grid-cols-[1.5fr_1.5fr_200px]" />
               {pendingUsers.map(u => (
                 <PendingUserRow
                   key={u.uid}
@@ -6070,7 +6155,7 @@ const AdminPanel = ({
               const comp = competitions.find(c => c.id === selectedCompId);
               if (!comp) return null;
 
-              // MÃ©tricas: Somente Aprovados dentro do perÃ­odo
+              // Métricas: Somente Aprovados dentro do período
               const compPosts = posts.filter(p =>
                 p.status === 'approved' &&
                 p.timestamp >= comp.startDate &&
@@ -6086,7 +6171,13 @@ const AdminPanel = ({
                 insta: acc.insta + (p.platform === 'instagram' ? 1 : 0)
               }), { views: 0, likes: 0, comments: 0, shares: 0, total: 0, insta: 0 });
 
-              // Ranking Top 10 por Views nesta competiÃ§Ã£o
+              // Cálculo Financeiro (ROI/CPM)
+              const compTransactions = transactions.filter(t => t.competitionId === selectedCompId && t.status !== 'rejected');
+              const totalSpent = compTransactions.reduce((sum, t) => sum + t.amount, 0);
+              const cpm = stats.views > 0 ? (totalSpent / (stats.views / 1000)) : 0;
+              const goalPercent = comp.goalTarget ? Math.min((stats.views / comp.goalTarget) * 100, 100) : 0;
+
+              // Ranking Top 10 por Views nesta competição
               const rankingData = compPosts.reduce((acc: any, p) => {
                 if (!acc[p.userId]) {
                   acc[p.userId] = {
@@ -6104,37 +6195,87 @@ const AdminPanel = ({
 
               return (
                 <div className="space-y-8 pb-10">
-                  {/* Grid de KPIs */}
-                  <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-                    <div className="p-6 rounded-[32px] glass border border-zinc-800 flex flex-col gap-2">
-                      <Eye className="w-5 h-5 text-amber-500" />
-                      <span className="text-2xl font-black">{stats.views.toLocaleString()}</span>
-                      <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Total Views</span>
+                  {/* Grid de KPIs - PORTFÓLIO STYLE */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {/* TOTAL VIEWS */}
+                    <div className="p-8 rounded-[40px] bg-zinc-950 border border-zinc-900 relative overflow-hidden group">
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 blur-[60px]" />
+                      <div className="relative z-10">
+                        <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center text-amber-500 mb-6">
+                          <Eye className="w-6 h-6" />
+                        </div>
+                        <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-1">Visualizações Totais</p>
+                        <h4 className="text-4xl font-black text-white tracking-tighter">{stats.views.toLocaleString()}</h4>
+                      </div>
                     </div>
+
+                    {/* CPM */}
+                    <div className="p-8 rounded-[40px] bg-zinc-950 border border-zinc-900 relative overflow-hidden group">
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 blur-[60px]" />
+                      <div className="relative z-10">
+                        <div className="w-12 h-12 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-500 mb-6">
+                          <DollarSign className="w-6 h-6" />
+                        </div>
+                        <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-1">CPM (Investimento/1k Views)</p>
+                        <h4 className="text-3xl font-black text-white tracking-tighter">R$ {cpm.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h4>
+                      </div>
+                    </div>
+
+                    {/* META DA COMPETIÇÃO */}
+                    <div className="p-8 rounded-[40px] bg-zinc-950 border border-zinc-900 relative overflow-hidden group lg:col-span-2">
+                       <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500/5 blur-[80px]" />
+                       <div className="relative z-10 h-full flex flex-col justify-between">
+                          <div className="flex items-center justify-between mb-4">
+                            <div>
+                              <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-1">Meta da Competição</p>
+                              <h4 className="text-sm font-black text-white uppercase tracking-tight">
+                                {comp.goalTarget ? `${comp.goalTarget.toLocaleString()} ${comp.goalMetric || 'VIEWS'}` : 'Nenhuma meta definida'}
+                              </h4>
+                            </div>
+                            <div className="text-right">
+                               <span className="text-3xl font-black gold-gradient">{Math.round(goalPercent)}%</span>
+                            </div>
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <div className="h-4 w-full bg-black rounded-full overflow-hidden border border-zinc-900 p-1">
+                               <motion.div 
+                                 initial={{ width: 0 }}
+                                 animate={{ width: `${goalPercent}%` }}
+                                 className="h-full bg-gradient-to-r from-amber-600 to-amber-400 rounded-full shadow-[0_0_15px_rgba(245,158,11,0.4)]"
+                               />
+                            </div>
+                            <div className="flex justify-between text-[8px] font-black text-zinc-600 uppercase tracking-widest">
+                               <span>Início</span>
+                               <span>Atingido: {stats.views.toLocaleString()}</span>
+                               <span>Objetivo</span>
+                            </div>
+                          </div>
+                       </div>
+                    </div>
+                  </div>
+
+                  {/* Secondary stats row */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="p-6 rounded-[32px] glass border border-zinc-800 flex flex-col gap-2">
                       <Heart className="w-5 h-5 text-pink-500" />
                       <span className="text-2xl font-black">{stats.likes.toLocaleString()}</span>
                       <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Curtidas</span>
                     </div>
                     <div className="p-6 rounded-[32px] glass border border-zinc-800 flex flex-col gap-2">
-                      <MessageSquare className="w-5 h-5 text-blue-500" />
-                      <span className="text-2xl font-black">{stats.comments.toLocaleString()}</span>
-                      <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Comentários</span>
-                    </div>
-                    <div className="p-6 rounded-[32px] glass border border-zinc-800 flex flex-col gap-2">
-                      <Share2 className="w-5 h-5 text-emerald-500" />
-                      <span className="text-2xl font-black">{stats.shares.toLocaleString()}</span>
-                      <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Shares</span>
-                    </div>
-                    <div className="p-6 rounded-[32px] glass border border-zinc-800 flex flex-col gap-2">
                       <Zap className="w-5 h-5 text-amber-500" />
                       <span className="text-2xl font-black">{stats.total}</span>
-                      <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Total Vídeos</span>
+                      <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Posts Publicados</span>
                     </div>
-                    <div className="p-6 rounded-[32px] bg-gradient-to-br from-pink-500/10 to-transparent border border-pink-500/20 flex flex-col gap-2">
+                    <div className="p-6 rounded-[32px] glass border border-zinc-800 flex flex-col gap-2">
                       <Camera className="w-5 h-5 text-pink-500" />
-                      <span className="text-2xl font-black text-pink-500">{stats.insta}</span>
-                      <span className="text-[10px] font-black text-pink-500/50 uppercase tracking-widest">Instagram</span>
+                      <span className="text-2xl font-black">{stats.insta}</span>
+                      <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Postagens Insta</span>
+                    </div>
+                    <div className="p-6 rounded-[32px] glass border border-zinc-800 flex flex-col gap-2">
+                      <MessageSquare className="w-5 h-5 text-blue-500" />
+                      <span className="text-2xl font-black">{stats.comments.toLocaleString()}</span>
+                      <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Interações</span>
                     </div>
                   </div>
 
@@ -6164,12 +6305,12 @@ const AdminPanel = ({
                           </div>
                         ))}
                         {sortedRanking.length === 0 && (
-                          <p className="text-center py-10 text-zinc-600 font-bold">Nenhum dado de ranking disponÃ­vel.</p>
+                          <p className="text-center py-10 text-zinc-600 font-bold">Nenhum dado de ranking disponível.</p>
                         )}
                       </div>
                     </div>
 
-                    {/* Detalhes da CompetiÃ§Ã£o */}
+                    {/* Detalhes da Competição */}
                     <div className="p-8 rounded-[40px] glass border border-zinc-800 space-y-6">
                       <div className="flex items-center gap-3">
                         <Calendar className="w-6 h-6 text-zinc-500" />
@@ -6186,19 +6327,19 @@ const AdminPanel = ({
                         </div>
                       </div>
 
-                      {/* SeÃ§Ã£o de PrÃªmios no Dashboard */}
+                      {/* Seção de Prêmios no Dashboard */}
                       <div className="space-y-4">
                         <div className="flex items-center gap-2">
                           <Trophy className="w-5 h-5 text-amber-500" />
                           <h5 className="text-xs font-black uppercase tracking-widest text-zinc-400">Tabela de Premiação</h5>
                         </div>
                         <div className="grid grid-cols-1 gap-2">
-                          {/* BÃ´nus por 1M Views â€” destaque especial */}
+                          {/* Bônus por 1M Views â€” destaque especial */}
                           {(comp as any).viewBonus > 0 && (
                             <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 to-transparent border border-amber-500/30 flex items-center gap-3">
                               <Eye className="w-5 h-5 text-amber-500 shrink-0" />
                               <div>
-                                <p className="text-[9px] font-black text-amber-500 uppercase">BÃ´nus por 1 MilhÃ£o de Views</p>
+                                <p className="text-[9px] font-black text-amber-500 uppercase">Bônus por 1 Milhão de Views</p>
                                 <p className="text-lg font-black text-white">R$ {(comp as any).viewBonus.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                                 <p className="text-[9px] text-zinc-500 font-bold">Pago a cada 1.000.000 views atingidas por vídeo</p>
                               </div>
@@ -6206,7 +6347,7 @@ const AdminPanel = ({
                           )}
                           {comp.prizesMonthly && comp.prizesMonthly.length > 0 && (
                             <div className="p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800/50">
-                              <p className="text-[9px] font-black text-amber-500 uppercase mb-2">ðŸ† Ranking Mensal (Acumulado do PerÃ­odo)</p>
+                              <p className="text-[9px] font-black text-amber-500 uppercase mb-2">ðŸ† Ranking Mensal (Acumulado do Período)</p>
                               <div className="flex flex-wrap gap-2">
                                 {comp.prizesMonthly.map((p, idx) => (
                                   <span key={idx} className="text-[10px] font-bold bg-black px-2 py-1 rounded-lg border border-zinc-800">
@@ -6230,7 +6371,7 @@ const AdminPanel = ({
                           )}
                           {comp.prizes && comp.prizes.length > 0 && (
                             <div className="p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800/50">
-                              <p className="text-[9px] font-black text-emerald-400 uppercase mb-2">ðŸ“Š Ranking Geral</p>
+                              <p className="text-[9px] font-black text-emerald-400 uppercase mb-2">📊 Ranking Mensal</p>
                               <div className="flex flex-wrap gap-2">
                                 {comp.prizes.map((p, idx) => (
                                   <span key={idx} className="text-[10px] font-bold bg-black px-2 py-1 rounded-lg border border-zinc-800">
@@ -6242,7 +6383,7 @@ const AdminPanel = ({
                           )}
                           {comp.prizesInstagram && comp.prizesInstagram.length > 0 && (
                             <div className="p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800/50">
-                              <p className="text-[9px] font-black text-pink-500 uppercase mb-2">ðŸ“¸ Instagram (Quantidade de Posts)</p>
+                              <p className="text-[9px] font-black text-pink-500 uppercase mb-2">📸 Instagram (Quantidade de Posts)</p>
                               <div className="flex flex-wrap gap-2">
                                 {comp.prizesInstagram.map((p, idx) => (
                                   <span key={idx} className="text-[10px] font-bold bg-black px-2 py-1 rounded-lg border border-zinc-800">
@@ -6256,11 +6397,11 @@ const AdminPanel = ({
                       </div>
 
                       <div className="p-6 rounded-3xl bg-zinc-900/50">
-                        <p className="text-[10px] font-black text-zinc-500 uppercase mb-1">Hashtags ObrigatÃ³rias</p>
+                        <p className="text-[10px] font-black text-zinc-500 uppercase mb-1">Hashtags Obrigatórias</p>
                         <p className="font-mono text-xs text-amber-500/80">{comp.hashtags || 'Nenhuma'}</p>
                       </div>
                       <div className="p-6 rounded-3xl bg-zinc-900/50">
-                        <p className="text-[10px] font-black text-zinc-500 uppercase mb-1">MarcaÃ§Ãµes</p>
+                        <p className="text-[10px] font-black text-zinc-500 uppercase mb-1">Marcações</p>
                         <p className="font-mono text-xs text-amber-500/80">{comp.mentions || 'Nenhuma'}</p>
                       </div>
                     </div>
@@ -6277,17 +6418,17 @@ const AdminPanel = ({
                   >
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">TÃ­tulo da CompetiÃ§Ã£o</label>
+                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Título da Competição</label>
                         <input
                           type="text"
                           value={compTitle}
                           onChange={(e) => setCompTitle(e.target.value)}
-                          placeholder="Ex: Copa MetaRayx de VerÃ£o"
+                          placeholder="Ex: Copa MetaRayx de Verão"
                           className="w-full bg-black border border-zinc-800 rounded-2xl py-4 px-6 text-sm font-bold focus:border-amber-500 outline-none transition-all"
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Banner da CompetiÃ§Ã£o</label>
+                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Banner da Competição</label>
                         <div className="flex items-center gap-4">
                           <div className="flex-1">
                             <input
@@ -6316,11 +6457,11 @@ const AdminPanel = ({
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">DescriÃ§Ã£o</label>
+                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Descrição</label>
                         <textarea
                           value={compDesc}
                           onChange={(e) => setCompDesc(e.target.value)}
-                          placeholder="Breve resumo da competiÃ§Ã£o..."
+                          placeholder="Breve resumo da competição..."
                           className="w-full bg-black border border-zinc-800 rounded-2xl py-4 px-6 text-sm font-bold focus:border-amber-500 outline-none transition-all h-24 resize-none"
                         />
                       </div>
@@ -6347,7 +6488,7 @@ const AdminPanel = ({
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">MarcaÃ§Ãµes (@)</label>
+                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Marcações (@)</label>
                         <input
                           type="text"
                           value={compMentions}
@@ -6432,19 +6573,19 @@ const AdminPanel = ({
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">BÃ´nus (Texto Livre)</label>
+                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Bônus (Texto Livre)</label>
                         <input
                           type="text"
                           value={compBonuses}
                           onChange={(e) => setCompBonuses(e.target.value)}
-                          placeholder="Ex: +10% para vídeos com Ã¡udio oficial"
+                          placeholder="Ex: +10% para vídeos com áudio oficial"
                           className="w-full bg-black border border-zinc-800 rounded-2xl py-4 px-6 text-sm font-bold focus:border-amber-500 outline-none transition-all"
                         />
                       </div>
                       <div className="space-y-2">
                         <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-2">
                           <span className="px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-500 text-[9px] font-black">R$</span>
-                          BÃ´nus por 1 MilhÃ£o de Views
+                          Bônus por 1 Milhão de Views
                         </label>
                         <div className="relative">
                           <span className="absolute left-4 top-1/2 -translate-y-1/2 text-amber-500 font-black text-sm">R$</span>
@@ -6465,9 +6606,9 @@ const AdminPanel = ({
                     <div className="space-y-8 pt-4 border-t border-zinc-800">
                       <div className="space-y-4">
                         <div className="flex items-center justify-between">
-                          <h4 className="text-sm font-black uppercase tracking-widest gold-gradient">PremiaÃ§Ã£o Mensal (Geral)</h4>
+                          <h4 className="text-sm font-black uppercase tracking-widest gold-gradient">Premiação Mensal (Geral)</h4>
                           <div className="flex items-center gap-2">
-                            <span className="text-[10px] text-zinc-500 font-bold uppercase">PosiÃ§Ãµes:</span>
+                            <span className="text-[10px] text-zinc-500 font-bold uppercase">Posições:</span>
                             <input
                               type="number"
                               min="1" max="20"
@@ -6477,7 +6618,7 @@ const AdminPanel = ({
                                 setCompPositions(val);
                                 const newPrizes = [...compPrizes];
                                 while (newPrizes.length < val) {
-                                  newPrizes.push({ position: newPrizes.length + 1, value: 0, label: `${newPrizes.length + 1}Âº Lugar` });
+                                  newPrizes.push({ position: newPrizes.length + 1, value: 0, label: `${newPrizes.length + 1}º Lugar` });
                                 }
                                 setCompPrizes(newPrizes.slice(0, val));
                               }}
@@ -6506,9 +6647,9 @@ const AdminPanel = ({
 
                       <div className="space-y-4">
                         <div className="flex items-center justify-between">
-                          <h4 className="text-sm font-black uppercase tracking-widest gold-gradient">PremiaÃ§Ã£o DiÃ¡ria (Views)</h4>
+                          <h4 className="text-sm font-black uppercase tracking-widest gold-gradient">Premiação Diária (Views)</h4>
                           <div className="flex items-center gap-2">
-                            <span className="text-[10px] text-zinc-500 font-bold uppercase">PosiÃ§Ãµes:</span>
+                            <span className="text-[10px] text-zinc-500 font-bold uppercase">Posições:</span>
                             <input
                               type="number"
                               min="1" max="10"
@@ -6518,7 +6659,7 @@ const AdminPanel = ({
                                 setCompPositionsDaily(val);
                                 const newPrizes = [...compPrizesDaily];
                                 while (newPrizes.length < val) {
-                                  newPrizes.push({ position: newPrizes.length + 1, value: 0, label: `${newPrizes.length + 1}Âº DiÃ¡rio` });
+                                  newPrizes.push({ position: newPrizes.length + 1, value: 0, label: `${newPrizes.length + 1}º Diário` });
                                 }
                                 setCompPrizesDaily(newPrizes.slice(0, val));
                               }}
@@ -6547,9 +6688,9 @@ const AdminPanel = ({
 
                       <div className="space-y-4">
                         <div className="flex items-center justify-between">
-                          <h4 className="text-sm font-black uppercase tracking-widest gold-gradient">PremiaÃ§Ã£o Instagram (Posts)</h4>
+                          <h4 className="text-sm font-black uppercase tracking-widest gold-gradient">Premiação Instagram (Posts)</h4>
                           <div className="flex items-center gap-2">
-                            <span className="text-[10px] text-zinc-500 font-bold uppercase">PosiÃ§Ãµes:</span>
+                            <span className="text-[10px] text-zinc-500 font-bold uppercase">Posições:</span>
                             <input
                               type="number"
                               min="1" max="5"
@@ -6559,7 +6700,7 @@ const AdminPanel = ({
                                 setCompPositionsInstagram(val);
                                 const newPrizes = [...compPrizesInstagram];
                                 while (newPrizes.length < val) {
-                                  newPrizes.push({ position: newPrizes.length + 1, value: 0, label: `${newPrizes.length + 1}Âº Insta` });
+                                  newPrizes.push({ position: newPrizes.length + 1, value: 0, label: `${newPrizes.length + 1}º Insta` });
                                 }
                                 setCompPrizesInstagram(newPrizes.slice(0, val));
                               }}
@@ -6589,7 +6730,7 @@ const AdminPanel = ({
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">InÃ­cio da CompetiÃ§Ã£o</label>
+                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Início da Competição</label>
                         <input
                           type="date"
                           value={compStartDate}
@@ -6598,7 +6739,7 @@ const AdminPanel = ({
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Fim da CompetiÃ§Ã£o</label>
+                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Fim da Competição</label>
                         <input
                           type="date"
                           value={compEndDate}
@@ -6624,8 +6765,8 @@ const AdminPanel = ({
                         <img src={comp.bannerUrl} className="w-full h-full object-cover group-hover:scale-110 transition-all duration-700" alt="" />
                         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent" />
                         <div className="absolute bottom-4 left-6 right-6 flex items-center justify-between">
-                          <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${comp.isActive ? 'bg-emerald-500 text-black' : 'bg-zinc-800 text-zinc-400'}`}>
-                            {comp.isActive ? 'Em Andamento' : 'Finalizada'}
+                          <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${(comp.status || (comp.isActive ? 'active' : 'inactive')) === 'active' ? 'bg-emerald-500 text-black' : (comp.status === 'upcoming' ? 'bg-amber-500 text-black' : 'bg-red-500/20 text-red-500')}`}>
+                            {(comp.status || (comp.isActive ? 'active' : 'inactive')) === 'active' ? 'Em Andamento' : (comp.status === 'upcoming' ? 'Em Breve' : 'Inativa')}
                           </span>
                         </div>
                       </div>
@@ -6643,19 +6784,47 @@ const AdminPanel = ({
                           </button>
 
                           {userRole === 'admin' && (
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => handleEditCompClick(comp)}
-                                className="flex-1 py-3 rounded-xl bg-zinc-800/50 text-zinc-400 font-black text-[10px] hover:text-white transition-all uppercase"
-                              >
-                                Editar
-                              </button>
-                              <button
-                                onClick={() => setCompToDelete(comp.id)}
-                                className="p-3 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-black transition-all"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                            <div className="flex flex-col gap-2">
+                              <div className="flex items-center gap-1 bg-zinc-900/50 p-1 rounded-xl">
+                                <button
+                                  onClick={() => handleUpdateCompetitionStatus(comp.id, 'active')}
+                                  className={`flex-1 py-2 rounded-lg text-[9px] font-black uppercase transition-all ${
+                                    (comp.status || (comp.isActive ? 'active' : 'inactive')) === 'active' ? 'bg-emerald-500 text-black' : 'text-zinc-500 hover:bg-zinc-800'
+                                  }`}
+                                >
+                                  Ativa
+                                </button>
+                                <button
+                                  onClick={() => handleUpdateCompetitionStatus(comp.id, 'upcoming')}
+                                  className={`flex-1 py-2 rounded-lg text-[9px] font-black uppercase transition-all ${
+                                    comp.status === 'upcoming' ? 'bg-amber-500 text-black' : 'text-zinc-500 hover:bg-zinc-800'
+                                  }`}
+                                >
+                                  Em Breve
+                                </button>
+                                <button
+                                  onClick={() => handleUpdateCompetitionStatus(comp.id, 'inactive')}
+                                  className={`flex-1 py-2 rounded-lg text-[9px] font-black uppercase transition-all ${
+                                    (comp.status || (comp.isActive ? 'active' : 'inactive')) === 'inactive' ? 'bg-red-500/20 text-red-500' : 'text-zinc-500 hover:bg-zinc-800'
+                                  }`}
+                                >
+                                  Inativa
+                                </button>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => handleEditCompClick(comp)}
+                                  className="flex-1 py-3 rounded-xl bg-zinc-800/50 text-zinc-400 font-black text-[10px] hover:text-white transition-all uppercase"
+                                >
+                                  Editar
+                                </button>
+                                <button
+                                  onClick={() => setCompToDelete(comp.id)}
+                                  className="p-3 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-black transition-all"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
                             </div>
                           )}
                         </div>
@@ -6691,12 +6860,12 @@ const AdminPanel = ({
                 className="p-8 rounded-[40px] glass border border-zinc-800 space-y-6"
               >
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">TÃ­tulo do Aviso</label>
+                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Título do Aviso</label>
                   <input
                     type="text"
                     value={annTitle}
                     onChange={(e) => setAnnTitle(e.target.value)}
-                    placeholder="Ex: ManutenÃ§Ã£o Programada"
+                    placeholder="Ex: Manutenção Programada"
                     className="w-full bg-black border border-zinc-800 rounded-2xl py-4 px-6 text-sm font-bold focus:border-amber-500 outline-none transition-all"
                   />
                 </div>
@@ -6771,14 +6940,23 @@ const AdminPanel = ({
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
                         <button
+                          onClick={() => handleDeleteRegistration(reg.id!)}
+                          className="p-3 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-500 hover:bg-red-500 hover:text-white hover:border-red-500 transition-all shadow-md"
+                          title="Remover Permanentemente (O usuário poderá solicitar novamente)"
+                        >
+                          <Trash2 className="w-5 h-5" />
+                        </button>
+                        <button
                           onClick={() => handleRegistrationStatus(reg.id!, 'rejected')}
-                          className="p-3 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-black transition-all"
+                          className="p-3 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-black transition-all shadow-md"
+                          title="Recusar"
                         >
                           <XCircle className="w-6 h-6" />
                         </button>
                         <button
                           onClick={() => handleRegistrationStatus(reg.id!, 'approved')}
-                          className="p-3 rounded-xl bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-black transition-all"
+                          className="p-3 rounded-xl bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-black transition-all shadow-md"
+                          title="Aprovar"
                         >
                           <CheckCircle2 className="w-6 h-6" />
                         </button>
@@ -6811,7 +6989,7 @@ const AdminPanel = ({
                       </div>
                       <div className="flex-1 min-w-0 text-center md:text-left">
                         <p className="text-sm font-black text-zinc-500 uppercase tracking-widest mb-1">
-                          {reg.userName} <span className="text-zinc-700 mx-2">|</span> {comp?.title || 'CompetiÃ§Ã£o Desconhecida'}
+                          {reg.userName} <span className="text-zinc-700 mx-2">|</span> {comp?.title || 'Competição Desconhecida'}
                         </p>
                         <p className="font-bold text-zinc-300">{reg.userEmail}</p>
                         <div className="flex items-center justify-center md:justify-start gap-4 mt-1">
@@ -6822,7 +7000,7 @@ const AdminPanel = ({
                             </span>
                           ) : (
                             <span className="flex items-center gap-1 text-red-500 text-[10px] font-black uppercase">
-                              <XCircle className="w-3 h-3" /> Regras NÃ£o Aceitas
+                              <XCircle className="w-3 h-3" /> Regras Não Aceitas
                             </span>
                           )}
                         </div>
@@ -6839,6 +7017,56 @@ const AdminPanel = ({
                     </div>
                   );
                 })}
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              <h3 className="text-xl font-black uppercase tracking-tight text-red-500">Inscrições Recusadas</h3>
+              <div className="grid grid-cols-1 gap-4">
+                {rejectedRegistrations.map(reg => {
+                  const comp = competitions.find(c => c.id === reg.competitionId);
+                  return (
+                    <div key={reg.id} className="p-6 rounded-3xl glass border border-red-500/20 flex flex-col md:flex-row items-center gap-6">
+                      <div className="w-16 h-16 rounded-2xl bg-zinc-900 flex items-center justify-center shrink-0 overflow-hidden">
+                        {comp ? (
+                          <img src={comp.bannerUrl} className="w-full h-full object-cover grayscale opacity-50" alt="" />
+                        ) : (
+                          <Trophy className="w-8 h-8 text-red-500/50" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0 text-center md:text-left">
+                        <p className="text-sm font-black text-zinc-500 uppercase tracking-widest mb-1">
+                          {reg.userName} <span className="text-zinc-700 mx-2">|</span> {comp?.title || 'Competição Desconhecida'}
+                        </p>
+                        <p className="font-bold text-zinc-300">{reg.userEmail}</p>
+                        <div className="flex items-center justify-center md:justify-start gap-4 mt-1">
+                          <p className="text-[10px] font-black text-red-500 uppercase">Recusado</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <button
+                          onClick={() => handleRegistrationStatus(reg.id!, 'pending')}
+                          className="p-3 rounded-xl bg-amber-500/10 text-amber-500 hover:bg-amber-500 hover:text-black transition-all"
+                          title="Voltar para Pendente"
+                        >
+                          <Clock className="w-5 h-5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteRegistration(reg.id!)}
+                          className="p-3 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-black transition-all"
+                          title="Remover Inscrição Permanentemente"
+                        >
+                          <Trash2 className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+                {rejectedRegistrations.length === 0 && (
+                  <div className="py-20 text-center space-y-4">
+                    <p className="text-zinc-500 font-bold uppercase tracking-widest text-[10px]">Nenhuma inscrição recusada no momento.</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -7429,8 +7657,8 @@ const SuggestionsView = ({
                         'bg-emerald-500/10 text-emerald-500'
                   }`}>
                   {s.status === 'pendente' ? 'EM ESPERA' :
-                    s.status === 'analise' ? 'EM ANÃLISE' :
-                      s.status === 'desenvolvimento' ? 'DESENVOLVENDO' : 'CONCLUÃDO'}
+                    s.status === 'analise' ? 'EM ANÁLISE' :
+                      s.status === 'desenvolvimento' ? 'DESENVOLVENDO' : 'CONCLUÍDO'}
                 </span>
                 <span className="text-[9px] text-zinc-700 font-bold uppercase">{new Date(s.timestamp).toLocaleDateString()}</span>
               </div>
@@ -7513,6 +7741,48 @@ const ConfirmModal = ({
           </div>
         </motion.div>
       </div>
+    )}
+  </AnimatePresence>
+);
+
+const AnnouncementBanner = ({
+  announcement,
+  onAcknowledge
+}: {
+  announcement: Announcement | undefined;
+  onAcknowledge: (id: string) => void;
+}) => (
+  <AnimatePresence>
+    {announcement && (
+      <motion.div
+        initial={{ height: 0, opacity: 0 }}
+        animate={{ height: 'auto', opacity: 1 }}
+        exit={{ height: 0, opacity: 0 }}
+        className="bg-amber-500/10 border-b border-amber-500/20 overflow-hidden shrink-0"
+      >
+        <div className="max-w-[1400px] mx-auto px-6 py-3 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-500">
+              <Bell className="w-4 h-4 animate-pulse" />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">Aviso</span>
+              <p className="text-xs font-bold text-zinc-100 truncate max-w-md lg:max-w-xl">
+                <span className="text-amber-500/80 mr-2">{announcement.title}:</span>
+                {announcement.message}
+              </p>
+            </div>
+          </div>
+          
+          <button
+            onClick={() => onAcknowledge(announcement.id)}
+            className="px-4 py-1.5 gold-bg text-black text-[10px] font-black rounded-lg hover:scale-[1.02] active:scale-95 transition-all shadow-lg shadow-amber-500/10 flex items-center gap-2 shrink-0"
+          >
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            CIENTE
+          </button>
+        </div>
+      </motion.div>
     )}
   </AnimatePresence>
 );

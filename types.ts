@@ -105,6 +105,7 @@ export interface Competition {
   description: string;
   bannerUrl: string;
   isActive: boolean;
+  status?: 'active' | 'inactive' | 'upcoming';
   startDate: number;
   endDate: number;
   prizes: {
