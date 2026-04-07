@@ -12,7 +12,7 @@ import {
   TrendingUp, Users, Zap, Calendar, MessageSquare, Menu, X, ChevronLeft, ExternalLink,
   Mail, Lock, User as UserIcon, Eye, EyeOff, Loader2, RefreshCw, Crown, Trash2,
   Heart, Share2, Bookmark, Bell, Check, Camera, BarChart3, ArrowLeft, BookOpen, Shield, Star, ChevronRight, Target,
-  Award, UserX, Sparkles, CreditCard, Coins, DollarSign
+  Award, UserX, Sparkles, CreditCard, Coins, DollarSign, Info
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { syncViewsWithApify, syncSinglePostWithApify, updateUserMetrics, repairAllUserMetrics } from './services/apifyService';
@@ -49,6 +49,20 @@ const sanitizeObject = (obj: any): any => {
   return obj;
 };
 import fbConfig from './firebase-applet-config.json';
+
+const InfoTooltip = ({ text }: { text: string }) => {
+  return (
+    <div className="group relative inline-block ml-1.5 align-middle">
+      <Info className="w-3.5 h-3.5 text-zinc-500 hover:text-amber-500 transition-colors cursor-help" />
+      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-48 opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-300 z-[100]">
+        <div className="bg-zinc-900 border border-zinc-800 text-[10px] font-bold text-zinc-300 p-3 rounded-2xl shadow-2xl backdrop-blur-xl leading-relaxed">
+          {text}
+          <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-zinc-800" />
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, errorMsg: string }> {
@@ -593,28 +607,36 @@ const Dashboard = ({ user, announcements, rankings, competitions, registrations,
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="glass shadow-2xl shadow-amber-500/5 hover:border-amber-500/50 transition-all border border-amber-500/20 p-6 rounded-[32px] relative overflow-hidden group flex flex-col justify-between min-h-[140px]">
             <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-amber-500/20 transition-all" />
-            <h3 className="text-[10px] font-black text-amber-500 uppercase tracking-widest relative z-10">Lucro Acumulado</h3>
+            <h3 className="text-[10px] font-black text-amber-500 uppercase tracking-widest relative z-10 flex items-center">
+              LUCRO ACUMULADO <InfoTooltip text="Total de ganhos que você já acumulou na plataforma até hoje." />
+            </h3>
             <p className="text-2xl md:text-3xl font-black text-white relative z-10">R$ {showBalances ? (user.lifetimeEarnings || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '***'}</p>
             <TrendingUp className="absolute -bottom-4 -right-4 w-24 h-24 text-amber-500/10 group-hover:scale-110 transition-transform duration-500" />
           </div>
 
           <div className="glass border border-cyan-500/20 hover:border-cyan-500/50 transition-all p-6 rounded-[32px] relative overflow-hidden group flex flex-col justify-between min-h-[140px]">
             <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/10 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-cyan-500/20 transition-all" />
-            <h3 className="text-[10px] font-black text-cyan-500 uppercase tracking-widest relative z-10">Total de Views</h3>
+            <h3 className="text-[10px] font-black text-cyan-500 uppercase tracking-widest relative z-10 flex items-center">
+              TOTAL DE VIEWS <InfoTooltip text="Soma das visualizações de todos os seus vídeos aprovados e sincronizados." />
+            </h3>
             <p className="text-2xl md:text-3xl font-black text-white relative z-10">{(user.totalViews || 0).toLocaleString()}</p>
             <Eye className="absolute -bottom-4 -right-4 w-24 h-24 text-cyan-500/10 group-hover:scale-110 transition-transform duration-500" />
           </div>
 
           <div className="glass border border-pink-500/20 hover:border-pink-500/50 transition-all p-6 rounded-[32px] relative overflow-hidden group flex flex-col justify-between min-h-[140px]">
             <div className="absolute top-0 right-0 w-32 h-32 bg-pink-500/10 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-pink-500/20 transition-all" />
-            <h3 className="text-[10px] font-black text-pink-500 uppercase tracking-widest relative z-10">Total de Likes</h3>
+            <h3 className="text-[10px] font-black text-pink-500 uppercase tracking-widest relative z-10 flex items-center">
+              TOTAL DE LIKES <InfoTooltip text="Soma das curtidas de todos os seus vídeos aprovados e sincronizados." />
+            </h3>
             <p className="text-2xl md:text-3xl font-black text-white relative z-10">{(user.totalLikes || 0).toLocaleString()}</p>
             <Heart className="absolute -bottom-4 -right-4 w-24 h-24 text-pink-500/10 group-hover:scale-110 transition-transform duration-500" />
           </div>
 
           <div className="glass border border-zinc-700/50 hover:border-zinc-500 transition-all p-6 rounded-[32px] relative overflow-hidden group flex flex-col justify-between min-h-[140px]">
             <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-white/10 transition-all" />
-            <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest relative z-10">Vídeos Sincronizados</h3>
+            <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest relative z-10 flex items-center">
+              VÍDEOS SINCRONIZADOS <InfoTooltip text="Quantidade de vídeos seus que já foram validados e processados pelo sistema." />
+            </h3>
             <p className="text-2xl md:text-3xl font-black text-white relative z-10">{(user.totalPosts || 0).toLocaleString()}</p>
             <Camera className="absolute -bottom-4 -right-4 w-24 h-24 text-white/5 group-hover:scale-110 transition-transform duration-500" />
           </div>
@@ -4995,7 +5017,8 @@ const AdminPanel = ({
                   icon: TrendingUp, 
                   color: 'text-amber-500', 
                   bg: 'bg-amber-500/10',
-                  desc: 'Total de Visualizações Aprovadas'
+                  desc: 'Total de Visualizações Aprovadas',
+                  tooltip: 'Soma total de visualizações de todos os posts aprovados nas competições.'
                 },
                 { 
                   label: 'Posts Enviados', 
@@ -5005,7 +5028,8 @@ const AdminPanel = ({
                   color: 'text-emerald-500', 
                   bg: 'bg-emerald-500/10',
                   desc: dailyPostTrend === 'up' ? 'Aumento em relação a ontem' : 'Queda em relação a ontem',
-                  trend: dailyPostTrend
+                  trend: dailyPostTrend,
+                  tooltip: 'Quantidade de vídeos submetidos hoje por todos os criadores.'
                 },
                 { 
                   label: 'Governança & Gestão', 
@@ -5014,7 +5038,8 @@ const AdminPanel = ({
                   icon: ShieldCheck, 
                   color: 'text-blue-500', 
                   bg: 'bg-blue-500/10',
-                  desc: 'Taxa de Aprovação vs. Tempo'
+                  desc: 'Taxa de Aprovação vs. Tempo',
+                  tooltip: 'Percentual de vídeos aprovados e tempo médio de resposta da auditoria.'
                 },
                 { 
                   label: 'Saúde da Comunidade', 
@@ -5023,7 +5048,8 @@ const AdminPanel = ({
                   icon: Users, 
                   color: 'text-pink-500', 
                   bg: 'bg-pink-500/10',
-                  desc: 'Novos integrantes (7 dias)'
+                  desc: 'Novos integrantes (7 dias)',
+                  tooltip: 'Novos usuários na última semana e usuários inativos nos últimos 3 dias.'
                 },
               ].map((stat, i) => (
                 <motion.div
@@ -5048,7 +5074,9 @@ const AdminPanel = ({
                     </div>
                     
                     <div className="space-y-1">
-                      <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">{stat.label}</p>
+                      <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest flex items-center">
+                        {stat.label} <InfoTooltip text={stat.tooltip || ''} />
+                      </p>
                       <h4 className="text-4xl font-black text-white tracking-tight leading-none my-2">{stat.value}</h4>
                       <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
                         <span className={stat.color}>{stat.sub}</span>
@@ -5146,7 +5174,9 @@ const AdminPanel = ({
               <div className="lg:col-span-2 p-8 rounded-[40px] bg-zinc-950 border border-zinc-900">
                 <div className="flex items-center justify-between mb-8">
                   <div>
-                    <h4 className="text-lg font-black uppercase text-white tracking-tight">Status de Triagem</h4>
+                    <h4 className="text-lg font-black uppercase text-white tracking-tight flex items-center">
+                      Status de Triagem <InfoTooltip text="Distribuição atual dos vídeos enviados entre aprovados, pendentes e rejeitados." />
+                    </h4>
                     <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Distribuição de vídeos por status</p>
                   </div>
                 </div>
@@ -5443,7 +5473,9 @@ const AdminPanel = ({
                             <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-500 mb-6">
                               <Trophy className="w-6 h-6" />
                             </div>
-                            <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-1">Total Confirmado (Pago)</p>
+                            <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-1 flex items-center">
+                              TOTAL CONFIRMADO (PAGO) <InfoTooltip text="Valor total em reais que já foi efetivamente pago aos criadores de todas as competições." />
+                            </p>
                             <h4 className="text-3xl font-black text-white tracking-tight">R$ {totalPaidGlobal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h4>
                           </div>
 
@@ -5452,7 +5484,9 @@ const AdminPanel = ({
                             <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center text-amber-500 mb-6">
                               <Zap className="w-6 h-6" />
                             </div>
-                            <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-1">Projeção de Saída (Pendente)</p>
+                            <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-1 flex items-center">
+                              PROJEÇÃO DE SAÍDA (PENDENTE) <InfoTooltip text="Total acumulado nos saldos dos usuários aguardando pagamento ou saque." />
+                            </p>
                             <h4 className="text-3xl font-black text-amber-500 tracking-tight">R$ {totalPendingGlobal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h4>
                           </div>
 
@@ -5461,7 +5495,9 @@ const AdminPanel = ({
                             <div className="w-12 h-12 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-500 mb-6">
                               <BarChart3 className="w-6 h-6" />
                             </div>
-                            <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-1">Custo Médio por Post (CPP)</p>
+                            <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-1 flex items-center">
+                              CUSTO MÉDIO POR POST (CPP) <InfoTooltip text="Quanto o sistema paga, em média, por cada vídeo aprovado (Custo Por Post)." />
+                            </p>
                             <h4 className="text-3xl font-black text-white tracking-tight">R$ {cpp.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h4>
                           </div>
                         </div>
@@ -5471,7 +5507,9 @@ const AdminPanel = ({
                           <div className="p-8 rounded-[40px] bg-zinc-950 border border-zinc-900">
                             <div className="flex items-center justify-between mb-8">
                               <div>
-                                <h4 className="text-lg font-black uppercase text-white tracking-tight">Top 5 Criadores (ROI)</h4>
+                                <h4 className="text-lg font-black uppercase text-white tracking-tight flex items-center">
+                                  Top 5 Criadores (ROI) <InfoTooltip text="Retorno em visualizações para cada R$ 1,00 pago ao criador. Quanto mais alto, mais rentável o criador é para o ecossistema." />
+                                </h4>
                                 <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest text-amber-500/80">Views geradas por cada R$ 1,00 pago</p>
                               </div>
                               <Award className="w-6 h-6 text-amber-500 opacity-50" />
@@ -5567,7 +5605,10 @@ const AdminPanel = ({
                                     </div>
                                     <div className="text-right">
                                       <p className="text-xs font-black text-white">R$ {compTotal.toLocaleString('pt-BR')}</p>
-                                      <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">{compViews.toLocaleString()} VIEWS • CPM R$ {compCpm.toFixed(2)}</p>
+                                      <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest flex items-center justify-end">
+                                        {compViews.toLocaleString()} VIEWS • CPM R$ {compCpm.toFixed(2)}
+                                        <InfoTooltip text="CPM (Custo por Mil): Indica quanto a competição custou para cada 1.000 visualizações geradas." />
+                                      </p>
                                       <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest mt-1">{Math.round(percent)}% Pago</p>
                                     </div>
                                   </div>
