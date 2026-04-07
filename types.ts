@@ -28,9 +28,9 @@ export interface User {
   pixKey?: string;
   approvedAt?: number;
   // Social media handles
-  tiktok?: string;
-  instagram?: string;
-  youtube?: string;
+  tiktok?: string[];
+  instagram?: string[];
+  youtube?: string[];
   userInstagram?: string[];
   competitionStats?: Record<string, {
     views: number;
@@ -70,6 +70,8 @@ export interface Post {
   userId: string;
   userName: string;
   url: string;
+  normalizedUrl?: string;
+  accountHandle?: string;
   platform: Platform;
   status: PostStatus;
   views: number;
@@ -134,9 +136,9 @@ export interface Competition {
   mentions?: string;
   bonuses?: string;
   viewBonus?: number;
-  rankingMetric?: string;
+  rankingMetric?: 'views' | 'likes';
   goalTarget?: number;
-  goalMetric?: string;
+  goalMetric?: 'views' | 'likes';
   instaBonus?: string;
   lastDailyReset?: number;
 }
