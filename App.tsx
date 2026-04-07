@@ -4594,8 +4594,8 @@ const AdminPanel = ({
   competitions: Competition[];
   registrations: CompetitionRegistration[];
   announcements: Announcement[];
-  timerConfig: { enabled: boolean; endTime: number | null; message: string };
-  handleUpdateTimer: (config: { enabled: boolean; endTime: number | null; message: string }) => Promise<void>;
+  timerConfig: { enabled: boolean; endTime: number | null; targetTime: string; message: string };
+  handleUpdateTimer: (config: { enabled: boolean; endTime: number | null; targetTime: string; message: string }) => Promise<void>;
   onSettingsUpdate: (s: { apifyKey: string }) => void;
   editingCompId: string | null;
   setEditingCompId: (val: string | null) => void;
@@ -4681,7 +4681,7 @@ const AdminPanel = ({
   isCreatingAnn: boolean;
   setIsCreatingAnn: (v: boolean) => void;
 }) => {
-  const [tab, setTab] = useState<'VISAO_GERAL' | 'POSTS' | 'USERS' | 'USERS_APPROVED' | 'COMPETITIONS' | 'SYNC' | 'REGISTROS' | 'AVISOS' | 'FINANCEIRO' | 'ACESSOS' | 'SUGESTOES' | 'RESSINCRONIZACAO' | 'SINCRONIZACAO' | 'ARCHIVED'>('VISAO_GERAL');
+  const [tab, setTab] = useState<'VISAO_GERAL' | 'POSTS' | 'USERS' | 'USERS_APPROVED' | 'COMPETITIONS' | 'SYNC' | 'REGISTROS' | 'AVISOS' | 'TIMER' | 'FINANCEIRO' | 'ACESSOS' | 'SUGESTOES' | 'RESSINCRONIZACAO' | 'SINCRONIZACAO' | 'ARCHIVED'>('VISAO_GERAL');
   const [selectedSyncCompId, setSelectedSyncCompId] = useState<string>('ALL');
   const [selectedResetCompId, setSelectedResetCompId] = useState<string>('');
   const [auditUserId, setAuditUserId] = useState<string | null>(null);
