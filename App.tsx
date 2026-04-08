@@ -2703,7 +2703,7 @@ const App: React.FC = () => {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setRejectionModal({ isOpen: false, postId: '' })}
+              onClick={() => setRejectionModal({ isOpen: false, postId: '', status: 'rejected' })}
               className="absolute inset-0 bg-black/80 backdrop-blur-sm"
             />
             <motion.div
@@ -4896,7 +4896,7 @@ const AdminPanel = ({
   setRejectionReason: (v: string) => void;
   setRejectionModal: (v: { isOpen: boolean; postId: string; status: PostStatus }) => void;
 }) => {
-  const [tab, setTab] = useState<'VISAO_GERAL' | 'POSTS' | 'USERS' | 'USERS_APPROVED' | 'COMPETITIONS' | 'SYNC' | 'REGISTROS' | 'AVISOS' | 'TIMER' | 'FINANCEIRO' | 'ACESSOS' | 'SUGESTOES' | 'RESSINCRONIZACAO' | 'SINCRONIZACAO' | 'ARCHIVED' | 'RELATORIOS'>('VISAO_GERAL');
+  const [tab, setTab] = useState<'VISAO_GERAL' | 'POSTS' | 'USERS' | 'USERS_APPROVED' | 'COMPETITIONS' | 'SYNC' | 'REGISTROS' | 'AVISOS' | 'TIMER' | 'FINANCEIRO' | 'ACESSOS' | 'SUGESTOES' | 'RESSINCRONIZACAO' | 'SINCRONIZACAO' | 'ARCHIVED' | 'RELATORIOS' | 'REMOVED_POSTS'>('VISAO_GERAL');
   const [selectedSyncCompId, setSelectedSyncCompId] = useState<string>('ALL');
   const [selectedResetCompId, setSelectedResetCompId] = useState<string>('');
   const [auditUserId, setAuditUserId] = useState<string | null>(null);
