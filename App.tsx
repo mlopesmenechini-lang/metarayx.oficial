@@ -10,7 +10,7 @@ import {
   LayoutDashboard, Trophy, Send, History, Settings, LogOut,
   ShieldCheck, AlertCircle, CheckCircle2, XCircle, Clock,
   TrendingUp, Users, Zap, Calendar, MessageSquare, Menu, X, ChevronLeft, ExternalLink,
-  Mail, Lock, User as UserIcon, Eye, EyeOff, Loader2, RefreshCw, Crown, Trash2,
+  Mail, Lock, User as UserIcon, Eye, EyeOff, Loader2, RefreshCw, Crown, Trash2, Plus,
   Heart, Share2, Bookmark, Bell, Check, Camera, BarChart3, ArrowLeft, BookOpen, Shield, Star, ChevronRight, Target,
   Award, UserX, Sparkles, CreditCard, Coins, DollarSign, Info, Archive
 } from 'lucide-react';
@@ -3835,7 +3835,13 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId }: { rankings: U
     if (!selectedCompetition) return 0;
     if (rankingType === 'DAILY') return selectedCompetition.prizesDaily?.[index]?.value || 0;
     if (rankingType === 'INSTAGRAM') return selectedCompetition.prizesInstagram?.[index]?.value || 0;
-    return selectedCompetition.prizesMonthly?.[index]?.value || 0;
+    
+    // Para Ranking Mensal/Total: prioriza o campo específico prizesMonthly, 
+    // mas se estiver zerado (padrão) e houver valor no campo geral prizes, usa o geral.
+    const monthlyVal = selectedCompetition.prizesMonthly?.[index]?.value || 0;
+    const generalVal = selectedCompetition.prizes?.[index]?.value || 0;
+    
+    return monthlyVal > 0 ? monthlyVal : generalVal;
   };
 
   const calculateStats = (player: User) => {
@@ -4698,6 +4704,12 @@ const AdminPanel = ({
   const [creatingUser, setCreatingUser] = useState(false);
   const [syncDetailCompId, setSyncDetailCompId] = useState<string | null>(null);
   const [validatedPostsLocal, setValidatedPostsLocal] = useState<string[]>([]);
+
+  // States for Admin Manual Link Submission
+  const [adminManualUrl, setAdminManualUrl] = useState('');
+  const [adminManualPlatform, setAdminManualPlatform] = useState<'tiktok' | 'youtube' | 'instagram'>('tiktok');
+  const [adminManualCompId, setAdminManualCompId] = useState('');
+  const [adminSubmitting, setAdminSubmitting] = useState(false);
   const [metaCompId, setMetaCompId] = useState<string>(() => {
     const active = competitions?.find(c => c.isActive);
     return active ? active.id : (competitions && competitions.length > 0 ? competitions[0].id : '');
@@ -4873,6 +4885,59 @@ const AdminPanel = ({
       }
     }
     setCreatingUser(false);
+  };
+
+  const handleAdminSubmitPost = async () => {
+    if (!adminManualUrl.trim() || !adminManualCompId || !auditUserId) {
+      alert('Por favor, preencha todos os campos e selecione uma competição.');
+      return;
+    }
+
+    const targetUser = approvedUsers.find(u => u.uid === auditUserId);
+    if (!targetUser) return;
+
+    setAdminSubmitting(true);
+    try {
+      const norm = normalizeUrl(adminManualUrl);
+      
+      // Check for duplicates
+      const qNorm = query(collection(db, 'posts'), where('normalizedUrl', 'in', [norm]));
+      const snapNorm = await getDocs(qNorm);
+      if (!snapNorm.empty) {
+        alert('❌ Este link já existe no sistema!');
+        setAdminSubmitting(false);
+        return;
+      }
+
+      const postId = Math.random().toString(36).substr(2, 9);
+      const newPost: Post = {
+        id: postId,
+        userId: targetUser.uid,
+        userName: targetUser.displayName,
+        url: adminManualUrl,
+        normalizedUrl: norm,
+        platform: adminManualPlatform,
+        competitionId: adminManualCompId,
+        accountHandle: 'ADMIN_MANUAL',
+        status: 'approved',
+        views: 0,
+        likes: 0,
+        comments: 0,
+        shares: 0,
+        saves: 0,
+        timestamp: Date.now()
+      };
+
+      await setDoc(doc(db, 'posts', postId), newPost);
+      await updateUserMetrics(targetUser.uid);
+
+      alert('✅ Link adicionado com sucesso ao perfil de ' + targetUser.displayName);
+      setAdminManualUrl('');
+    } catch (error: any) {
+      alert('❌ Erro ao adicionar link: ' + error.message);
+    } finally {
+      setAdminSubmitting(false);
+    }
   };
 
   const handleSaveApiKey = async () => {
@@ -6368,6 +6433,62 @@ const AdminPanel = ({
                   >
                     <X className="w-4 h-4" /> VOLTAR À LISTA
                   </button>
+                </div>
+
+                {/* Form para Envio Manual pelo Admin */}
+                <div className="bg-zinc-900/50 p-6 rounded-3xl border border-zinc-800/50 mb-8 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                      <Plus className="w-4 h-4 text-amber-500" />
+                    </div>
+                    <h4 className="text-sm font-black uppercase gold-gradient">Protocolar Link Manualmente</h4>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[9px] font-black text-zinc-500 uppercase tracking-widest ml-1">Plataforma</label>
+                      <select 
+                        value={adminManualPlatform}
+                        onChange={(e) => setAdminManualPlatform(e.target.value as any)}
+                        className="bg-black border border-zinc-800 rounded-xl px-4 py-3 text-xs font-bold text-white outline-none focus:border-amber-500 transition-all"
+                      >
+                        <option value="tiktok">TIKTOK</option>
+                        <option value="youtube">YOUTUBE</option>
+                        <option value="instagram">INSTAGRAM</option>
+                      </select>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[9px] font-black text-zinc-500 uppercase tracking-widest ml-1">Competição</label>
+                      <select
+                        value={adminManualCompId}
+                        onChange={(e) => setAdminManualCompId(e.target.value)}
+                        className="bg-black border border-zinc-800 rounded-xl px-4 py-3 text-xs font-bold text-white outline-none focus:border-amber-500 transition-all"
+                      >
+                        <option value="">SELECIONAR COMPETIÇÃO</option>
+                        {competitions.filter(c => c.isActive).map(c => (
+                          <option key={c.id} value={c.id}>{c.title}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[9px] font-black text-zinc-500 uppercase tracking-widest ml-1">URL do Vídeo</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={adminManualUrl}
+                          onChange={(e) => setAdminManualUrl(e.target.value)}
+                          placeholder="Cole o link aqui..."
+                          className="flex-1 bg-black border border-zinc-800 rounded-xl px-4 py-3 text-xs font-bold text-white outline-none focus:border-amber-500 transition-all"
+                        />
+                        <button
+                          onClick={handleAdminSubmitPost}
+                          disabled={adminSubmitting}
+                          className="px-6 py-3 gold-bg text-black font-black rounded-xl text-[10px] hover:scale-[1.02] active:scale-95 transition-all shadow-lg shadow-amber-500/10 disabled:opacity-50 min-w-[120px]"
+                        >
+                          {adminSubmitting ? <Loader2 className="animate-spin w-4 h-4" /> : 'ADICIONAR LINK'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
