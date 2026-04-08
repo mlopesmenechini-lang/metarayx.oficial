@@ -4986,6 +4986,8 @@ const AdminPanel = ({
   handleDeleteSuggestion: (id: string) => void;
   handleUpdateSuggestionStatus: (id: string, status: Suggestion['status']) => void;
   handleUpdateUserRole: (uid: string, role: UserRole) => void;
+  handleApproveRemoval: (postId: string) => void;
+  handleRejectRemoval: (postId: string) => void;
   suggestions: Suggestion[];
   compTitle: string;
   setCompTitle: (v: string) => void;
