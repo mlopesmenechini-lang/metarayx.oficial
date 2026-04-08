@@ -2631,6 +2631,8 @@ const App: React.FC = () => {
                     handleDeleteSuggestion={handleDeleteSuggestion}
                     handleUpdateSuggestionStatus={handleUpdateSuggestionStatus}
                     handleUpdateUserRole={handleUpdateUserRole}
+                    handleApproveRemoval={handleApproveRemoval}
+                    handleRejectRemoval={handleRejectRemoval}
                     suggestions={suggestions}
                     compTitle={compTitle}
                     setCompTitle={setCompTitle}
