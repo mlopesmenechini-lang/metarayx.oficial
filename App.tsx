@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import {
   auth, db, googleProvider, signInWithPopup, signOut,
   onSnapshot, collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, query, where, orderBy, limit,
@@ -12,7 +13,7 @@ import {
   TrendingUp, Users, Zap, Calendar, MessageSquare, Menu, X, ChevronLeft, ExternalLink,
   Mail, Lock, User as UserIcon, Eye, EyeOff, Loader2, RefreshCw, Crown, Trash2, Plus,
   Heart, Share2, Bookmark, Bell, Check, Camera, BarChart3, ArrowLeft, BookOpen, Shield, Star, ChevronRight, Target,
-  Award, UserX, Sparkles, CreditCard, Coins, DollarSign, Info, Archive
+  Award, UserX, Sparkles, CreditCard, Coins, DollarSign, Info, Archive, Download
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { syncViewsWithApify, syncSinglePostWithApify, updateUserMetrics, repairAllUserMetrics } from './services/apifyService';
@@ -1743,13 +1744,42 @@ const App: React.FC = () => {
   const handleProfilePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 1024 * 1024) {
-        alert('A imagem deve ter menos de 1MB');
+      if (file.size > 5 * 1024 * 1024) {
+        alert('A imagem original deve ter menos de 5MB');
         return;
       }
       const reader = new FileReader();
       reader.onloadend = () => {
-        setProfilePhoto(reader.result as string);
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 250;
+          const MAX_HEIGHT = 250;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height = Math.round(height * (MAX_WIDTH / width));
+              width = MAX_WIDTH;
+            }
+          } else {
+            if (height > MAX_HEIGHT) {
+              width = Math.round(width * (MAX_HEIGHT / height));
+              height = MAX_HEIGHT;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+            setProfilePhoto(dataUrl);
+          }
+        };
+        img.src = reader.result as string;
       };
       reader.readAsDataURL(file);
     }
@@ -4675,7 +4705,7 @@ const AdminPanel = ({
   isCreatingAnn: boolean;
   setIsCreatingAnn: (v: boolean) => void;
 }) => {
-  const [tab, setTab] = useState<'VISAO_GERAL' | 'POSTS' | 'USERS' | 'USERS_APPROVED' | 'COMPETITIONS' | 'SYNC' | 'REGISTROS' | 'AVISOS' | 'TIMER' | 'FINANCEIRO' | 'ACESSOS' | 'SUGESTOES' | 'RESSINCRONIZACAO' | 'SINCRONIZACAO' | 'ARCHIVED'>('VISAO_GERAL');
+  const [tab, setTab] = useState<'VISAO_GERAL' | 'POSTS' | 'USERS' | 'USERS_APPROVED' | 'COMPETITIONS' | 'SYNC' | 'REGISTROS' | 'AVISOS' | 'TIMER' | 'FINANCEIRO' | 'ACESSOS' | 'SUGESTOES' | 'RESSINCRONIZACAO' | 'SINCRONIZACAO' | 'ARCHIVED' | 'RELATORIOS'>('VISAO_GERAL');
   const [selectedSyncCompId, setSelectedSyncCompId] = useState<string>('ALL');
   const [selectedResetCompId, setSelectedResetCompId] = useState<string>('');
   const [auditUserId, setAuditUserId] = useState<string | null>(null);
@@ -5067,6 +5097,56 @@ const AdminPanel = ({
     }
   };
 
+  const handleExportExcel = () => {
+    if (!selectedCompId) {
+      alert('Selecione a competição!');
+      return;
+    }
+
+    const comp = competitions.find(c => c.id === selectedCompId);
+    const compName = comp ? comp.title.replace(/[^a-zA-Z0-9_\- ]/g, '') : 'Competicao';
+    const compPosts = posts
+      .filter(p => p.competitionId === selectedCompId)
+      .sort((a, b) => b.timestamp - a.timestamp);
+
+    const allUsers = [...approvedUsers, ...pendingUsers, ...archivedUsers];
+
+    const statusLabel = (s: string) =>
+      s === 'approved' || s === 'synced' ? 'APROVADO' :
+      s === 'rejected' || s === 'banned' ? 'RECUSADO' : 'EM TRIAGEM';
+
+    // Ordem igual ao site: Plataforma > Link > Usuário > Curtidas > Views > Status > Email > Data
+    const rows = compPosts.map(post => {
+      const userObj = allUsers.find(u => u.uid === post.userId);
+      return {
+        'PLATAFORMA': post.platform,
+        'LINK DO VÍDEO': post.url,
+        'NOME DO USUÁRIO': post.userName || '',
+        'CURTIDAS': post.likes || 0,
+        'VIEWS': post.views || 0,
+        'STATUS': statusLabel(post.status),
+        'EMAIL': userObj ? userObj.email : 'N/A',
+        'DATA': new Date(post.timestamp).toLocaleDateString('pt-BR'),
+      };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    worksheet['!cols'] = [
+      { wch: 12 }, // PLATAFORMA
+      { wch: 55 }, // LINK DO VÍDEO
+      { wch: 28 }, // NOME DO USUÁRIO
+      { wch: 12 }, // CURTIDAS
+      { wch: 12 }, // VIEWS
+      { wch: 12 }, // STATUS
+      { wch: 32 }, // EMAIL
+      { wch: 12 }, // DATA
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Links');
+    XLSX.writeFile(workbook, `MetaRayx_${compName.trim()}.xlsx`);
+  };
+
   return (
     <div className="space-y-10">
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
@@ -5258,6 +5338,15 @@ const AdminPanel = ({
             className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'SUGESTOES' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
           >
             SUGESTÕES ({suggestions.length})
+          </button>
+        )}
+        {/* RELATÓRIOS (LINKS) - visível para admin e auditor */}
+        {(userRole === 'admin' || userRole === 'auditor') && (
+          <button
+            onClick={() => { setTab('RELATORIOS'); setSyncDetailCompId(null); setSelectedCompId(null); }}
+            className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'RELATORIOS' ? 'gold-bg text-black shadow-lg shadow-amber-500/20' : 'text-zinc-500 hover:text-zinc-300'}`}
+          >
+            RELATÓRIOS
           </button>
         )}
       </div>
@@ -7885,6 +7974,77 @@ const AdminPanel = ({
                 </div>
               </div>
             </div>
+          </div>
+        ) : tab === 'RELATORIOS' ? (
+          <div className="space-y-6 animate-in fade-in duration-500 max-w-7xl mx-auto">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-zinc-900/50 p-8 rounded-[40px] border border-zinc-800/50">
+              <div className="space-y-2">
+                <h3 className="text-2xl font-black uppercase gold-gradient">Relatórios e Extração</h3>
+                <p className="text-zinc-500 font-bold text-[10px] uppercase tracking-widest">
+                  Veja e exporte em planilha todos os links postados na competição.
+                </p>
+              </div>
+              <div className="flex flex-col sm:flex-row items-center gap-4">
+                <select
+                  value={selectedCompId || ''}
+                  onChange={(e) => setSelectedCompId(e.target.value)}
+                  className="bg-black border border-zinc-800 rounded-2xl px-6 py-4 text-xs font-black text-amber-500 outline-none focus:border-amber-500 transition-all uppercase w-full sm:w-auto"
+                >
+                  <option value="">SELECIONE A COMPETIÇÃO...</option>
+                  {competitions.map(c => (
+                    <option key={c.id} value={c.id}>{c.title}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleExportExcel}
+                  disabled={!selectedCompId}
+                  className="px-8 py-4 bg-emerald-500/10 text-emerald-500 font-black rounded-2xl hover:bg-emerald-500 hover:text-black transition-all flex items-center justify-center gap-3 disabled:opacity-30 disabled:hover:bg-emerald-500/10 disabled:hover:text-emerald-500 w-full sm:w-auto shadow-xl shadow-emerald-500/5"
+                >
+                  <Download className="w-5 h-5" /> BAIXAR PLANILHA
+                </button>
+              </div>
+            </div>
+
+            {selectedCompId && (
+              <div className="bg-black border border-zinc-800 rounded-[32px] overflow-hidden p-6 md:p-8">
+                <div className="space-y-4">
+                  <div className="overflow-x-auto">
+                    <div className="min-w-[800px]">
+                      <ListHeader columns={['PLATAFORMA', 'LINK DO VÍDEO', 'USUÁRIO CRIADOR', 'CURTIDAS', 'VIEWS', 'STATUS DO LINK']} gridClass="grid-cols-[100px_minmax(0,1.5fr)_minmax(0,1fr)_100px_100px_120px]" />
+                      <div className="mt-4 space-y-2 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
+                        {posts.filter(p => p.competitionId === selectedCompId).length === 0 ? (
+                          <div className="py-20 text-center border border-dashed border-zinc-800 rounded-2xl">
+                            <Archive className="w-10 h-10 text-zinc-800 mx-auto mb-4" />
+                            <p className="font-black text-zinc-500 text-xs tracking-widest uppercase">Nenhum link encontrado para esta competição.</p>
+                          </div>
+                        ) : (
+                          posts.filter(p => p.competitionId === selectedCompId).sort((a, b) => b.timestamp - a.timestamp).map(post => (
+                            <div key={post.id} className="grid grid-cols-[100px_minmax(0,1.5fr)_minmax(0,1fr)_100px_100px_120px] gap-4 p-5 rounded-2xl bg-zinc-900/50 hover:bg-zinc-800/80 transition-colors items-center text-xs border border-zinc-800/30">
+                              <div className="flex justify-center">
+                                {post.platform === 'tiktok' ? <Zap className="w-6 h-6 text-amber-500" /> :
+                                 post.platform === 'youtube' ? <TrendingUp className="w-6 h-6 text-red-500" /> :
+                                 <Camera className="w-6 h-6 text-pink-500" />}
+                              </div>
+                              <div className="font-bold text-zinc-300 truncate px-2">
+                                <a href={post.url} target="_blank" rel="noreferrer" className="hover:text-amber-500 hover:underline">{post.url}</a>
+                              </div>
+                              <div className="font-black text-zinc-400 capitalize truncate px-2">{post.userName}</div>
+                              <div className="font-black text-emerald-400 text-center bg-emerald-500/10 py-1.5 rounded-lg">{post.likes?.toLocaleString() || 0}</div>
+                              <div className="font-black text-amber-500 text-center bg-amber-500/10 py-1.5 rounded-lg">{post.views?.toLocaleString() || 0}</div>
+                              <div className="flex justify-center">
+                                <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full ${post.status === 'approved' || post.status === 'synced' ? 'bg-emerald-500/20 text-emerald-500' : post.status === 'rejected' || post.status === 'banned' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}>
+                                  {post.status === 'approved' || post.status === 'synced' ? 'APROVADO' : post.status === 'rejected' || post.status === 'banned' ? 'RECUSADO' : 'EM TRIAGEM'}
+                                </span>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         ) : null}
       </div>
