@@ -46,7 +46,7 @@ export const updateUserMetrics = async (userId: string) => {
   if (!userSnap.exists()) return;
 
   const userData = userSnap.data() as User;
-  const userPostsQuery = query(collection(db, 'posts'), where('userId', '==', userData.uid), where('status', 'in', ['approved', 'synced']));
+  const userPostsQuery = query(collection(db, 'posts'), where('userId', '==', userId), where('status', 'in', ['approved', 'synced']));
   const userPostsSnapshot = await getDocs(userPostsQuery);
   
   const now = Date.now();
@@ -58,6 +58,18 @@ export const updateUserMetrics = async (userId: string) => {
   };
 
   const competitionStats: Record<string, any> = {};
+  
+  // Initialize competitionStats with existing data to preserve persistent fields like balance/paidTotal
+  if (userData.competitionStats) {
+    Object.keys(userData.competitionStats).forEach(cid => {
+      competitionStats[cid] = {
+        views: 0, likes: 0, comments: 0, shares: 0, saves: 0, posts: 0, instaPosts: 0,
+        dailyViews: 0, dailyLikes: 0, dailyComments: 0, dailyShares: 0, dailySaves: 0, dailyPosts: 0, dailyInstaPosts: 0,
+        balance: userData.competitionStats?.[cid]?.balance || 0,
+        paidTotal: userData.competitionStats?.[cid]?.paidTotal || 0
+      };
+    });
+  }
 
   userPostsSnapshot.docs.forEach((doc) => {
     const data = doc.data() as Post;
@@ -69,8 +81,8 @@ export const updateUserMetrics = async (userId: string) => {
       competitionStats[cid] = {
         views: 0, likes: 0, comments: 0, shares: 0, saves: 0, posts: 0, instaPosts: 0,
         dailyViews: 0, dailyLikes: 0, dailyComments: 0, dailyShares: 0, dailySaves: 0, dailyPosts: 0, dailyInstaPosts: 0,
-        balance: userData.competitionStats?.[cid]?.balance || 0,
-        paidTotal: userData.competitionStats?.[cid]?.paidTotal || 0
+        balance: 0,
+        paidTotal: 0
       };
     }
 

@@ -1372,6 +1372,8 @@ const App: React.FC = () => {
     message: '',
     onConfirm: () => { },
   });
+  const [rejectionModal, setRejectionModal] = useState<{ isOpen: boolean; postId: string; status: PostStatus }>({ isOpen: false, postId: '', status: 'rejected' });
+  const [rejectionReason, setRejectionReason] = useState('');
 
   useEffect(() => {
     if (user) {
@@ -1618,52 +1620,9 @@ const App: React.FC = () => {
       const postData = postSnap.data() as Post;
       const authorId = postData.userId;
 
-      await deleteDoc(postRef);
+      await updateDoc(postRef, { status: 'deleted' });
 
-      // Recalculate totals for the AUTHOR
-      const userPostsQuery = query(collection(db, 'posts'), where('userId', '==', authorId), where('status', '==', 'approved'));
-      const userPostsSnapshot = await getDocs(userPostsQuery);
-
-      const now = Date.now();
-      const oneDayAgo = now - 24 * 60 * 60 * 1000;
-
-      const totals = userPostsSnapshot.docs.reduce((acc, doc) => {
-        const data = doc.data() as Post;
-        const isDaily = (data.timestamp || 0) > oneDayAgo;
-
-        return {
-          views: acc.views + (data.views || 0),
-          likes: acc.likes + (data.likes || 0),
-          comments: acc.comments + (data.comments || 0),
-          shares: acc.shares + (data.shares || 0),
-          saves: acc.saves + (data.saves || 0),
-          posts: acc.posts + 1,
-          dailyViews: acc.dailyViews + (isDaily ? (data.views || 0) : 0),
-          dailyLikes: acc.dailyLikes + (isDaily ? (data.likes || 0) : 0),
-          dailyComments: acc.dailyComments + (isDaily ? (data.comments || 0) : 0),
-          dailyShares: acc.dailyShares + (isDaily ? (data.shares || 0) : 0),
-          dailySaves: acc.dailySaves + (isDaily ? (data.saves || 0) : 0),
-          dailyPosts: acc.dailyPosts + (isDaily ? 1 : 0)
-        };
-      }, {
-        views: 0, likes: 0, comments: 0, shares: 0, saves: 0, posts: 0,
-        dailyViews: 0, dailyLikes: 0, dailyComments: 0, dailyShares: 0, dailySaves: 0, dailyPosts: 0
-      });
-
-      await updateDoc(doc(db, 'users', authorId), {
-        totalViews: totals.views,
-        totalLikes: totals.likes,
-        totalComments: totals.comments,
-        totalShares: totals.shares,
-        totalSaves: totals.saves,
-        totalPosts: totals.posts,
-        dailyViews: totals.dailyViews,
-        dailyLikes: totals.dailyLikes,
-        dailyComments: totals.dailyComments,
-        dailyShares: totals.dailyShares,
-        dailySaves: totals.dailySaves,
-        dailyPosts: totals.dailyPosts
-      });
+      await updateUserMetrics(authorId);
 
       setNotification({ message: 'Vídeo removido com sucesso!', type: 'success' });
       setPostToDelete(null);
@@ -1800,19 +1759,8 @@ const App: React.FC = () => {
     const post = posts.find(p => p.id === postId);
 
     if (status === 'rejected') {
-      setConfirmModal({
-        isOpen: true,
-        title: 'Recusar Vídeo',
-        message: 'Tem certeza que deseja recusar este vídeo? Esta ação removerá o vídeo da triagem.',
-        onConfirm: async () => {
-          try {
-            await updateDoc(doc(db, 'posts', postId), { status, approvedAt: Date.now() });
-            if (post) await updateUserMetrics(post.userId);
-          } catch (error) {
-            handleFirestoreError(error, OperationType.UPDATE, `posts/${postId}`);
-          }
-        }
-      });
+      setRejectionReason(post?.rejectionReason || '');
+      setRejectionModal({ isOpen: true, postId, status: 'rejected' });
       return;
     }
     try {
@@ -1826,6 +1774,24 @@ const App: React.FC = () => {
       if (post) await updateUserMetrics(post.userId);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `posts/${postId}`);
+    }
+  };
+
+  const handleConfirmRejection = async () => {
+    const { postId, status } = rejectionModal;
+    const post = posts.find(p => p.id === postId);
+    try {
+      await updateDoc(doc(db, 'posts', postId), {
+        status: status,
+        approvedAt: Date.now(),
+        rejectionReason: rejectionReason.trim() || ''
+      });
+      if (post) await updateUserMetrics(post.userId);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `posts/${postId}`);
+    } finally {
+      setRejectionModal({ isOpen: false, postId: '', status: 'rejected' });
+      setRejectionReason('');
     }
   };
 
@@ -2666,6 +2632,9 @@ const App: React.FC = () => {
                     isCreatingAnn={isCreatingAnn}
                     setIsCreatingAnn={setIsCreatingAnn}
                     handleSystemCleanup={handleSystemCleanup}
+                    rejectionReason={rejectionReason}
+                    setRejectionReason={setRejectionReason}
+                    setRejectionModal={setRejectionModal}
                   />
                 )}
                 {view === 'SETTINGS' && user && (
@@ -2726,6 +2695,58 @@ const App: React.FC = () => {
         onClose={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
       />
 
+      {/* Rejection Reason Modal */}
+      <AnimatePresence>
+        {rejectionModal.isOpen && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setRejectionModal({ isOpen: false, postId: '' })}
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-md glass p-8 rounded-[40px] border border-zinc-800 space-y-6"
+            >
+              <div className="w-16 h-16 bg-red-500/20 rounded-3xl flex items-center justify-center">
+                <XCircle className="w-8 h-8 text-red-500" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-xl font-black tracking-tight">Recusar Vídeo</h3>
+                <p className="text-zinc-500 font-bold text-xs">Informe o motivo da remoção. Esta mensagem será exibida ao usuário no card dele.</p>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Motivo da Remoção (opcional)</label>
+                <textarea
+                  value={rejectionReason}
+                  onChange={(e) => setRejectionReason(e.target.value)}
+                  placeholder="Ex: Vídeo não segue as regras da competição..."
+                  className="w-full bg-black border border-zinc-800 rounded-2xl py-4 px-5 text-sm font-bold focus:border-red-500 outline-none transition-all h-28 resize-none shadow-inner text-zinc-200 placeholder:text-zinc-700"
+                />
+              </div>
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={handleConfirmRejection}
+                  className="w-full py-4 bg-red-500 text-white font-black rounded-2xl hover:bg-red-600 transition-all flex items-center justify-center gap-2"
+                >
+                  <XCircle className="w-4 h-4" />
+                  CONFIRMAR REMOÇÃO
+                </button>
+                <button
+                  onClick={() => setRejectionModal({ isOpen: false, postId: '', status: 'rejected' })}
+                  className="w-full py-4 bg-zinc-900 text-zinc-400 font-black rounded-2xl hover:text-zinc-100 transition-all"
+                >
+                  CANCELAR
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
 
       {/* Post Delete Confirmation Modal */}
@@ -3718,71 +3739,235 @@ const PostSubmit = ({ user, competitions, registrations, setView, lockedCompetit
   );
 };
 
-const HistoryView = ({ posts, onDelete, isAdmin }: { posts: Post[], onDelete: (id: string) => void, isAdmin: boolean }) => (
-  <div className="space-y-8">
-    <h2 className="text-3xl font-black tracking-tight">Meus Protocolos</h2>
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      {posts.map(post => (
-        <div key={post.id} className="p-6 rounded-3xl glass space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              {post.platform === 'tiktok' ? <Zap className="w-4 h-4 text-amber-500" /> :
-                post.platform === 'youtube' ? <TrendingUp className="w-4 h-4 text-red-500" /> :
-                  <Camera className="w-4 h-4 text-pink-500" />}
-              <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${post.status === 'approved' || post.status === 'synced' ? 'bg-emerald-500/20 text-emerald-500' :
-                  post.status === 'rejected' || post.status === 'banned' ? 'bg-red-500/20 text-red-500' :
-                    'bg-amber-500/20 text-amber-500'
-                }`}>
-                {post.status === 'approved' || post.status === 'synced' ? 'Aprovado' : post.status === 'rejected' || post.status === 'banned' ? 'Recusado' : 'Em Triagem'}
+const HistoryView = ({ posts, onDelete, isAdmin }: { posts: Post[], onDelete: (id: string) => void, isAdmin: boolean }) => {
+  const [selectedPlatform, setSelectedPlatform] = useState<'tiktok' | 'youtube' | 'instagram' | null>(null);
+  const [filterDate, setFilterDate] = useState('');
+
+  const filteredPosts = posts.filter(post => {
+    // Não mostrar posts deletados para o usuário (soft delete)
+    if (post.status === 'deleted') return false;
+    const matchesPlatform = selectedPlatform ? post.platform === selectedPlatform : true;
+    const matchesDate = !filterDate ? true : new Date(post.timestamp).setHours(0,0,0,0) >= new Date(filterDate).setHours(0,0,0,0);
+    return matchesPlatform && matchesDate;
+  });
+
+  const getPlatformCount = (p: 'tiktok' | 'youtube' | 'instagram') => posts.filter(post => post.platform === p).length;
+
+  return (
+    <div className="space-y-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <h2 className="text-3xl font-black tracking-tight flex items-center gap-3">
+          {selectedPlatform && (
+            <button 
+              onClick={() => setSelectedPlatform(null)}
+              className="p-2.5 rounded-2xl bg-zinc-900 border border-zinc-800 text-zinc-200 hover:text-white transition-all hover:scale-105 active:scale-95 shadow-lg"
+              title="Voltar ao Hub"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+          )}
+          {selectedPlatform ? (
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+              <span className="capitalize flex items-center gap-2">
+                {selectedPlatform === 'tiktok' ? <Zap className="w-6 h-6 text-amber-500" /> :
+                 selectedPlatform === 'youtube' ? <TrendingUp className="w-6 h-6 text-red-500" /> :
+                 <Camera className="w-6 h-6 text-pink-500" />}
+                {selectedPlatform} Protocols
+              </span>
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-900 border border-zinc-800">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.5)]" />
+                <span className="text-[11px] font-black uppercase text-zinc-100 tracking-widest">{filteredPosts.length} postados</span>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-zinc-500 font-bold">{new Date(post.timestamp).toLocaleDateString()}</span>
-              {isAdmin && (
-                <button
-                  onClick={() => onDelete(post.id)}
-                  className="p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-black transition-all"
-                  title="Excluir vídeo"
-                >
-                  <Trash2 className="w-3 h-3" />
-                </button>
-              )}
+          ) : (
+            "Meus Protocolos"
+          )}
+        </h2>
+        
+        {selectedPlatform && (
+          <div className="flex items-center gap-3 animate-in fade-in slide-in-from-right-4 duration-500">
+            <div className="relative group">
+              <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-600 group-hover:text-amber-500/50 transition-colors" />
+              <input 
+                type="date"
+                value={filterDate}
+                onChange={(e) => setFilterDate(e.target.value)}
+                className="bg-zinc-900 border border-zinc-800 rounded-2xl pl-11 pr-4 py-2.5 text-xs font-black text-white focus:outline-none focus:border-amber-500/50 transition-all focus:ring-4 focus:ring-amber-500/5 w-full sm:w-auto uppercase tracking-widest shadow-inner"
+              />
             </div>
+            {filterDate && (
+              <button 
+                onClick={() => setFilterDate('')}
+                className="p-2.5 rounded-2xl bg-zinc-900/50 border border-zinc-800 text-zinc-500 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest hover:border-zinc-700"
+              >
+                Limpar
+              </button>
+            )}
           </div>
-          <p className="text-sm font-bold truncate text-zinc-400">{post.url}</p>
-          <div className="grid grid-cols-2 gap-2 pt-4 border-t border-zinc-800">
-            <div className="flex items-center gap-2">
-              <Eye className="w-3 h-3 text-zinc-500" />
-              <span className="text-[10px] font-bold">{(post.views || 0).toLocaleString()}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Heart className="w-3 h-3 text-zinc-500" />
-              <span className="text-[10px] font-bold">{(post.likes || 0).toLocaleString()}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <MessageSquare className="w-3 h-3 text-zinc-500" />
-              <span className="text-[10px] font-bold">{(post.comments || 0).toLocaleString()}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Share2 className="w-3 h-3 text-zinc-500" />
-              <span className="text-[10px] font-bold">{(post.shares || 0).toLocaleString()}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Bookmark className="w-3 h-3 text-zinc-500" />
-              <span className="text-[10px] font-bold">{(post.saves || 0).toLocaleString()}</span>
-            </div>
-          </div>
-        </div>
-      ))}
-      {posts.length === 0 && (
-        <div className="col-span-full py-20 text-center space-y-4">
-          <History className="w-12 h-12 text-zinc-800 mx-auto" />
-          <p className="text-zinc-500 font-bold">Nenhum protocolo encontrado</p>
-        </div>
-      )}
+        )}
+      </div>
+
+      <AnimatePresence mode="wait">
+        {!selectedPlatform ? (
+          <motion.div 
+            key="hub"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+            className="grid grid-cols-1 md:grid-cols-3 gap-8 pt-4"
+          >
+            {[
+              { id: 'tiktok', name: 'TikTok', icon: Zap, color: 'text-amber-500', bg: 'bg-amber-500/10', border: 'border-amber-500/10', hover: 'hover:border-amber-500/30' },
+              { id: 'instagram', name: 'Instagram', icon: Camera, color: 'text-pink-500', bg: 'bg-pink-500/10', border: 'border-pink-500/10', hover: 'hover:border-pink-500/30' },
+              { id: 'youtube', name: 'YouTube', icon: TrendingUp, color: 'text-red-500', bg: 'bg-red-500/10', border: 'border-red-500/10', hover: 'hover:border-red-500/30' }
+            ].map((p, idx) => (
+              <motion.button
+                key={p.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.1 }}
+                onClick={() => setSelectedPlatform(p.id as any)}
+                className={`group relative p-10 rounded-[3rem] glass overflow-hidden transition-all duration-500 border-2 ${p.border} ${p.hover} flex flex-col items-center text-center gap-8 hover:shadow-[0_20px_50px_rgba(0,0,0,0.3)]`}
+              >
+                <div className={`p-8 rounded-[2rem] ${p.bg} transition-all duration-700 group-hover:scale-110 group-hover:rotate-12 group-hover:shadow-[0_0_30px_rgba(0,0,0,0.2)]`}>
+                  <p.icon className={`w-14 h-14 ${p.color}`} />
+                </div>
+                <div>
+                  <h3 className={`text-3xl font-black uppercase tracking-tighter mb-2 ${p.color}`}>{p.name}</h3>
+                  <div className="flex items-center gap-2 justify-center">
+                    <span className="w-1.5 h-1.5 rounded-full bg-zinc-700" />
+                    <p className="text-zinc-200 text-xs font-black uppercase tracking-[0.2em]">{getPlatformCount(p.id as any)} Protocolos</p>
+                    <span className="w-1.5 h-1.5 rounded-full bg-zinc-700" />
+                  </div>
+                </div>
+                <div className="mt-2 px-8 py-3 rounded-2xl bg-white text-black text-[10px] font-black uppercase tracking-[0.2em] transform translate-y-12 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-500 shadow-xl">
+                  ACESSAR REDE
+                </div>
+                <div className={`absolute -bottom-12 -right-12 w-32 h-32 rounded-full ${p.bg} blur-3xl opacity-0 group-hover:opacity-50 transition-opacity duration-700`} />
+              </motion.button>
+            ))}
+          </motion.div>
+        ) : (
+          <motion.div 
+            key="list"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.4, ease: "easeOut" }}
+            className="space-y-8"
+          >
+            {filteredPosts.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredPosts.map(post => {
+                  const platformLabel = post.platform === 'tiktok' ? 'TikTok' : post.platform === 'youtube' ? 'YouTube' : 'Instagram';
+                  const platformColor = post.platform === 'tiktok' ? 'text-amber-500' : post.platform === 'youtube' ? 'text-red-500' : 'text-pink-500';
+                  const platformBg = post.platform === 'tiktok' ? 'bg-amber-500/10 border-amber-500/20' : post.platform === 'youtube' ? 'bg-red-500/10 border-red-500/20' : 'bg-pink-500/10 border-pink-500/20';
+                  const platformIcon = post.platform === 'tiktok' ? <Zap className="w-5 h-5" /> : post.platform === 'youtube' ? <TrendingUp className="w-5 h-5" /> : <Camera className="w-5 h-5" />;
+                  const buttonHover = post.platform === 'tiktok' ? 'hover:bg-amber-500 hover:text-black hover:border-amber-500 shadow-amber-500/20' : post.platform === 'youtube' ? 'hover:bg-red-500 hover:text-white hover:border-red-500 shadow-red-500/20' : 'hover:bg-pink-500 hover:text-white hover:border-pink-500 shadow-pink-500/20';
+
+                  return (
+                    <div key={post.id} className="p-7 rounded-[2.5rem] glass border border-zinc-800/50 space-y-5 group hover:border-zinc-700 transition-all hover:shadow-[0_20px_40px_rgba(0,0,0,0.2)]">
+                      <div className={`flex items-center gap-3 px-4 py-2.5 rounded-2xl border ${platformBg}`}>
+                        <span className={platformColor}>{platformIcon}</span>
+                        <span className={`text-sm font-black uppercase tracking-widest ${platformColor}`}>{platformLabel}</span>
+                        {post.accountHandle && post.accountHandle !== 'ADMIN_MANUAL' && (
+                          <div className="flex items-center gap-2">
+                             <span className={`text-xs font-black opacity-40 ${platformColor}`}>|</span>
+                             <span className={`text-[11px] font-black ${platformColor} tracking-widest uppercase truncate max-w-[100px]`}>{post.accountHandle}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-[0.15em] border ${
+                          post.status === 'approved' || post.status === 'synced' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/10' :
+                          post.status === 'rejected' || post.status === 'banned' ? 'bg-red-500/10 text-red-500 border-red-500/10' :
+                          'bg-amber-500/10 text-amber-500 border-amber-500/10'
+                        }`}>
+                          {post.status === 'approved' || post.status === 'synced' ? 'Aprovado' : post.status === 'rejected' || post.status === 'banned' ? 'Recusado' : 'Em Triagem'}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-zinc-100 font-black uppercase tracking-widest">{new Date(post.timestamp).toLocaleDateString()}</span>
+                          {isAdmin && (
+                            <button
+                              onClick={() => onDelete(post.id)}
+                              className="p-2 rounded-xl bg-red-500/5 text-red-500/40 hover:bg-red-500 hover:text-black transition-all"
+                              title="Excluir vídeo"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {(post.status === 'rejected' || post.status === 'banned') && post.rejectionReason && (
+                        <div className="flex items-start gap-3 px-5 py-4 rounded-3xl bg-red-500/5 border border-red-500/10">
+                          <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                          <div className="space-y-1 min-w-0">
+                            <p className="text-[8px] font-black text-red-400 uppercase tracking-[0.2em] opacity-50">Motivo da Remoção</p>
+                            <p className="text-[11px] font-bold text-red-200/80 leading-relaxed">{post.rejectionReason}</p>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-3 bg-zinc-900 border border-zinc-800/50 p-1.5 rounded-2xl">
+                        <p className="text-[11px] font-bold truncate text-zinc-100 flex-1 min-w-0 pl-3 uppercase tracking-tighter">{post.url}</p>
+                        <a
+                          href={post.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className={`shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-400 text-[9px] font-black uppercase tracking-widest transition-all hover:scale-105 active:scale-95 ${buttonHover}`}
+                          title="Abrir link"
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                          Abrir
+                        </a>
+                      </div>
+
+                      <div className="grid grid-cols-2 divide-x divide-zinc-800/50 pt-3">
+                        <div className="flex flex-col items-center py-2">
+                          <span className="text-zinc-200 text-[9px] font-black uppercase tracking-[0.2em] mb-1">Visualizações</span>
+                          <div className="flex items-center gap-2">
+                            <Eye className={`w-3.5 h-3.5 ${platformColor} opacity-80`} />
+                            <span className="text-[14px] font-black tabular-nums text-white">{(post.views || 0).toLocaleString()}</span>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-center py-2">
+                          <span className="text-zinc-200 text-[9px] font-black uppercase tracking-[0.2em] mb-1">Curtidas</span>
+                          <div className="flex items-center gap-2">
+                            <Heart className={`w-3.5 h-3.5 ${platformColor} opacity-80`} />
+                            <span className="text-[14px] font-black tabular-nums text-white">{(post.likes || 0).toLocaleString()}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="py-32 text-center glass rounded-[3rem] border-dashed border-zinc-800 flex flex-col items-center">
+                <div className="w-20 h-20 rounded-full bg-zinc-900 flex items-center justify-center mb-6">
+                  <AlertCircle className="w-8 h-8 text-zinc-700" />
+                </div>
+                <h3 className="text-2xl font-black text-zinc-100 uppercase tracking-tighter">Nenhum protocolo encontrado</h3>
+                <p className="text-zinc-300 font-bold mt-2 text-sm max-w-xs mx-auto px-4">Não encontramos vídeos na rede {selectedPlatform} com os filtros selecionados.</p>
+                {filterDate && (
+                  <button 
+                    onClick={() => setFilterDate('')}
+                    className="mt-8 px-10 py-4 bg-white text-black rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:scale-105 active:scale-95 transition-all shadow-xl shadow-white/5"
+                  >
+                    Resetar Filtro de Data
+                  </button>
+                )}
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
-  </div>
-);
+  );
+};
 
 const Rankings = ({ rankings, competitions, lockedCompetitionId }: { rankings: User[], competitions: Competition[], lockedCompetitionId?: string }) => {
   const [selectedCompId, setSelectedCompId] = useState<string>(lockedCompetitionId || (() => {
@@ -4607,7 +4792,10 @@ const AdminPanel = ({
   setAnnMsg,
   isCreatingAnn,
   setIsCreatingAnn,
-  handleSystemCleanup
+  handleSystemCleanup,
+  rejectionReason,
+  setRejectionReason,
+  setRejectionModal
 }: {
   userRole: UserRole;
   posts: Post[];
@@ -4704,6 +4892,9 @@ const AdminPanel = ({
   setAnnMsg: (v: string) => void;
   isCreatingAnn: boolean;
   setIsCreatingAnn: (v: boolean) => void;
+  rejectionReason: string;
+  setRejectionReason: (v: string) => void;
+  setRejectionModal: (v: { isOpen: boolean; postId: string; status: PostStatus }) => void;
 }) => {
   const [tab, setTab] = useState<'VISAO_GERAL' | 'POSTS' | 'USERS' | 'USERS_APPROVED' | 'COMPETITIONS' | 'SYNC' | 'REGISTROS' | 'AVISOS' | 'TIMER' | 'FINANCEIRO' | 'ACESSOS' | 'SUGESTOES' | 'RESSINCRONIZACAO' | 'SINCRONIZACAO' | 'ARCHIVED' | 'RELATORIOS'>('VISAO_GERAL');
   const [selectedSyncCompId, setSelectedSyncCompId] = useState<string>('ALL');
@@ -4767,11 +4958,31 @@ const AdminPanel = ({
   }, [approvedUsers]);
 
   // --- BI & Performance Calculations ---
-  const approvedPosts = posts.filter(p => p.status === 'approved' || p.status === 'synced');
-  const rejectedPosts = posts.filter(p => p.status === 'rejected');
+  // Unificação: Buscar totais da competição selecionada diretamente nos perfis dos usuários
+  // para garantir que o Alcance Global bata exatamente com o Ranking (Meta Coletiva).
+  const compMetrics = useMemo(() => {
+    if (!selectedMetaComp) return { views: 0, likes: 0 };
+    return approvedUsers.reduce((acc, u) => {
+      const stats = u.competitionStats?.[selectedMetaComp.id];
+      return {
+        views: acc.views + (stats?.views || 0),
+        likes: acc.likes + (stats?.likes || 0)
+      };
+    }, { views: 0, likes: 0 });
+  }, [approvedUsers, selectedMetaComp]);
 
-  const globalViews = approvedPosts.reduce((s, p) => s + (p.views || 0), 0);
-  const globalLikes = approvedPosts.reduce((s, p) => s + (p.likes || 0), 0);
+  const globalViews = compMetrics.views;
+  const globalLikes = compMetrics.likes;
+
+  const approvedPosts = posts.filter(p => 
+    (p.status === 'approved' || p.status === 'synced') && 
+    (!selectedMetaComp || p.competitionId === selectedMetaComp.id)
+  );
+  
+  const rejectedPosts = posts.filter(p => 
+    p.status === 'rejected' && 
+    (!selectedMetaComp || p.competitionId === selectedMetaComp.id)
+  );
 
   const now = Date.now();
   const dayMs = 24 * 60 * 60 * 1000;
@@ -4796,10 +5007,23 @@ const AdminPanel = ({
 
   const newUsers7d = approvedUsers.filter(u => u.approvedAt && u.approvedAt > now - 7 * dayMs).length;
 
-  const totalPaidGlobal = approvedUsers.reduce((sum, u) => sum + (u.competitionStats ? Object.values(u.competitionStats).reduce((s, st: any) => s + (st.paidTotal || 0), 0) : 0), 0);
+  const totalPaidGlobal = approvedUsers.reduce((sum, u) => {
+    if (!u.competitionStats) return sum;
+    if (selectedMetaComp) {
+      return sum + (u.competitionStats[selectedMetaComp.id]?.paidTotal || 0);
+    }
+    return sum + Object.values(u.competitionStats).reduce((s, st: any) => s + (st.paidTotal || 0), 0);
+  }, 0);
+
   const cpp = approvedPosts.length > 0 ? totalPaidGlobal / approvedPosts.length : 0;
 
-  const totalPendingGlobal = approvedUsers.reduce((sum, u) => sum + (u.competitionStats ? Object.values(u.competitionStats).reduce((s, st: any) => s + (st.balance || 0), 0) : 0), 0);
+  const totalPendingGlobal = approvedUsers.reduce((sum, u) => {
+    if (!u.competitionStats) return sum;
+    if (selectedMetaComp) {
+      return sum + (u.competitionStats[selectedMetaComp.id]?.balance || 0);
+    }
+    return sum + Object.values(u.competitionStats).reduce((s, st: any) => s + (st.balance || 0), 0);
+  }, 0);
 
   const auditEfficiency = (() => {
     const postsWithAudit = posts.filter(p => p.approvedAt && p.timestamp);
@@ -5061,6 +5285,14 @@ const AdminPanel = ({
   };
 
   const handleStatusToggle = async (postId: string, newStatus: PostStatus, userId: string) => {
+    const post = posts.find(p => p.id === postId);
+    
+    if (newStatus === 'banned' || newStatus === 'rejected') {
+      setRejectionReason(post?.rejectionReason || '');
+      setRejectionModal({ isOpen: true, postId, status: newStatus });
+      return;
+    }
+
     try {
       await updateDoc(doc(db, 'posts', postId), { status: newStatus });
       await updateUserMetrics(userId);
@@ -5349,14 +5581,49 @@ const AdminPanel = ({
             RELATÓRIOS
           </button>
         )}
+        {/* REMOVIDOS - visível para admin e auditor */}
+        {(userRole === 'admin' || userRole === 'auditor') && (
+          <button
+            onClick={() => { setTab('REMOVED_POSTS'); setSyncDetailCompId(null); setSelectedCompId(null); }}
+            className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'REMOVED_POSTS' ? 'bg-red-500 text-white shadow-lg shadow-red-500/20' : 'text-zinc-500 hover:text-zinc-300'}`}
+          >
+            REMOVIDOS ({posts.filter(p => p.status === 'rejected' || p.status === 'banned' || p.status === 'deleted').length})
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-4">
         {tab === 'VISAO_GERAL' && (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <div className="flex flex-col gap-1 mb-2">
-              <h3 className="text-2xl font-black uppercase tracking-tighter gold-gradient">Visão Geral do Ecossistema</h3>
-              <p className="text-zinc-500 font-bold text-[11px] uppercase tracking-[0.2em] opacity-80">Métricas em tempo real de toda a operação MetaRayx.</p>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-2">
+              <div className="flex flex-col gap-1">
+                <h3 className="text-2xl font-black uppercase tracking-tighter gold-gradient">Visão Geral do Ecossistema</h3>
+                <p className="text-zinc-500 font-bold text-[11px] uppercase tracking-[0.2em] opacity-80">Métricas em tempo real de toda a operação MetaRayx.</p>
+              </div>
+
+              {userRole === 'admin' && (
+                <div className="flex flex-col items-end gap-2">
+                  <button
+                    onClick={handleRepairMetrics}
+                    disabled={repairing}
+                    className="px-6 py-3 rounded-2xl bg-zinc-900 border border-zinc-800 text-zinc-400 font-black text-[10px] uppercase tracking-widest hover:bg-amber-500/10 hover:text-amber-500 hover:border-amber-500/30 transition-all flex items-center gap-3 disabled:opacity-50"
+                  >
+                    {repairing ? (
+                      <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1 }}>
+                        <RefreshCw className="w-4 h-4" />
+                      </motion.div>
+                    ) : (
+                      <RefreshCw className="w-4 h-4" />
+                    )}
+                    {repairing ? 'SINCRONIZANDO...' : 'REPARAR MÉTRICAS GLOBAIS'}
+                  </button>
+                  <p className="text-[9px] text-zinc-600 font-bold uppercase tracking-wider text-right max-w-[250px] leading-relaxed">
+                    Sincroniza os perfis dos usuários com os links ativos no banco.
+                    <br />
+                    <span className="text-amber-500/50">Remove dados de links banidos ou excluídos.</span>
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Meta Coletiva da Dashboard Admin/Auditor */}
@@ -5915,6 +6182,16 @@ const AdminPanel = ({
                             <a href={post.url} target="_blank" rel="noreferrer" className="p-3 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-500 hover:text-white hover:border-zinc-700 transition-all">
                               <ExternalLink className="w-4 h-4" />
                             </a>
+                            <button
+                              onClick={() => {
+                                setRejectionReason(post.rejectionReason || '');
+                                setRejectionModal({ isOpen: true, postId: post.id, status: post.status });
+                              }}
+                              className={`p-3 rounded-xl transition-all ${post.rejectionReason ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/20' : 'bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-white'}`}
+                              title="Enviar/Editar Mensagem"
+                            >
+                              <MessageSquare className="w-4 h-4" />
+                            </button>
                             <button
                               onClick={() => handlePostStatus(post.id, 'rejected')}
                               className={`p-3 rounded-xl border transition-all ${post.status === 'rejected' ? 'bg-red-500 border-red-400 text-black shadow-lg shadow-red-500/20' : 'bg-red-500/5 border-red-500/20 text-red-500 hover:bg-red-500 hover:text-black'}`}
@@ -6480,6 +6757,17 @@ const AdminPanel = ({
                     </button>
                     
                     <button
+                      onClick={() => {
+                        setRejectionReason(post.rejectionReason || '');
+                        setRejectionModal({ isOpen: true, postId: post.id, status: post.status });
+                      }}
+                      className="p-2.5 rounded-xl bg-zinc-800 text-zinc-400 hover:text-white transition-all self-end"
+                      title="Enviar/Editar Mensagem"
+                    >
+                      <MessageSquare className="w-4 h-4" />
+                    </button>
+
+                    <button
                       onClick={() => setPostToDelete(post.id)}
                       title="Excluir vídeo aprovado"
                     >
@@ -6597,6 +6885,16 @@ const AdminPanel = ({
                             title="Aprovar Vídeo"
                           >
                             <CheckCircle2 className="w-5 h-5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setRejectionReason(post.rejectionReason || '');
+                              setRejectionModal({ isOpen: true, postId: post.id, status: post.status });
+                            }}
+                            className={`p-2 rounded-xl transition-all ${post.rejectionReason ? 'bg-amber-500 text-black' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
+                            title="Enviar/Editar Mensagem"
+                          >
+                            <MessageSquare className="w-5 h-5" />
                           </button>
                           <button
                             onClick={() => handlePostStatus(post.id, 'rejected')}
@@ -8045,6 +8343,71 @@ const AdminPanel = ({
                 </div>
               </div>
             )}
+          </div>
+        ) : tab === 'REMOVED_POSTS' ? (
+          <div className="space-y-6 animate-in fade-in duration-500 max-w-7xl mx-auto">
+            <div className="bg-zinc-900/50 p-8 rounded-[40px] border border-zinc-800/50 flex flex-col md:flex-row md:items-center justify-between gap-6">
+              <div className="space-y-2">
+                <h3 className="text-2xl font-black uppercase text-red-500">Recuperação de Links</h3>
+                <p className="text-zinc-500 font-bold text-[10px] uppercase tracking-widest">
+                  Restaurar vídeos excluídos, rejeitados ou banidos acidentalmente.
+                </p>
+              </div>
+              <div className="px-6 py-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-black uppercase tracking-widest">
+                {posts.filter(p => p.status === 'rejected' || p.status === 'banned' || p.status === 'deleted').length} itens removidos
+              </div>
+            </div>
+
+            <div className="bg-black border border-zinc-800 rounded-[32px] overflow-hidden p-6 md:p-8">
+              <div className="min-w-[800px]">
+                <ListHeader columns={['PLATAFORMA', 'LINK / MOTIVO', 'USUÁRIO', 'CURTIDAS', 'VIEWS', 'AÇÕES']} gridClass="grid-cols-[100px_minmax(0,1.5fr)_minmax(0,1fr)_100px_100px_150px]" />
+                <div className="mt-4 space-y-3 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
+                  {posts.filter(p => p.status === 'rejected' || p.status === 'banned' || p.status === 'deleted').length === 0 ? (
+                    <div className="py-20 text-center border border-dashed border-zinc-800 rounded-2xl">
+                      <ShieldCheck className="w-10 h-10 text-zinc-800 mx-auto mb-4" />
+                      <p className="font-black text-zinc-500 text-xs tracking-widest uppercase">Nenhum post removido pendente.</p>
+                    </div>
+                  ) : (
+                    posts.filter(p => p.status === 'rejected' || p.status === 'banned' || p.status === 'deleted').sort((a,b) => b.timestamp - a.timestamp).map(post => (
+                      <div key={post.id} className="grid grid-cols-[100px_minmax(0,1.5fr)_minmax(0,1fr)_100px_100px_150px] gap-4 p-5 rounded-3xl bg-zinc-950 border border-zinc-900 hover:border-zinc-700 transition-all items-center text-xs">
+                        <div className="flex justify-center">
+                          <div className={`p-2.5 rounded-xl bg-zinc-900 border border-zinc-800 ${
+                            post.platform === 'tiktok' ? 'text-amber-500' :
+                            post.platform === 'youtube' ? 'text-red-500' :
+                            'text-pink-500'
+                          }`}>
+                            {post.platform === 'tiktok' ? <Zap className="w-5 h-5" /> :
+                             post.platform === 'youtube' ? <TrendingUp className="w-5 h-5" /> :
+                             <Camera className="w-5 h-5" />}
+                          </div>
+                        </div>
+                        <div className="px-2 space-y-1">
+                          <a href={post.url} target="_blank" rel="noreferrer" className="font-bold text-zinc-400 hover:text-white truncate block">{post.url}</a>
+                          {post.rejectionReason ? (
+                            <p className="text-[9px] text-red-400/70 font-bold uppercase truncate">Motivo: {post.rejectionReason}</p>
+                          ) : (
+                            <p className={`text-[9px] font-bold uppercase ${post.status === 'deleted' ? 'text-zinc-500' : 'text-amber-500/50'}`}>
+                              STATUS: {post.status === 'deleted' ? 'EXCLUÍDO MANUALMENTE' : 'REJEITADO'}
+                            </p>
+                          )}
+                        </div>
+                        <div className="font-black text-zinc-300 capitalize truncate px-2">{post.userName}</div>
+                        <div className="font-black text-emerald-400 text-center bg-emerald-500/10 py-1.5 rounded-lg">{(post.likes || 0).toLocaleString()}</div>
+                        <div className="font-black text-amber-500 text-center bg-amber-500/10 py-1.5 rounded-lg">{(post.views || 0).toLocaleString()}</div>
+                        <div className="flex justify-center">
+                          <button
+                            onClick={() => handlePostStatus(post.id, 'pending')}
+                            className="w-full py-2.5 bg-zinc-900 text-zinc-200 border border-zinc-800 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-white hover:text-black transition-all flex items-center justify-center gap-2"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" /> RESTAURAR
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         ) : null}
       </div>
