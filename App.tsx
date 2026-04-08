@@ -4170,11 +4170,15 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId }: { rankings: U
         const stats = user.competitionStats?.[selectedCompId];
         if (!stats) return false;
         
+        // Mostrar TODOS que tenham pelo menos 1 post na competição (ou posts diários se for o caso)
         if (rankingType === 'DAILY') {
-          return selectedCompetition?.rankingMetric === 'likes' ? (stats.dailyLikes || 0) > 0 : (stats.dailyViews || 0) > 0;
+          return (stats.dailyPosts || 0) > 0 || (stats.dailyViews || 0) > 0 || (stats.dailyLikes || 0) > 0;
         }
-        if (rankingType === 'INSTAGRAM') return (stats.dailyInstaPosts || 0) > 0;
-        return selectedCompetition?.rankingMetric === 'likes' ? (stats.likes || 0) > 0 : (stats.views || 0) > 0;
+        if (rankingType === 'INSTAGRAM') {
+          return (stats.instaPosts || 0) > 0 || (stats.dailyInstaPosts || 0) > 0;
+        }
+        // Ranking Mensal/Total: mostra todos que postaram na competição em qualquer momento
+        return (stats.posts || 0) > 0 || (stats.views || 0) > 0 || (stats.likes || 0) > 0;
       })
       .sort((a, b) => {
         const statsA = a.competitionStats?.[selectedCompId];
@@ -4186,8 +4190,7 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId }: { rankings: U
         }
         if (rankingType === 'INSTAGRAM') return (statsB.dailyInstaPosts || 0) - (statsA.dailyInstaPosts || 0);
         return selectedCompetition?.rankingMetric === 'likes' ? (statsB.likes || 0) - (statsA.likes || 0) : (statsB.views || 0) - (statsA.views || 0);
-      })
-      .slice(0, rankingType === 'INSTAGRAM' ? 3 : 10);
+      });
   }, [rankings, selectedCompId, rankingType]);
 
   const getPrize = (index: number) => {
