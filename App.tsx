@@ -1373,6 +1373,7 @@ const App: React.FC = () => {
     onConfirm: () => { },
   });
   const [rejectionModal, setRejectionModal] = useState<{ isOpen: boolean; postId: string; status: PostStatus }>({ isOpen: false, postId: '', status: 'rejected' });
+  const [removalModal, setRemovalModal] = useState<{ isOpen: boolean; postId: string; reason: string; consent: boolean }>({ isOpen: false, postId: '', reason: '', consent: false });
   const [rejectionReason, setRejectionReason] = useState('');
 
   useEffect(() => {
@@ -1629,6 +1630,58 @@ const App: React.FC = () => {
     } catch (error) {
       console.error('Erro ao excluir post:', error);
       setNotification({ message: 'Erro ao excluir o vídeo.', type: 'error' });
+    }
+  };
+
+  const handleRequestRemoval = async () => {
+    if (!removalModal.postId || !removalModal.reason.trim() || !removalModal.consent) {
+       setNotification({ message: 'Por favor, preencha o motivo e marque a caixa de ciência.', type: 'error' });
+       return;
+    }
+
+    try {
+      const postRef = doc(db, 'posts', removalModal.postId);
+      await updateDoc(postRef, {
+        status: 'removal_requested',
+        removalRequestReason: removalModal.reason,
+        removalRequestAt: Date.now()
+      });
+      setNotification({ message: 'Solicitação de remoção enviada com sucesso! Aguarde a revisão do administrador.', type: 'success' });
+      setRemovalModal({ isOpen: false, postId: '', reason: '', consent: false });
+    } catch (error) {
+      console.error('Erro ao solicitar remoção:', error);
+      setNotification({ message: 'Erro ao enviar solicitação.', type: 'error' });
+    }
+  };
+
+  const handleApproveRemoval = async (postId: string) => {
+    try {
+      const postRef = doc(db, 'posts', postId);
+      const postSnap = await getDoc(postRef);
+      if (!postSnap.exists()) return;
+      const postData = postSnap.data() as Post;
+      
+      await updateDoc(postRef, { status: 'deleted' });
+      await updateUserMetrics(postData.userId);
+      setNotification({ message: 'Remoção aprovada com sucesso! O vídeo foi movido para o banco de excluídos.', type: 'success' });
+    } catch (error) {
+      console.error('Erro ao aprovar remoção:', error);
+      setNotification({ message: 'Erro ao aprovar remoção.', type: 'error' });
+    }
+  };
+
+  const handleRejectRemoval = async (postId: string) => {
+    try {
+      const postRef = doc(db, 'posts', postId);
+      await updateDoc(postRef, { 
+        status: 'approved',
+        removalRequestReason: '', // Limpa o motivo ao recusar
+        removalRequestAt: null
+      });
+      setNotification({ message: 'Solicitação recusada. O vídeo continua aprovado no ranking.', type: 'success' });
+    } catch (error) {
+      console.error('Erro ao recusar remoção:', error);
+      setNotification({ message: 'Erro ao recusar remoção.', type: 'error' });
     }
   };
 
@@ -2741,6 +2794,72 @@ const App: React.FC = () => {
                   className="w-full py-4 bg-zinc-900 text-zinc-400 font-black rounded-2xl hover:text-zinc-100 transition-all"
                 >
                   CANCELAR
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Removal Request Modal */}
+      <AnimatePresence>
+        {removalModal.isOpen && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-lg glass p-8 rounded-[40px] border border-zinc-800 space-y-8 shadow-2xl"
+            >
+              <div className="space-y-4">
+                <div className="w-16 h-16 bg-red-500/20 rounded-3xl flex items-center justify-center">
+                  <Trash2 className="w-8 h-8 text-red-500" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-3xl font-black uppercase tracking-tighter text-white">SOLICITAR REMOÇÃO</h3>
+                  <p className="text-zinc-500 font-bold text-[10px] uppercase tracking-widest leading-relaxed text-left">
+                    Você pode solicitar a remoção deste vídeo por motivos excepcionais. 
+                    <br />O administrador irá analisar seu pedido.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                <div className="space-y-3">
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 ml-1 text-left">MOTIVO DA REMOÇÃO</label>
+                  <textarea
+                    value={removalModal.reason}
+                    onChange={(e) => setRemovalModal(prev => ({ ...prev, reason: e.target.value }))}
+                    placeholder="Explique detalhadamente por que você deseja remover este vídeo..."
+                    className="w-full bg-zinc-950/50 border border-zinc-800 rounded-3xl p-6 text-sm text-white focus:outline-none focus:border-red-500/50 transition-all min-h-[150px] placeholder:text-zinc-700 font-medium"
+                  />
+                </div>
+
+                <label className="flex items-start gap-4 p-6 rounded-3xl bg-red-500/5 border border-red-500/10 cursor-pointer group transition-all hover:bg-red-500/10">
+                  <input
+                    type="checkbox"
+                    checked={removalModal.consent}
+                    onChange={(e) => setRemovalModal(prev => ({ ...prev, consent: e.target.checked }))}
+                    className="mt-1 w-5 h-5 rounded-lg bg-zinc-900 border-zinc-700 text-red-500 focus:ring-red-500/20"
+                  />
+                  <span className="text-xs font-bold text-zinc-300 group-hover:text-white transition-colors leading-relaxed text-left">
+                    Estou ciente que, após a remoção ser aprovada, todas as <span className="text-red-500">visualizações e métricas deste vídeo serão subtraídas</span> do meu total e do ranking global.
+                  </span>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  onClick={() => setRemovalModal({ isOpen: false, postId: '', reason: '', consent: false })}
+                  className="px-8 py-5 rounded-[2rem] bg-zinc-900 border border-zinc-800 text-zinc-400 font-black text-[11px] uppercase tracking-[0.2em] hover:bg-zinc-800 transition-all shadow-lg active:scale-95"
+                >
+                  CANCELAR
+                </button>
+                <button
+                  onClick={handleRequestRemoval}
+                  className="px-8 py-5 rounded-[2rem] bg-red-600 text-white font-black text-[11px] uppercase tracking-[0.2em] hover:bg-white hover:text-red-600 transition-all shadow-[0_10px_30px_rgba(220,38,38,0.3)] active:scale-95"
+                >
+                  ENVIAR PEDIDO
                 </button>
               </div>
             </motion.div>
@@ -3891,12 +4010,26 @@ const HistoryView = ({ posts, onDelete, isAdmin }: { posts: Post[], onDelete: (i
                           <span className="text-[11px] text-zinc-100 font-black uppercase tracking-widest">{new Date(post.timestamp).toLocaleDateString()}</span>
                           {isAdmin && (
                             <button
-                              onClick={() => onDelete(post.id)}
+                              onClick={() => handleDeletePost(post.id)}
                               className="p-2 rounded-xl bg-red-500/5 text-red-500/40 hover:bg-red-500 hover:text-black transition-all"
                               title="Excluir vídeo"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
+                          )}
+                          {(post.status === 'approved' || post.status === 'synced') && (
+                            <button
+                              onClick={() => setRemovalModal({ isOpen: true, postId: post.id, reason: '', consent: false })}
+                              className="px-3 py-1.5 rounded-xl bg-red-500 text-white text-[9px] font-black uppercase tracking-widest hover:bg-white hover:text-red-600 transition-all flex items-center gap-1.5"
+                              title="Solicitar remoção"
+                            >
+                              Remover
+                            </button>
+                          )}
+                          {post.status === 'removal_requested' && (
+                            <div className="px-3 py-1.5 rounded-xl bg-amber-500/10 text-amber-500 text-[9px] font-black uppercase tracking-widest border border-amber-500/20">
+                              Pendente
+                            </div>
                           )}
                         </div>
                       </div>
@@ -4731,6 +4864,8 @@ const AdminPanel = ({
   handleDeleteSuggestion,
   handleUpdateSuggestionStatus,
   handleUpdateUserRole,
+  handleApproveRemoval,
+  handleRejectRemoval,
   suggestions,
   compTitle,
   setCompTitle,
@@ -4896,7 +5031,7 @@ const AdminPanel = ({
   setRejectionReason: (v: string) => void;
   setRejectionModal: (v: { isOpen: boolean; postId: string; status: PostStatus }) => void;
 }) => {
-  const [tab, setTab] = useState<'VISAO_GERAL' | 'POSTS' | 'USERS' | 'USERS_APPROVED' | 'COMPETITIONS' | 'SYNC' | 'REGISTROS' | 'AVISOS' | 'TIMER' | 'FINANCEIRO' | 'ACESSOS' | 'SUGESTOES' | 'RESSINCRONIZACAO' | 'SINCRONIZACAO' | 'ARCHIVED' | 'RELATORIOS' | 'REMOVED_POSTS'>('VISAO_GERAL');
+  const [tab, setTab] = useState<'VISAO_GERAL' | 'POSTS' | 'USERS' | 'USERS_APPROVED' | 'COMPETITIONS' | 'SYNC' | 'REGISTROS' | 'AVISOS' | 'TIMER' | 'FINANCEIRO' | 'ACESSOS' | 'SUGESTOES' | 'RESSINCRONIZACAO' | 'SINCRONIZACAO' | 'ARCHIVED' | 'RELATORIOS' | 'REMOVED_POSTS' | 'REMOVAL_REQUESTS'>('VISAO_GERAL');
   const [selectedSyncCompId, setSelectedSyncCompId] = useState<string>('ALL');
   const [selectedResetCompId, setSelectedResetCompId] = useState<string>('');
   const [auditUserId, setAuditUserId] = useState<string | null>(null);
@@ -5516,6 +5651,15 @@ const AdminPanel = ({
             className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'COMPETITIONS' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
           >
             COMPETIÇÕES ({competitions.length})
+          </button>
+        )}
+        {/* SOLICITAÇÕES DE REMOÇÃO - visível apenas para admin */}
+        {userRole === 'admin' && (
+          <button
+            onClick={() => { setTab('REMOVAL_REQUESTS'); setAuditUserId(null); setSelectedCompId(null); setSyncDetailCompId(null); }}
+            className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'REMOVAL_REQUESTS' ? 'bg-amber-500 text-black' : 'text-zinc-500'}`}
+          >
+            SOLICITAÇÕES ({posts.filter(p => p.status === 'removal_requested').length})
           </button>
         )}
         {/* REGISTROS - visível apenas para admin */}
@@ -8343,6 +8487,62 @@ const AdminPanel = ({
                 </div>
               </div>
             )}
+          </div>
+        ) : tab === 'REMOVAL_REQUESTS' ? (
+          <div className="space-y-6 animate-in fade-in duration-500 max-w-7xl mx-auto">
+             <div className="bg-zinc-900/50 p-8 rounded-[40px] border border-zinc-800/50 flex flex-col md:flex-row md:items-center justify-between gap-6">
+              <div className="space-y-1">
+                <h3 className="text-2xl font-black uppercase text-amber-500">Solicitações de Remoção</h3>
+                <p className="text-zinc-500 font-bold text-[10px] uppercase tracking-widest">
+                  Análise de pedidos de remoção de vídeos por motivos excepcionais.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4">
+              {posts.filter(p => p.status === 'removal_requested').length > 0 ? (
+                posts.filter(p => p.status === 'removal_requested').map(post => (
+                  <div key={post.id} className="glass p-8 rounded-[40px] border border-zinc-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-8 group hover:border-amber-500/30 transition-all">
+                    <div className="flex-1 space-y-4">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-zinc-900 rounded-2xl flex items-center justify-center border border-zinc-800">
+                          {post.platform === 'tiktok' ? <Zap className="w-6 h-6 text-amber-500" /> : 
+                           post.platform === 'youtube' ? <TrendingUp className="w-6 h-6 text-red-500" /> : 
+                           <Camera className="w-6 h-6 text-pink-500" />}
+                        </div>
+                        <div>
+                          <h4 className="font-black text-white uppercase tracking-tight">{post.userName}</h4>
+                          <p className="text-zinc-500 font-bold text-[10px] uppercase tracking-widest truncate max-w-[200px]">{post.url}</p>
+                        </div>
+                      </div>
+                      <div className="p-6 bg-amber-500/5 rounded-[2.5rem] border border-amber-500/10">
+                        <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-2">Motivo Alegado:</p>
+                        <p className="text-sm text-zinc-300 font-medium leading-relaxed italic">"{post.removalRequestReason}"</p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-center gap-4">
+                      <button
+                        onClick={() => handleRejectRemoval(post.id)}
+                        className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-zinc-900 border border-zinc-800 text-zinc-400 font-black text-[10px] uppercase tracking-widest hover:bg-zinc-800 transition-all"
+                      >
+                        RECUSAR
+                      </button>
+                      <button
+                        onClick={() => handleApproveRemoval(post.id)}
+                        className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-red-600 text-white font-black text-[10px] uppercase tracking-widest hover:bg-white hover:text-red-600 transition-all shadow-lg"
+                      >
+                        APROVAR REMOÇÃO
+                      </button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="p-20 text-center glass rounded-[40px] border border-zinc-900 border-dashed">
+                  <p className="text-zinc-600 font-black text-xs uppercase tracking-[0.2em]">Nenhuma solicitação pendente</p>
+                </div>
+              )}
+            </div>
           </div>
         ) : tab === 'REMOVED_POSTS' ? (
           <div className="space-y-6 animate-in fade-in duration-500 max-w-7xl mx-auto">

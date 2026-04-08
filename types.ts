@@ -1,5 +1,5 @@
 export type Platform = 'tiktok' | 'youtube' | 'instagram';
-export type PostStatus = 'pending' | 'approved' | 'rejected' | 'synced' | 'banned' | 'deleted';
+export type PostStatus = 'pending' | 'approved' | 'rejected' | 'synced' | 'banned' | 'deleted' | 'removal_requested';
 export type UserRole = 'admin' | 'auditor' | 'administrativo' | 'user';
 
 export interface User {
@@ -84,6 +84,8 @@ export interface Post {
   competitionId?: string;
   approvedAt?: number;
   rejectionReason?: string;
+  removalRequestReason?: string;
+  removalRequestAt?: number;
 }
 
 export interface Season {
