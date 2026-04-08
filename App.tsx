@@ -1298,6 +1298,7 @@ const App: React.FC = () => {
     targetTime: '20:15',
     message: ''
   });
+  const isAdmin = user?.role === 'admin';
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [postToDelete, setPostToDelete] = useState<string | null>(null);
   const [compToDelete, setCompToDelete] = useState<string | null>(null);
@@ -2586,7 +2587,14 @@ const App: React.FC = () => {
                     />
                   )
                 )}
-                {view === 'HISTORY' && <HistoryView posts={posts} onDelete={setPostToDelete} isAdmin={user.role === 'admin'} />}
+                {view === 'HISTORY' && (
+                  <HistoryView 
+                    posts={posts} 
+                    onDelete={handleDeletePost} 
+                    onRemove={setRemovalModal}
+                    isAdmin={isAdmin} 
+                  />
+                )}
                 {view === 'WALLET' && <WalletView user={user} competitions={competitions} showBalances={showBalances} />}
                 {view === 'ADMIN' && (user.role === 'admin' || user.role === 'auditor' || user.role === 'administrativo') && (
                   <AdminPanel
@@ -3858,7 +3866,12 @@ const PostSubmit = ({ user, competitions, registrations, setView, lockedCompetit
   );
 };
 
-const HistoryView = ({ posts, onDelete, isAdmin }: { posts: Post[], onDelete: (id: string) => void, isAdmin: boolean }) => {
+const HistoryView = ({ posts, onDelete, onRemove, isAdmin }: { 
+  posts: Post[], 
+  onDelete: (id: string) => void, 
+  onRemove: (state: { isOpen: boolean; postId: string; reason: string; consent: boolean }) => void,
+  isAdmin: boolean 
+}) => {
   const [selectedPlatform, setSelectedPlatform] = useState<'tiktok' | 'youtube' | 'instagram' | null>(null);
   const [filterDate, setFilterDate] = useState('');
 
@@ -4010,17 +4023,25 @@ const HistoryView = ({ posts, onDelete, isAdmin }: { posts: Post[], onDelete: (i
                           <span className="text-[11px] text-zinc-100 font-black uppercase tracking-widest">{new Date(post.timestamp).toLocaleDateString()}</span>
                           {isAdmin && (
                             <button
-                              onClick={() => handleDeletePost(post.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                console.log('Admin Delete Clicked for post:', post.id);
+                                onDelete(post.id);
+                              }}
                               className="p-2 rounded-xl bg-red-500/5 text-red-500/40 hover:bg-red-500 hover:text-black transition-all"
                               title="Excluir vídeo"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           )}
-                          {(post.status === 'approved' || post.status === 'synced') && (
+                          {(post.status === 'approved' || post.status === 'synced' || post.status === 'pending') && (
                             <button
-                              onClick={() => setRemovalModal({ isOpen: true, postId: post.id, reason: '', consent: false })}
-                              className="px-3 py-1.5 rounded-xl bg-red-500 text-white text-[9px] font-black uppercase tracking-widest hover:bg-white hover:text-red-600 transition-all flex items-center gap-1.5"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                console.log('User Removal Clicked for post:', post.id);
+                                onRemove({ isOpen: true, postId: post.id, reason: '', consent: false });
+                              }}
+                              className="px-3 py-1.5 rounded-xl bg-red-600 text-white text-[9px] font-black uppercase tracking-widest hover:bg-white hover:text-red-600 transition-all flex items-center gap-1.5 shadow-lg"
                               title="Solicitar remoção"
                             >
                               Remover
