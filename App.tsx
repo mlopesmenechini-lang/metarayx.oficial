@@ -1168,13 +1168,13 @@ const Dashboard = ({ user, announcements, rankings, competitions, registrations,
               <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Top do HUB</p>
             </div>
           </div>
-          <div className="glass border border-zinc-800/50 rounded-[32px] p-4 space-y-2">
-            {rankings.slice(0, 5).map((player, i) => {
+          <div className="glass border border-zinc-800/50 rounded-[32px] p-4 space-y-2 max-h-[400px] overflow-y-auto custom-scrollbar">
+            {[...rankings].sort((a, b) => (b.totalViews || 0) - (a.totalViews || 0)).map((player, i) => {
               const isMe = player.uid === user.uid;
               const rankStyles = ['text-amber-400 border-amber-500/30 bg-amber-500/10','text-zinc-300 border-zinc-500/30 bg-zinc-500/10','text-orange-500 border-orange-700/30 bg-orange-700/10'];
               const badgeStyle = rankStyles[i] || 'text-zinc-500 border-zinc-800 bg-zinc-900/30';
               return (
-                <motion.div key={player.uid} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.06 }}
+                <motion.div key={player.uid} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }}
                   className={`flex items-center gap-3 p-3 rounded-2xl transition-all ${isMe ? 'bg-amber-500/10 border border-amber-500/20' : 'hover:bg-zinc-800/40'}`}
                 >
                   <div className={`w-8 h-8 rounded-xl border flex items-center justify-center text-[10px] font-black shrink-0 ${badgeStyle}`}>
@@ -1191,18 +1191,6 @@ const Dashboard = ({ user, announcements, rankings, competitions, registrations,
                 </motion.div>
               );
             })}
-            {rankings.findIndex(r => r.uid === user.uid) >= 5 && (
-              <div className="pt-2 mt-2 border-t border-zinc-800">
-                <div className="flex items-center gap-3 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20">
-                  <div className="w-8 h-8 rounded-xl border border-amber-500/30 bg-amber-500/10 flex items-center justify-center text-[10px] font-black text-amber-400 shrink-0">{rankings.findIndex(r => r.uid === user.uid) + 1}º</div>
-                  <img src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}`} className="w-9 h-9 rounded-xl object-cover ring-2 ring-amber-500 shrink-0" alt="" referrerPolicy="no-referrer" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-black text-amber-400 truncate">Você</p>
-                    <p className="text-[10px] text-zinc-500 font-bold">{(user.totalViews || 0).toLocaleString()} views</p>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -3711,11 +3699,11 @@ const HistoryView = ({ posts, onDelete, isAdmin }: { posts: Post[], onDelete: (i
               {post.platform === 'tiktok' ? <Zap className="w-4 h-4 text-amber-500" /> :
                 post.platform === 'youtube' ? <TrendingUp className="w-4 h-4 text-red-500" /> :
                   <Camera className="w-4 h-4 text-pink-500" />}
-              <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${post.status === 'approved' ? 'bg-emerald-500/20 text-emerald-500' :
-                  post.status === 'rejected' ? 'bg-red-500/20 text-red-500' :
+              <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${post.status === 'approved' || post.status === 'synced' ? 'bg-emerald-500/20 text-emerald-500' :
+                  post.status === 'rejected' || post.status === 'banned' ? 'bg-red-500/20 text-red-500' :
                     'bg-amber-500/20 text-amber-500'
                 }`}>
-                {post.status === 'approved' ? 'Aprovado' : post.status === 'rejected' ? 'Recusado' : 'Em Triagem'}
+                {post.status === 'approved' || post.status === 'synced' ? 'Aprovado' : post.status === 'rejected' || post.status === 'banned' ? 'Recusado' : 'Em Triagem'}
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -6500,8 +6488,8 @@ const AdminPanel = ({
                             <Camera className="w-6 h-6 text-pink-500" />}
                         <div className="flex flex-col overflow-hidden max-w-[200px]">
                           <p className="font-bold text-xs truncate text-zinc-300">{post.url}</p>
-                          <p className={`text-[10px] font-black uppercase ${post.status === 'approved' ? 'text-emerald-500' : post.status === 'rejected' ? 'text-red-500' : 'text-amber-500'}`}>
-                            STATUS: {post.status}
+                          <p className={`text-[10px] font-black uppercase ${post.status === 'approved' || post.status === 'synced' ? 'text-emerald-500' : post.status === 'rejected' || post.status === 'banned' ? 'text-red-500' : 'text-amber-500'}`}>
+                            STATUS: {post.status === 'approved' || post.status === 'synced' ? 'APROVADO' : post.status === 'rejected' || post.status === 'banned' ? 'RECUSADO' : 'EM TRIAGEM'}
                           </p>
                         </div>
                       </div>
@@ -6516,14 +6504,14 @@ const AdminPanel = ({
                           </a>
                           <button
                             onClick={() => handlePostStatus(post.id, 'approved')}
-                            className={`p-2 rounded-xl transition-all ${post.status === 'approved' ? 'bg-emerald-500 text-black' : 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-black'}`}
+                            className={`p-2 rounded-xl transition-all ${post.status === 'approved' || post.status === 'synced' ? 'bg-emerald-500 text-black' : 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-black'}`}
                             title="Aprovar Vídeo"
                           >
                             <CheckCircle2 className="w-5 h-5" />
                           </button>
                           <button
                             onClick={() => handlePostStatus(post.id, 'rejected')}
-                            className={`p-2 rounded-xl transition-all ${post.status === 'rejected' ? 'bg-red-500 text-black' : 'bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-black'}`}
+                            className={`p-2 rounded-xl transition-all ${post.status === 'rejected' || post.status === 'banned' ? 'bg-red-500 text-black' : 'bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-black'}`}
                             title="Rejeitar Vídeo"
                           >
                             <XCircle className="w-5 h-5" />
