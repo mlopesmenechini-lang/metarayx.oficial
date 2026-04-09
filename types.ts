@@ -80,6 +80,11 @@ export interface Post {
   comments: number;
   shares: number;
   saves: number;
+  viewsBaseline?: number;
+  likesBaseline?: number;
+  commentsBaseline?: number;
+  sharesBaseline?: number;
+  savesBaseline?: number;
   timestamp: number;
   competitionId?: string;
   approvedAt?: number;

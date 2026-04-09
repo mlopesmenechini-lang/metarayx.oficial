@@ -2027,7 +2027,20 @@ const App: React.FC = () => {
             batch.update(doc(db, 'users', u.uid), dataToUpdate);
           });
 
-          // 3. Update competition reset timestamp
+          // 3. Reset post baselines for THIS competition
+          // Isso define o ponto de partida para o ranking diário após o reset
+          const postsToReset = posts.filter(p => p.competitionId === cid && (p.status === 'approved' || p.status === 'synced'));
+          postsToReset.forEach(p => {
+            batch.update(doc(db, 'posts', p.id), {
+              viewsBaseline: p.views || 0,
+              likesBaseline: p.likes || 0,
+              commentsBaseline: p.comments || 0,
+              sharesBaseline: p.shares || 0,
+              savesBaseline: p.saves || 0
+            });
+          });
+
+          // 4. Update competition reset timestamp
           batch.update(doc(db, 'competitions', cid), { lastDailyReset: Date.now() });
 
           await batch.commit();

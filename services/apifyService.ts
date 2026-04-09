@@ -80,7 +80,12 @@ export const updateUserMetrics = async (userId: string) => {
 
   userPostsSnapshot.docs.forEach((doc) => {
     const data = doc.data() as Post;
-    const isDaily = (data.timestamp || 0) > oneDayAgo;
+    const viewsGain = Math.max(0, (data.views || 0) - (data.viewsBaseline || 0));
+    const likesGain = Math.max(0, (data.likes || 0) - (data.likesBaseline || 0));
+    const commentsGain = Math.max(0, (data.comments || 0) - (data.commentsBaseline || 0));
+    const sharesGain = Math.max(0, (data.shares || 0) - (data.sharesBaseline || 0));
+    const savesGain = Math.max(0, (data.saves || 0) - (data.savesBaseline || 0));
+    
     const isInsta = data.platform === 'instagram';
     const cid = data.competitionId || 'no_competition';
 
@@ -102,12 +107,14 @@ export const updateUserMetrics = async (userId: string) => {
     competitionStats[cid].posts += 1;
     if (isInsta) competitionStats[cid].instaPosts += 1;
 
-    if (isDaily) {
-      competitionStats[cid].dailyViews += (data.views || 0);
-      competitionStats[cid].dailyLikes += (data.likes || 0);
-      competitionStats[cid].dailyComments += (data.comments || 0);
-      competitionStats[cid].dailyShares += (data.shares || 0);
-      competitionStats[cid].dailySaves += (data.saves || 0);
+    // Daily Stats for Competition (Gain since last reset)
+    competitionStats[cid].dailyViews += viewsGain;
+    competitionStats[cid].dailyLikes += likesGain;
+    competitionStats[cid].dailyComments += commentsGain;
+    competitionStats[cid].dailyShares += sharesGain;
+    competitionStats[cid].dailySaves += savesGain;
+    
+    if (viewsGain > 0 || likesGain > 0) {
       competitionStats[cid].dailyPosts += 1;
       if (isInsta) competitionStats[cid].dailyInstaPosts += 1;
     }
@@ -121,12 +128,13 @@ export const updateUserMetrics = async (userId: string) => {
     globalTotals.posts += 1;
     if (isInsta) globalTotals.instaPosts += 1;
 
-    if (isDaily) {
-      globalTotals.dailyViews += (data.views || 0);
-      globalTotals.dailyLikes += (data.likes || 0);
-      globalTotals.dailyComments += (data.comments || 0);
-      globalTotals.dailyShares += (data.shares || 0);
-      globalTotals.dailySaves += (data.saves || 0);
+    globalTotals.dailyViews += viewsGain;
+    globalTotals.dailyLikes += likesGain;
+    globalTotals.dailyComments += commentsGain;
+    globalTotals.dailyShares += sharesGain;
+    globalTotals.dailySaves += savesGain;
+    
+    if (viewsGain > 0 || likesGain > 0) {
       globalTotals.dailyPosts += 1;
       if (isInsta) globalTotals.dailyInstaPosts += 1;
     }
