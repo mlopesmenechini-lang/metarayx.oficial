@@ -1937,6 +1937,7 @@ const App: React.FC = () => {
             .sort((a, b) => {
               const statsA = a.competitionStats?.[cid];
               const statsB = b.competitionStats?.[cid];
+              if (!statsA || !statsB) return 0;
               return (statsB.dailyPosts || 0) - (statsA.dailyPosts || 0) || (statsB.dailyViews || 0) - (statsA.dailyViews || 0);
             })[0];
 
@@ -1975,7 +1976,7 @@ const App: React.FC = () => {
           console.log('--- RESET DAILY RANKING LOG ---');
           console.log('Target Competition:', targetComp.title);
           console.log('Daily View Winners:', dailyViewWinners.map(u => ({ name: u.displayName, views: u.competitionStats?.[cid]?.dailyViews })));
-          console.log('Insta Winner:', instaWinner?.displayName);
+          console.log('Quantity Winner:', quantityWinner?.displayName);
           console.log('Calculated Increments:', balanceIncrements);
 
           // Process updates using Batch
@@ -4350,7 +4351,7 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { r
     const totalEngagement = likes + comments + shares + saves;
     const engagementRate = views > 0 ? (totalEngagement / views) * 100 : 0;
 
-    return { views, likes, comments, shares, saves, engagementRate, posts: finalPostCount };
+    return { views, likes, comments, shares, saves, engagementRate, posts: finalPostCount, instaPosts: finalPostCount };
   };
 
   const typeLabels: Record<string, string> = {
@@ -4486,7 +4487,7 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { r
 
         {/* Métrica badge (direita) */}
         <div className="md:ml-auto flex items-center gap-3">
-          {rankingType !== 'INSTAGRAM' && selectedCompetition && (
+          {rankingType !== 'QUANTITY' && selectedCompetition && (
             <span className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 border w-fit ${
               selectedCompetition.rankingMetric === 'likes'
                 ? 'bg-pink-500/10 text-pink-400 border-pink-500/20'
@@ -4665,8 +4666,8 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { r
                       <span className="text-xs font-black text-purple-500">{stats.saves.toLocaleString()}</span>
                     </div>
                     <div className="flex flex-col">
-                      <span className="text-[8px] text-zinc-600 uppercase font-black">{rankingType === 'INSTAGRAM' ? 'IG Posts' : 'Posts'}</span>
-                      <span className="text-xs font-black text-zinc-400">{rankingType === 'INSTAGRAM' ? stats.instaPosts : stats.posts}</span>
+                      <span className="text-[8px] text-zinc-600 uppercase font-black">{rankingType === 'QUANTITY' ? 'IG Posts' : 'Posts'}</span>
+                      <span className="text-xs font-black text-zinc-400">{rankingType === 'QUANTITY' ? stats.instaPosts : stats.posts}</span>
                     </div>
                   </div>
                 </div>
@@ -4706,9 +4707,9 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { r
                 </div>
                 {/* Posts */}
                 <div className="flex-1 flex flex-col items-center justify-center min-w-[70px] px-2">
-                  <Camera className={`w-4 h-4 ${rankingType === 'INSTAGRAM' ? 'text-pink-500' : 'text-zinc-400'} mb-1`} />
-                  <span className="text-[14px] font-black text-white tabular-nums">{rankingType === 'INSTAGRAM' ? stats.instaPosts : stats.posts}</span>
-                  <span className="text-[8px] font-black text-zinc-600 uppercase">{rankingType === 'INSTAGRAM' ? 'IG Posts' : 'Posts'}</span>
+                  <Camera className={`w-4 h-4 ${rankingType === 'QUANTITY' ? 'text-pink-500' : 'text-zinc-400'} mb-1`} />
+                  <span className="text-[14px] font-black text-white tabular-nums">{rankingType === 'QUANTITY' ? stats.instaPosts : stats.posts}</span>
+                  <span className="text-[8px] font-black text-zinc-600 uppercase">{rankingType === 'QUANTITY' ? 'IG Posts' : 'Posts'}</span>
                 </div>
               </div>
 
