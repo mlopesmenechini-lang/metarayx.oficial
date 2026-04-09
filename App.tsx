@@ -1291,7 +1291,7 @@ const App: React.FC = () => {
   const [archivedUsers, setArchivedUsers] = useState<User[]>([]);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [globalSyncing, setGlobalSyncing] = useState(false);
-  const [settings, setSettings] = useState<{ apifyKey: string }>({ apifyKey: '' });
+  const [settings, setSettings] = useState<{ apifyKey: string; lastSync?: string; lastResync?: string }>({ apifyKey: '' });
   const [timerConfig, setTimerConfig] = useState<{ enabled: boolean; endTime: number | null; targetTime: string; message: string }>({
     enabled: false,
     endTime: null,
@@ -1572,7 +1572,7 @@ const App: React.FC = () => {
       // Listener para as configurações globais (ex: chave API)
       unsubSettings = onSnapshot(doc(db, 'config', 'settings'), (docSnap) => {
         if (docSnap.exists()) {
-          setSettings(docSnap.data() as { apifyKey: string });
+          setSettings(docSnap.data() as { apifyKey: string; lastSync?: string; lastResync?: string });
         }
       }, (error) => console.error('Erro ao carregar configurações:', error));
 
@@ -5155,6 +5155,21 @@ const AdminPanel = ({
   const [adminManualPlatform, setAdminManualPlatform] = useState<'tiktok' | 'youtube' | 'instagram'>('tiktok');
   const [adminManualCompId, setAdminManualCompId] = useState('');
   const [adminSubmitting, setAdminSubmitting] = useState(false);
+  const formatLastSyncDate = (dateStr?: string) => {
+    if (!dateStr) return 'NUNCA REALIZADA';
+    try {
+      return new Date(dateStr).toLocaleString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (e) {
+      return 'DATA INVÁLIDA';
+    }
+  };
+
   const [metaCompId, setMetaCompId] = useState<string>(() => {
     const active = competitions?.find(c => c.isActive);
     return active ? active.id : (competitions && competitions.length > 0 ? competitions[0].id : '');
@@ -5511,6 +5526,8 @@ const AdminPanel = ({
         // Important: Update status to synced after successful sync
         await updateDoc(doc(db, 'posts', post.id), { status: 'synced' });
       }
+      // Update last sync timestamp
+      await updateDoc(doc(db, 'config', 'settings'), { lastSync: new Date().toISOString() });
       alert('Sincronização sequencial de todos os vídeos aprovados concluída!');
     } catch (error: any) {
       alert(`Erro na sincronização sequencial: ${error.message}`);
@@ -5556,6 +5573,8 @@ const AdminPanel = ({
         setSyncingPostId(post.id);
         await syncSinglePostWithApify(apifyKey, post);
       }
+      // Update last resync timestamp
+      await updateDoc(doc(db, 'config', 'settings'), { lastResync: new Date().toISOString() });
       alert('Sincronização sequencial de todos os vídeos concluída!');
     } catch (error: any) {
       alert(`Erro na sincronização sequencial: ${error.message}`);
@@ -6877,6 +6896,11 @@ const AdminPanel = ({
                   <div className="space-y-2">
                     <h3 className="text-2xl font-black uppercase gold-gradient">Sincronização por Competição</h3>
                     <p className="text-zinc-500 font-bold text-xs uppercase tracking-widest">Selecione uma competição ou processe todos de forma sequencial.</p>
+                    {settings.lastSync && (
+                      <p className="text-amber-500/60 font-black text-[10px] uppercase tracking-[0.2em] mt-2">
+                        ÚLTIMA SINCRONIZAÇÃO: {formatLastSyncDate(settings.lastSync)}
+                      </p>
+                    )}
                   </div>
                   <button
                     onClick={handleSyncApprovedSequentially}
@@ -6932,6 +6956,11 @@ const AdminPanel = ({
               <div className="space-y-1">
                 <h3 className="text-xl font-black uppercase">Sincronização de Vídeos</h3>
                 <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest">Atualize as métricas de todos os vídeos aprovados</p>
+                {settings.lastResync && (
+                  <p className="text-amber-500/60 font-black text-[10px] uppercase tracking-[0.2em] mt-2">
+                    ÚLTIMA RESSINCRONIZAÇÃO: {formatLastSyncDate(settings.lastResync)}
+                  </p>
+                )}
               </div>
               
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
