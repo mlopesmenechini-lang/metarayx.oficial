@@ -5434,14 +5434,16 @@ const AdminPanel = ({
   };
 
   const handleSaveApiKey = async () => {
-    if (!apifyKey) {
+    const trimmedKey = apifyKey.trim();
+    if (!trimmedKey) {
       alert('Por favor, insira uma chave antes de salvar.');
       return;
     }
     try {
-      await updateDoc(doc(db, 'config', 'settings'), { apifyKey });
-      onSettingsUpdate({ ...settings, apifyKey });
-      alert('✅ Chave API salva com sucesso!');
+      await updateDoc(doc(db, 'config', 'settings'), { apifyKey: trimmedKey });
+      setApifyKey(trimmedKey);
+      onSettingsUpdate({ ...settings, apifyKey: trimmedKey });
+      alert('✅ Chave API salva com sucesso!\nEspaços em branco foram removidos automaticamente.');
     } catch (error: any) {
       alert(`❌ Erro ao salvar chave: ${error.message}`);
     }

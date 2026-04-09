@@ -11,7 +11,14 @@ const runActorAndGetResults = async (apiKey: string, actorId: string, input: any
 
   if (!runResponse.ok) {
     const error = await runResponse.json();
-    throw new Error(`Apify Error (${actorId}): ${error.error?.message || runResponse.statusText}`);
+    let errorMessage = error.error?.message || runResponse.statusText;
+    
+    // Check for common authentication errors
+    if (errorMessage.toLowerCase().includes('token') || errorMessage.toLowerCase().includes('authentication') || errorMessage.toLowerCase().includes('user was not found')) {
+      errorMessage = "Chave API inválida ou expirada. Por favor, verifique sua chave no Painel da Diretoria.";
+    }
+    
+    throw new Error(`Apify Error (${actorId}): ${errorMessage}`);
   }
 
   const runData = await runResponse.json();
