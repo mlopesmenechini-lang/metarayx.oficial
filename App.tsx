@@ -1546,8 +1546,8 @@ const App: React.FC = () => {
 
     // Posts Listener (My Posts or All for Admin)
     const postsQuery = (user.role === 'admin' || user.role === 'auditor' || user.role === 'administrativo')
-      ? query(collection(db, 'posts'), orderBy('timestamp', 'desc'), limit(100))
-      : query(collection(db, 'posts'), where('userId', '==', user.uid), orderBy('timestamp', 'desc'), limit(50));
+      ? query(collection(db, 'posts'), orderBy('timestamp', 'desc'), limit(2000))
+      : query(collection(db, 'posts'), where('userId', '==', user.uid), orderBy('timestamp', 'desc'), limit(500));
 
     const unsubPosts = onSnapshot(postsQuery, (snapshot) => {
       setPosts(snapshot.docs.map(doc => sanitizeObject({ id: doc.id, ...doc.data() }) as Post));
