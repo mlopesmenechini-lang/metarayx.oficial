@@ -5288,7 +5288,7 @@ const AdminPanel = ({
     return sum + Object.values(u.competitionStats).reduce((s, st: any) => s + (st.paidTotal || 0), 0);
   }, 0);
 
-  const cpp = approvedPosts.length > 0 ? totalPaidGlobal / approvedPosts.length : 0;
+  const cpp = approvedPostsCount > 0 ? totalPaidGlobal / approvedPostsCount : 0;
 
   const totalPendingGlobal = approvedUsers.reduce((sum, u) => {
     if (!u.competitionStats) return sum;
