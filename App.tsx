@@ -5326,9 +5326,13 @@ const AdminPanel = ({
     d.setHours(0, 0, 0, 0);
     const start = d.getTime();
     const end = start + dayMs;
-    const count = posts.filter(p => p.timestamp >= start && p.timestamp < end).length;
+    // Fix: Handle Firestore Timestamp or number correctly
+    const count = posts.filter(p => {
+      const pTime = typeof p.timestamp === 'number' ? p.timestamp : (p.timestamp?.toMillis?.() || 0);
+      return pTime >= start && pTime < end;
+    }).length;
     return {
-      day: d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', ''),
+      day: d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '').toUpperCase(),
       count,
       fullDate: d.toLocaleDateString('pt-BR')
     };
@@ -6035,12 +6039,11 @@ const AdminPanel = ({
                 { 
                   label: 'Posts Enviados', 
                   value: postsToday, 
-                  sub: `${avgPosts7d} média / dia`, 
+                  sub: selectedMetaComp?.title || 'Todas as Competições', 
                   icon: Zap, 
                   color: 'text-emerald-500', 
                   bg: 'bg-emerald-500/10',
-                  desc: dailyPostTrend === 'up' ? 'Aumento em relação à média' : 'Queda em relação à média',
-                  trend: dailyPostTrend,
+                  desc: 'Volume enviado após o último reset',
                   tooltip: 'Quantidade de vídeos aprovados hoje (desde o último reset) por todos os criadores.'
                 },
                 { 
@@ -6116,27 +6119,33 @@ const AdminPanel = ({
                   <Calendar className="w-6 h-6 text-zinc-800" />
                 </div>
                 
-                <div className="flex items-end justify-between gap-2 h-40 pt-4">
+                <div className="flex items-end justify-between gap-4 h-48 pt-10 px-4">
                   {dailyPostCounts.map((d, i) => {
                     const maxCount = Math.max(...dailyPostCounts.map(x => x.count), 1);
                     const height = (d.count / maxCount) * 100;
                     return (
-                      <div key={i} className="flex-1 flex flex-col items-center gap-4 group">
+                      <div key={i} className="flex-1 flex flex-col items-center gap-4 group h-full">
                         <div className="w-full relative flex flex-col justify-end h-full">
+                          {/* Sombra/Fundo da barra para profundidade */}
+                          <div className="absolute inset-x-0 bottom-0 w-8 mx-auto bg-white/[0.02] rounded-t-xl h-full" />
+                          
                           <motion.div 
                             initial={{ height: 0 }}
-                            animate={{ height: `${height}%` }}
+                            animate={{ height: `${Math.max(height, 2)}%` }} // Garante visibilidade mínima se houver dados
                             transition={{ duration: 1, delay: i * 0.05 }}
-                            className={`w-full rounded-t-xl transition-all ${i === 6 ? 'gold-bg border-t border-white/20' : 'bg-zinc-900 group-hover:bg-zinc-800 border-t border-white/5'}`}
+                            className={`w-8 mx-auto rounded-t-xl transition-all relative overflow-hidden ${i === 6 ? 'gold-bg shadow-[0_0_30px_rgba(251,191,36,0.2)]' : 'bg-zinc-800 group-hover:bg-amber-500/50'}`}
                           >
+                             {/* Textura de gradiente interna */}
+                             <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent" />
+                             
                              {d.count > 0 && (
-                               <div className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-white text-black text-[9px] font-black px-2 py-0.5 rounded shadow-xl whitespace-nowrap z-20">
+                               <div className="absolute -top-10 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-all bg-white text-black text-[10px] font-black px-3 py-1.5 rounded-xl shadow-2xl whitespace-nowrap z-20 scale-90 group-hover:scale-100">
                                  {d.count} POSTS
                                </div>
                              )}
                           </motion.div>
                         </div>
-                        <span className={`text-[10px] font-black uppercase tracking-tighter ${i === 6 ? 'gold-gradient' : 'text-zinc-600'}`}>{d.day}</span>
+                        <span className={`text-[10px] font-black tracking-widest ${i === 6 ? 'text-amber-500' : 'text-zinc-600 group-hover:text-zinc-400'} transition-colors`}>{d.day}</span>
                       </div>
                     );
                   })}
