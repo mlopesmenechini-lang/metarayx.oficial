@@ -5035,13 +5035,13 @@ const AdminPanel = ({
   pendingUsers: User[];
   approvedUsers: User[];
   archivedUsers: User[];
-  settings: { apifyKey: string };
+  settings: { apifyKey: string; lastSync?: string; lastResync?: string };
   competitions: Competition[];
   registrations: CompetitionRegistration[];
   announcements: Announcement[];
   timerConfig: { enabled: boolean; endTime: number | null; targetTime: string; message: string };
   handleUpdateTimer: (config: { enabled: boolean; endTime: number | null; targetTime: string; message: string }) => Promise<void>;
-  onSettingsUpdate: (s: { apifyKey: string }) => void;
+  onSettingsUpdate: (s: { apifyKey: string; lastSync?: string; lastResync?: string }) => void;
   editingCompId: string | null;
   setEditingCompId: (val: string | null) => void;
   setCompToDelete: (val: string | null) => void;
