@@ -2703,6 +2703,7 @@ const App: React.FC = () => {
                     handleUpdateUserRole={handleUpdateUserRole}
                     handleApproveRemoval={handleApproveRemoval}
                     handleRejectRemoval={handleRejectRemoval}
+                    handleRankingResetOnly={handleRankingResetOnly}
                     suggestions={suggestions}
                     compTitle={compTitle}
                     setCompTitle={setCompTitle}
@@ -4962,6 +4963,7 @@ const AdminPanel = ({
   handleUpdateUserRole,
   handleApproveRemoval,
   handleRejectRemoval,
+  handleRankingResetOnly,
   suggestions,
   compTitle,
   setCompTitle,
@@ -5063,6 +5065,7 @@ const AdminPanel = ({
   handleUpdateUserRole: (uid: string, role: UserRole) => void;
   handleApproveRemoval: (postId: string) => void;
   handleRejectRemoval: (postId: string) => void;
+  handleRankingResetOnly: () => void;
   suggestions: Suggestion[];
   compTitle: string;
   setCompTitle: (v: string) => void;
