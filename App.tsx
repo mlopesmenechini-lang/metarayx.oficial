@@ -4254,14 +4254,9 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId }: { rankings: U
         const stats = user.competitionStats?.[selectedCompId];
         if (!stats) return false;
         
-        // Mostrar TODOS que tenham pelo menos 1 post na competição (ou posts diários se for o caso)
-        if (rankingType === 'DAILY') {
-          return (stats.dailyPosts || 0) > 0 || (stats.dailyViews || 0) > 0 || (stats.dailyLikes || 0) > 0;
-        }
-        if (rankingType === 'INSTAGRAM') {
-          return (stats.instaPosts || 0) > 0 || (stats.dailyInstaPosts || 0) > 0;
-        }
-        // Ranking Mensal/Total: mostra todos que postaram na competição em qualquer momento
+        // Mostrar TODOS que tenham pelo menos 1 vídeo na competição, 
+        // independentemente do tipo de ranking. Isso garante que o ranking
+        // não "suma" com as pessoas se elas ainda não postaram hoje.
         return (stats.posts || 0) > 0 || (stats.views || 0) > 0 || (stats.likes || 0) > 0;
       })
       .sort((a, b) => {
@@ -4296,20 +4291,30 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId }: { rankings: U
       dailyViews: 0, dailyLikes: 0, dailyComments: 0, dailyShares: 0, dailySaves: 0, dailyPosts: 0, dailyInstaPosts: 0, balance: 0
     };
 
-    const isDaily = rankingType === 'DAILY' || rankingType === 'INSTAGRAM';
+    const isDaily = rankingType === 'DAILY';
+    const isInsta = rankingType === 'INSTAGRAM';
+    
+    // No diário mostra ganhos, no mensal mostra totais, no instagram mostra posts específicos
     const views = isDaily ? (stats.dailyViews || 0) : (stats.views || 0);
     const likes = isDaily ? (stats.dailyLikes || 0) : (stats.likes || 0);
     const comments = isDaily ? (stats.dailyComments || 0) : (stats.comments || 0);
     const shares = isDaily ? (stats.dailyShares || 0) : (stats.shares || 0);
     const saves = isDaily ? (stats.dailySaves || 0) : (stats.saves || 0);
-    const postCount = isDaily ? (stats.dailyPosts || 0) : (stats.posts || 0);
+    const postCountResult = (isDaily || isInsta) ? (stats.dailyPosts || 0) : (stats.posts || 0);
     
+    // Se for ranking de Instagram, forçamos a contagem para mostrar posts de Insta
+    const postCount = isInsta ? (stats.dailyInstaPosts || 0) : postCountResult;
+    // Fallback para mostrar total se o diário for zero e não tivermos resetado oficialmente
+    const finalPostCount = (isInsta && postCount === 0 && (stats.instaPosts || 0) > 0 && !selectedCompetition?.lastDailyReset) 
+      ? stats.instaPosts 
+      : postCount;
+
     const totalEngagement = likes + comments + shares + saves;
     const engagementRate = views > 0 ? (totalEngagement / views) * 100 : 0;
 
-    const instaPosts = isDaily ? (stats.dailyInstaPosts || 0) : (stats.instaPosts || 0);
+    const instaPostsResult = isInsta ? (stats.dailyInstaPosts || (stats.instaPosts || 0)) : (stats.instaPosts || 0);
     
-    return { views, likes, comments, shares, saves, engagementRate, posts: postCount, instaPosts };
+    return { views, likes, comments, shares, saves, engagementRate, posts: finalPostCount, instaPosts: instaPostsResult };
   };
 
   const typeLabels: Record<string, string> = {

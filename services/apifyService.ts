@@ -89,8 +89,10 @@ export const updateUserMetrics = async (userId: string) => {
     const lastReset = compConfig?.lastDailyReset || 0;
 
     // Daily logic based on Reset Timestamp (Manual) instead of fixed 24h
-    // A post is considered "daily" if it was approved AFTER the last reset
-    const isNewDailyPost = (data.approvedAt || data.timestamp || 0) > lastReset;
+    // If no reset ever happened, all posts are considered daily.
+    // Otherwise, a post is daily if approved AFTER the last reset.
+    const postTime = (data.approvedAt || data.timestamp || 0);
+    const isNewDailyPost = lastReset === 0 || postTime > lastReset;
     
     // Engagement Gain since last reset
     const viewsGain = Math.max(0, (data.views || 0) - (data.viewsBaseline || 0));
