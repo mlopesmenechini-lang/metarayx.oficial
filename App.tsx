@@ -4357,7 +4357,7 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { r
   const typeLabels: Record<string, string> = {
     DAILY: 'Ranking Diário',
     TOTAL: 'Ranking Mensal',
-    QUANTITY: 'Ranking de Quantidade'
+    QUANTITY: 'Ranking de Quantidade Geral'
   };
 
   return (
@@ -4465,7 +4465,7 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { r
           {[
             { key: 'DAILY', label: 'Diário' },
             { key: 'TOTAL', label: 'Mensal' },
-            { key: 'QUANTITY', label: 'Quantidade', icon: <Camera className="w-3 h-3" /> },
+            { key: 'QUANTITY', label: 'Quantidade Geral', icon: <Camera className="w-3 h-3" /> },
           ].map(tab => (
             <button
               key={tab.key}
@@ -4666,8 +4666,8 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { r
                       <span className="text-xs font-black text-purple-500">{stats.saves.toLocaleString()}</span>
                     </div>
                     <div className="flex flex-col">
-                      <span className="text-[8px] text-zinc-600 uppercase font-black">{rankingType === 'QUANTITY' ? 'IG Posts' : 'Posts'}</span>
-                      <span className="text-xs font-black text-zinc-400">{rankingType === 'QUANTITY' ? stats.instaPosts : stats.posts}</span>
+                      <span className="text-[8px] text-zinc-600 uppercase font-black">Posts</span>
+                      <span className="text-xs font-black text-zinc-400">{stats.posts}</span>
                     </div>
                   </div>
                 </div>
@@ -4707,9 +4707,9 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { r
                 </div>
                 {/* Posts */}
                 <div className="flex-1 flex flex-col items-center justify-center min-w-[70px] px-2">
-                  <Camera className={`w-4 h-4 ${rankingType === 'QUANTITY' ? 'text-pink-500' : 'text-zinc-400'} mb-1`} />
-                  <span className="text-[14px] font-black text-white tabular-nums">{rankingType === 'QUANTITY' ? stats.instaPosts : stats.posts}</span>
-                  <span className="text-[8px] font-black text-zinc-600 uppercase">{rankingType === 'QUANTITY' ? 'IG Posts' : 'Posts'}</span>
+                  <Camera className={`w-4 h-4 ${rankingType === 'QUANTITY' ? 'text-amber-500' : 'text-zinc-400'} mb-1`} />
+                  <span className="text-[14px] font-black text-white tabular-nums">{stats.posts}</span>
+                  <span className="text-[8px] font-black text-zinc-600 uppercase">Posts</span>
                 </div>
               </div>
 
