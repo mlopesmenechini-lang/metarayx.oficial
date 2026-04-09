@@ -56,8 +56,12 @@ export const updateUserMetrics = async (userId: string) => {
   const userPostsQuery = query(collection(db, 'posts'), where('userId', '==', userId), where('status', 'in', ['approved', 'synced']));
   const userPostsSnapshot = await getDocs(userPostsQuery);
   
-  const now = Date.now();
-  const oneDayAgo = now - 24 * 60 * 60 * 1000;
+  // Fetch active competitions to get their lastDailyReset
+  const compsSnapshot = await getDocs(query(collection(db, 'competitions'), where('isActive', '==', true)));
+  const activeComps = compsSnapshot.docs.reduce((acc, d) => {
+    acc[d.id] = d.data();
+    return acc;
+  }, {} as Record<string, any>);
   
   const globalTotals = {
     views: 0, likes: 0, comments: 0, shares: 0, saves: 0, posts: 0, instaPosts: 0,
@@ -80,6 +84,15 @@ export const updateUserMetrics = async (userId: string) => {
 
   userPostsSnapshot.docs.forEach((doc) => {
     const data = doc.data() as Post;
+    const cid = data.competitionId || 'no_competition';
+    const compConfig = activeComps[cid];
+    const lastReset = compConfig?.lastDailyReset || 0;
+
+    // Daily logic based on Reset Timestamp (Manual) instead of fixed 24h
+    // A post is considered "daily" if it was approved AFTER the last reset
+    const isNewDailyPost = (data.approvedAt || data.timestamp || 0) > lastReset;
+    
+    // Engagement Gain since last reset
     const viewsGain = Math.max(0, (data.views || 0) - (data.viewsBaseline || 0));
     const likesGain = Math.max(0, (data.likes || 0) - (data.likesBaseline || 0));
     const commentsGain = Math.max(0, (data.comments || 0) - (data.commentsBaseline || 0));
@@ -87,18 +100,16 @@ export const updateUserMetrics = async (userId: string) => {
     const savesGain = Math.max(0, (data.saves || 0) - (data.savesBaseline || 0));
     
     const isInsta = data.platform === 'instagram';
-    const cid = data.competitionId || 'no_competition';
 
     if (!competitionStats[cid]) {
       competitionStats[cid] = {
         views: 0, likes: 0, comments: 0, shares: 0, saves: 0, posts: 0, instaPosts: 0,
         dailyViews: 0, dailyLikes: 0, dailyComments: 0, dailyShares: 0, dailySaves: 0, dailyPosts: 0, dailyInstaPosts: 0,
-        balance: 0,
-        paidTotal: 0
+        balance: 0, paidTotal: 0
       };
     }
 
-    // Update Competition Stats
+    // Update Competition Totals (Monthly/Overall)
     competitionStats[cid].views += (data.views || 0);
     competitionStats[cid].likes += (data.likes || 0);
     competitionStats[cid].comments += (data.comments || 0);
@@ -107,19 +118,20 @@ export const updateUserMetrics = async (userId: string) => {
     competitionStats[cid].posts += 1;
     if (isInsta) competitionStats[cid].instaPosts += 1;
 
-    // Daily Stats for Competition (Gain since last reset)
+    // Update Competition Daily Stats (Gains)
     competitionStats[cid].dailyViews += viewsGain;
     competitionStats[cid].dailyLikes += likesGain;
     competitionStats[cid].dailyComments += commentsGain;
     competitionStats[cid].dailyShares += sharesGain;
     competitionStats[cid].dailySaves += savesGain;
     
-    if (viewsGain > 0 || likesGain > 0) {
+    // Daily Post count: Only if approved after last reset
+    if (isNewDailyPost) {
       competitionStats[cid].dailyPosts += 1;
       if (isInsta) competitionStats[cid].dailyInstaPosts += 1;
     }
 
-    // Update Global Totals
+    // Update Global Totals (Display in main profile cards)
     globalTotals.views += (data.views || 0);
     globalTotals.likes += (data.likes || 0);
     globalTotals.comments += (data.comments || 0);
@@ -134,7 +146,7 @@ export const updateUserMetrics = async (userId: string) => {
     globalTotals.dailyShares += sharesGain;
     globalTotals.dailySaves += savesGain;
     
-    if (viewsGain > 0 || likesGain > 0) {
+    if (isNewDailyPost) {
       globalTotals.dailyPosts += 1;
       if (isInsta) globalTotals.dailyInstaPosts += 1;
     }

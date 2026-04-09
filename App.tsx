@@ -1546,7 +1546,7 @@ const App: React.FC = () => {
 
     // Posts Listener (My Posts or All for Admin)
     const postsQuery = (user.role === 'admin' || user.role === 'auditor' || user.role === 'administrativo')
-      ? query(collection(db, 'posts'), orderBy('timestamp', 'desc'), limit(2000))
+      ? query(collection(db, 'posts'), orderBy('timestamp', 'desc'), limit(10000))
       : query(collection(db, 'posts'), where('userId', '==', user.uid), orderBy('timestamp', 'desc'), limit(500));
 
     const unsubPosts = onSnapshot(postsQuery, (snapshot) => {
@@ -5238,29 +5238,38 @@ const AdminPanel = ({
   const globalViews = compMetrics.views;
   const globalLikes = compMetrics.likes;
 
-  const approvedPosts = posts.filter(p => 
-    (p.status === 'approved' || p.status === 'synced') && 
-    (!selectedMetaComp || p.competitionId === selectedMetaComp.id)
-  );
-  
+  const approvedPostsCount = useMemo(() => {
+    return approvedUsers.reduce((sum, u) => {
+      if (!selectedMetaComp) return sum + (u.totalPosts || 0);
+      return sum + (u.competitionStats?.[selectedMetaComp.id]?.posts || 0);
+    }, 0);
+  }, [approvedUsers, selectedMetaComp]);
+
+  const postsToday = useMemo(() => {
+    return approvedUsers.reduce((sum, u) => {
+      if (!selectedMetaComp) return sum + (u.dailyPosts || 0);
+      return sum + (u.competitionStats?.[selectedMetaComp.id]?.dailyPosts || 0);
+    }, 0);
+  }, [approvedUsers, selectedMetaComp]);
+
+  // Fallback para posts rejeitados (usa o array posts já que não temos contador no perfil)
+  // Com o limite aumentado para 10.000, deve ser suficiente para quase todos os casos
   const rejectedPosts = posts.filter(p => 
     p.status === 'rejected' && 
     (!selectedMetaComp || p.competitionId === selectedMetaComp.id)
   );
 
+  const approvalRate = (approvedPostsCount + rejectedPosts.length) > 0
+    ? Math.round((approvedPostsCount / (approvedPostsCount + rejectedPosts.length)) * 100)
+    : 100;
+
   const now = Date.now();
   const dayMs = 24 * 60 * 60 * 1000;
 
-  const postsToday = posts.filter(p => p.timestamp > now - dayMs).length;
-  const postsYesterday = posts.filter(p => p.timestamp > now - 2 * dayMs && p.timestamp <= now - dayMs).length;
-  const dailyPostTrend = postsToday >= postsYesterday ? 'up' : 'down';
-
+  // Estima tendência usando postsToday e a média de 7 dias (baseado em approvedUsers para precisão)
   const postsLast7d = posts.filter(p => p.timestamp > now - 7 * dayMs).length;
   const avgPosts7d = Math.round(postsLast7d / 7);
-
-  const approvalRate = (approvedPosts.length + rejectedPosts.length) > 0
-    ? Math.round((approvedPosts.length / (approvedPosts.length + rejectedPosts.length)) * 100)
-    : 100;
+  const dailyPostTrend = postsToday >= avgPosts7d ? 'up' : 'down';
 
   const inactiveUsers = approvedUsers.filter(u => {
     const userPosts = posts.filter(p => p.userId === u.uid);
@@ -6025,9 +6034,9 @@ const AdminPanel = ({
                   icon: Zap, 
                   color: 'text-emerald-500', 
                   bg: 'bg-emerald-500/10',
-                  desc: dailyPostTrend === 'up' ? 'Aumento em relação a ontem' : 'Queda em relação a ontem',
+                  desc: dailyPostTrend === 'up' ? 'Aumento em relação à média' : 'Queda em relação à média',
                   trend: dailyPostTrend,
-                  tooltip: 'Quantidade de vídeos submetidos hoje por todos os criadores.'
+                  tooltip: 'Quantidade de vídeos aprovados hoje (desde o último reset) por todos os criadores.'
                 },
                 { 
                   label: 'Governança & Gestão', 
