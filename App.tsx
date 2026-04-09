@@ -5326,9 +5326,10 @@ const AdminPanel = ({
     d.setHours(0, 0, 0, 0);
     const start = d.getTime();
     const end = start + dayMs;
-    // Fix: Handle Firestore Timestamp or number correctly
+    // Fix: Handle Firestore Timestamp or number correctly with TS safety
     const count = posts.filter(p => {
-      const pTime = typeof p.timestamp === 'number' ? p.timestamp : (p.timestamp?.toMillis?.() || 0);
+      const ts = p.timestamp as any;
+      const pTime = typeof ts === 'number' ? ts : (ts?.toMillis?.() || 0);
       return pTime >= start && pTime < end;
     }).length;
     return {
@@ -6034,7 +6035,8 @@ const AdminPanel = ({
                   color: 'text-amber-500', 
                   bg: 'bg-amber-500/10',
                   desc: 'Total de Visualizações Aprovadas',
-                  tooltip: 'Soma total de visualizações de todos os posts aprovados nas competições.'
+                  tooltip: 'Soma total de visualizações de todos os posts aprovados nas competições.',
+                  trend: undefined
                 },
                 { 
                   label: 'Posts Enviados', 
@@ -6044,7 +6046,8 @@ const AdminPanel = ({
                   color: 'text-emerald-500', 
                   bg: 'bg-emerald-500/10',
                   desc: 'Volume enviado após o último reset',
-                  tooltip: 'Quantidade de vídeos aprovados hoje (desde o último reset) por todos os criadores.'
+                  tooltip: 'Quantidade de vídeos aprovados hoje (desde o último reset) por todos os criadores.',
+                  trend: undefined
                 },
                 { 
                   label: 'Governança & Gestão', 
@@ -6054,7 +6057,8 @@ const AdminPanel = ({
                   color: 'text-blue-500', 
                   bg: 'bg-blue-500/10',
                   desc: 'Taxa de Aprovação vs. Tempo',
-                  tooltip: 'Percentual de vídeos aprovados e tempo médio de resposta da auditoria.'
+                  tooltip: 'Percentual de vídeos aprovados e tempo médio de resposta da auditoria.',
+                  trend: undefined
                 },
                 { 
                   label: 'Saúde da Comunidade', 
@@ -6064,7 +6068,8 @@ const AdminPanel = ({
                   color: 'text-pink-500', 
                   bg: 'bg-pink-500/10',
                   desc: 'Novos integrantes (7 dias)',
-                  tooltip: 'Novos usuários na última semana e usuários inativos nos últimos 3 dias.'
+                  tooltip: 'Novos usuários na última semana e usuários inativos nos últimos 3 dias.',
+                  trend: undefined
                 },
               ].map((stat, i) => (
                 <motion.div
