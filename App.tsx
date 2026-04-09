@@ -4527,10 +4527,6 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { r
               <p className="text-[9px] font-black text-zinc-600 uppercase tracking-widest">{typeLabels[rankingType]} • {selectedCompetition?.title}</p>
             </div>
           </div>
-          <div className="text-right">
-            <p className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">Extraído em {new Date().toLocaleString('pt-BR')}</p>
-            <p className="text-[7px] font-black text-zinc-700 uppercase tracking-widest mt-0.5">METARAYX MANAGEMENT SYSTEM</p>
-          </div>
         </div>
         {/* Cabeçalho da Tabela - Refinado */}
         {sortedRankings.length > 0 && (
