@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { toPng } from 'html-to-image';
 import * as XLSX from 'xlsx';
 import {
   auth, db, googleProvider, signInWithPopup, signOut,
@@ -2068,14 +2069,14 @@ const App: React.FC = () => {
   const handleRankingResetOnly = async () => {
     setConfirmModal({
       isOpen: true,
-      title: '⚠️ ZERAR RANKINGS (MANTER LINKS)',
-      message: 'Isso zerará todas as estatísticas e rankings de todos os usuários, mas MANTERÁ os vídeos vinculados no sistema. Os vídeos voltarão ao status APROVADO para permitir uma nova sincronização total do zero. Deseja prosseguir?',
+      title: '⚠️ ZERAR GERAL (RESSINCRONIZAR)',
+      message: 'Este procedimento zerará as estatísticas de TODOS os usuários e posts, mas MANTERÁ o status atual dos links. Os vídeos processados continuarão na aba de RESSINCRONIZAÇÃO, permitindo que você inicie uma nova coleta do zero com total controle. Deseja prosseguir?',
       onConfirm: async () => {
         try {
           let batch = writeBatch(db);
           let count = 0;
 
-          // 1. Reset all posts (metrics to 0 and status to approved)
+          // 1. Reset all posts (metrics to 0, status is PRESERVED)
           const postsSnap = await getDocs(collection(db, 'posts'));
           for (const postDoc of postsSnap.docs) {
             batch.update(postDoc.ref, {
@@ -2083,8 +2084,8 @@ const App: React.FC = () => {
               likes: 0,
               comments: 0,
               shares: 0,
-              saves: 0,
-              status: 'approved'
+              saves: 0
+              // status: 'approved' REMOVIDO PARA MANTER NA ABA DE RESSINCRONIZAÇÃO
             });
             count++;
             if (count >= 400) {
@@ -4209,11 +4210,42 @@ const HistoryView = ({ posts, onDelete, onRemove, isAdmin }: {
   );
 };
 
-const Rankings = ({ rankings, competitions, lockedCompetitionId }: { rankings: User[], competitions: Competition[], lockedCompetitionId?: string }) => {
+const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { rankings: User[], competitions: Competition[], lockedCompetitionId?: string, userRole?: UserRole }) => {
+  const rankingRef = useRef<HTMLDivElement>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [selectedCompId, setSelectedCompId] = useState<string>(lockedCompetitionId || (() => {
     const active = competitions?.find(c => c.isActive);
     return active ? active.id : '';
   }));
+
+  const handleDownloadScreenshot = async () => {
+    if (!rankingRef.current) return;
+    setIsDownloading(true);
+    
+    try {
+      // Pequeno delay para garantir que o DOM esteja pronto
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      const dataUrl = await toPng(rankingRef.current, {
+        quality: 0.95,
+        backgroundColor: '#000000',
+        style: {
+          borderRadius: '24px',
+          padding: '20px'
+        }
+      });
+      
+      const link = document.createElement('a');
+      const dateStr = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
+      link.download = `Ranking-${rankingType}-${selectedCompetition?.title || 'Metarayx'}-${dateStr}.png`;
+      link.href = dataUrl;
+      link.click();
+    } catch (err) {
+      console.error('Erro ao gerar print:', err);
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   useEffect(() => {
     if (lockedCompetitionId) {
@@ -4449,7 +4481,7 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId }: { rankings: U
         </div>
 
         {/* Métrica badge (direita) */}
-        <div className="md:ml-auto">
+        <div className="md:ml-auto flex items-center gap-3">
           {rankingType !== 'INSTAGRAM' && selectedCompetition && (
             <span className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 border w-fit ${
               selectedCompetition.rankingMetric === 'likes'
@@ -4460,11 +4492,40 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId }: { rankings: U
               {selectedCompetition.rankingMetric === 'likes' ? 'Rankeando por Curtidas' : 'Rankeando por Views'}
             </span>
           )}
+
+          {/* Botão de Print EXCLUSIVO ADMIN */}
+          {userRole === 'admin' && (
+            <button
+              onClick={handleDownloadScreenshot}
+              disabled={isDownloading}
+              className="flex items-center gap-2 px-4 py-2 bg-zinc-900 border border-zinc-800 text-zinc-400 font-black text-[10px] hover:text-white hover:border-zinc-500 transition-all rounded-xl disabled:opacity-50"
+            >
+              {isDownloading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Camera className="w-3.5 h-3.5" />}
+              {isDownloading ? 'GERANDO...' : 'BAIXAR IMAGEM'}
+            </button>
+          )}
         </div>
       </div>
 
       {/* ─── Tabela de Ranking ─── */}
-      <div className="space-y-3">
+      <div ref={rankingRef} className="space-y-3 relative bg-black/50 p-2 rounded-[2rem]">
+        
+        {/* Marca d'água oficial apenas para o print (visível sempre ou via CSS específico se preferir) */}
+        <div className="flex items-center justify-between px-8 py-2 border-b border-white/5 mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-amber-500/10 rounded-xl flex items-center justify-center border border-amber-500/20">
+              <Trophy className="w-6 h-6 text-amber-500" />
+            </div>
+            <div>
+              <h2 className="text-lg font-black gold-gradient uppercase leading-none">Ranking Oficial</h2>
+              <p className="text-[9px] font-black text-zinc-600 uppercase tracking-widest">{typeLabels[rankingType]} • {selectedCompetition?.title}</p>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">Extraído em {new Date().toLocaleString('pt-BR')}</p>
+            <p className="text-[7px] font-black text-zinc-700 uppercase tracking-widest mt-0.5">METARAYX MANAGEMENT SYSTEM</p>
+          </div>
+        </div>
         {/* Cabeçalho da Tabela - Refinado */}
         {sortedRankings.length > 0 && (
           <div className="hidden md:grid grid-cols-[80px_1fr_480px_160px] gap-4 px-8 py-3 text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em] border-y border-white/5 bg-white/[0.01]">
@@ -5742,7 +5803,7 @@ const AdminPanel = ({
                 className="flex items-center justify-center gap-2 px-6 py-3 bg-amber-500/20 text-amber-500 font-black rounded-xl hover:bg-amber-500 hover:text-white transition-all shadow-lg shadow-amber-500/20 text-[10px] uppercase"
               >
                 <RefreshCw className="w-4 h-4" />
-                Zerar Rankings (Soft)
+                Zerar Geral (Resync)
               </button>
 
               <button
