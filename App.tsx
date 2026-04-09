@@ -1932,9 +1932,13 @@ const App: React.FC = () => {
             .sort((a, b) => (b.competitionStats?.[cid]?.dailyViews || 0) - (a.competitionStats?.[cid]?.dailyViews || 0))
             .slice(0, targetComp.prizesDaily?.length || 10);
 
-          const instaWinner = [...approvedUsers]
-            .filter(u => (u.competitionStats?.[cid]?.dailyInstaPosts || 0) > 0)
-            .sort((a, b) => (b.competitionStats?.[cid]?.dailyInstaPosts || 0) - (a.competitionStats?.[cid]?.dailyInstaPosts || 0))[0];
+          const quantityWinner = [...approvedUsers]
+            .filter(u => (u.competitionStats?.[cid]?.dailyPosts || 0) > 0)
+            .sort((a, b) => {
+              const statsA = a.competitionStats?.[cid];
+              const statsB = b.competitionStats?.[cid];
+              return (statsB.dailyPosts || 0) - (statsA.dailyPosts || 0) || (statsB.dailyViews || 0) - (statsA.dailyViews || 0);
+            })[0];
 
           const balanceIncrements: Record<string, { amount: number, desc: string }> = {};
           const viewBonusValue = targetComp.viewBonus || 0;
@@ -1952,18 +1956,18 @@ const App: React.FC = () => {
             }
           });
 
-          if (instaWinner && targetComp.prizesInstagram?.[0]) {
+          if (quantityWinner && targetComp.prizesInstagram?.[0]) {
             const prize = targetComp.prizesInstagram[0].value || 0;
-            const existing = balanceIncrements[instaWinner.uid];
+            const existing = balanceIncrements[quantityWinner.uid];
             if (existing) {
               existing.amount += prize;
               if (!existing.desc.includes('+ BÔNUS')) {
                 existing.desc += ' + BÔNUS';
               }
             } else {
-              balanceIncrements[instaWinner.uid] = {
+              balanceIncrements[quantityWinner.uid] = {
                 amount: prize,
-                desc: `PRÊMIO INSTA ${targetComp.title.toUpperCase()} + BÔNUS`
+                desc: `PRÊMIO QUANTIDADE ${targetComp.title.toUpperCase()} + BÔNUS`
               };
             }
           }
@@ -4253,7 +4257,7 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { r
     }
   }, [lockedCompetitionId]);
 
-  const [rankingType, setRankingType] = useState<'DAILY' | 'TOTAL' | 'INSTAGRAM'>('DAILY');
+  const [rankingType, setRankingType] = useState<'DAILY' | 'TOTAL' | 'QUANTITY'>('DAILY');
 
   const selectedCompetition = useMemo(() => 
     competitions?.find(c => c.id === (lockedCompetitionId || selectedCompId)),
@@ -4299,7 +4303,9 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { r
         if (rankingType === 'DAILY') {
           return selectedCompetition?.rankingMetric === 'likes' ? (statsB.dailyLikes || 0) - (statsA.dailyLikes || 0) : (statsB.dailyViews || 0) - (statsA.dailyViews || 0);
         }
-        if (rankingType === 'INSTAGRAM') return (statsB.dailyInstaPosts || 0) - (statsA.dailyInstaPosts || 0);
+        if (rankingType === 'QUANTITY') {
+          return (statsB.dailyPosts || 0) - (statsA.dailyPosts || 0) || (statsB.dailyViews || 0) - (statsA.dailyViews || 0);
+        }
         return selectedCompetition?.rankingMetric === 'likes' ? (statsB.likes || 0) - (statsA.likes || 0) : (statsB.views || 0) - (statsA.views || 0);
       });
   }, [rankings, selectedCompId, rankingType]);
@@ -4307,7 +4313,7 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { r
   const getPrize = (index: number) => {
     if (!selectedCompetition) return 0;
     if (rankingType === 'DAILY') return selectedCompetition.prizesDaily?.[index]?.value || 0;
-    if (rankingType === 'INSTAGRAM') return selectedCompetition.prizesInstagram?.[index]?.value || 0;
+    if (rankingType === 'QUANTITY') return selectedCompetition.prizesInstagram?.[index]?.value || 0;
     
     // Para Ranking Mensal/Total: prioriza o campo específico prizesMonthly, 
     // mas se estiver zerado (padrão) e houver valor no campo geral prizes, usa o geral.
@@ -4324,7 +4330,7 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { r
     };
 
     const isDaily = rankingType === 'DAILY';
-    const isInsta = rankingType === 'INSTAGRAM';
+    const isQuantity = rankingType === 'QUANTITY';
     
     // No diário mostra ganhos, no mensal mostra totais, no instagram mostra posts específicos
     const views = isDaily ? (stats.dailyViews || 0) : (stats.views || 0);
@@ -4332,27 +4338,25 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { r
     const comments = isDaily ? (stats.dailyComments || 0) : (stats.comments || 0);
     const shares = isDaily ? (stats.dailyShares || 0) : (stats.shares || 0);
     const saves = isDaily ? (stats.dailySaves || 0) : (stats.saves || 0);
-    const postCountResult = (isDaily || isInsta) ? (stats.dailyPosts || 0) : (stats.posts || 0);
+    const postCountResult = (isDaily || isQuantity) ? (stats.dailyPosts || 0) : (stats.posts || 0);
     
     // Se for ranking de Instagram, forçamos a contagem para mostrar posts de Insta
-    const postCount = isInsta ? (stats.dailyInstaPosts || 0) : postCountResult;
+    const postCount = postCountResult;
     // Fallback para mostrar total se o diário for zero e não tivermos resetado oficialmente
-    const finalPostCount = (isInsta && postCount === 0 && (stats.instaPosts || 0) > 0 && !selectedCompetition?.lastDailyReset) 
-      ? stats.instaPosts 
+    const finalPostCount = (isQuantity && postCount === 0 && (stats.posts || 0) > 0 && !selectedCompetition?.lastDailyReset) 
+      ? stats.posts 
       : postCount;
 
     const totalEngagement = likes + comments + shares + saves;
     const engagementRate = views > 0 ? (totalEngagement / views) * 100 : 0;
 
-    const instaPostsResult = isInsta ? (stats.dailyInstaPosts || (stats.instaPosts || 0)) : (stats.instaPosts || 0);
-    
-    return { views, likes, comments, shares, saves, engagementRate, posts: finalPostCount, instaPosts: instaPostsResult };
+    return { views, likes, comments, shares, saves, engagementRate, posts: finalPostCount };
   };
 
   const typeLabels: Record<string, string> = {
     DAILY: 'Ranking Diário',
     TOTAL: 'Ranking Mensal',
-    INSTAGRAM: 'Ranking Instagram'
+    QUANTITY: 'Ranking de Quantidade'
   };
 
   return (
@@ -4460,18 +4464,18 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { r
           {[
             { key: 'DAILY', label: 'Diário' },
             { key: 'TOTAL', label: 'Mensal' },
-            { key: 'INSTAGRAM', label: 'Instagram', icon: <Camera className="w-3 h-3" /> },
+            { key: 'QUANTITY', label: 'Quantidade', icon: <Camera className="w-3 h-3" /> },
           ].map(tab => (
             <button
               key={tab.key}
               onClick={() => setRankingType(tab.key as any)}
               className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-1.5 whitespace-nowrap ${
                 rankingType === tab.key
-                  ? tab.key === 'INSTAGRAM'
-                    ? 'bg-pink-500/20 text-pink-400 border border-pink-500/20 shadow-sm'
+                  ? tab.key === 'QUANTITY'
+                    ? 'bg-amber-500/20 text-amber-500 border border-amber-500/20 shadow-sm'
                     : 'bg-zinc-800 text-white shadow-sm'
-                  : tab.key === 'INSTAGRAM'
-                    ? 'text-zinc-500 hover:text-pink-400 hover:bg-pink-500/5'
+                  : tab.key === 'QUANTITY'
+                    ? 'text-zinc-500 hover:text-amber-500 hover:bg-amber-500/5'
                     : 'text-zinc-500 hover:text-white hover:bg-zinc-800/50'
               }`}
             >
