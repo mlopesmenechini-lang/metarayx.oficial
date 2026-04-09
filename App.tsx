@@ -4332,14 +4332,15 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { r
 
     const isDaily = rankingType === 'DAILY';
     const isQuantity = rankingType === 'QUANTITY';
+    const useDailyStats = isDaily || isQuantity;
     
-    // No diário mostra ganhos, no mensal mostra totais, no instagram mostra posts específicos
-    const views = isDaily ? (stats.dailyViews || 0) : (stats.views || 0);
-    const likes = isDaily ? (stats.dailyLikes || 0) : (stats.likes || 0);
-    const comments = isDaily ? (stats.dailyComments || 0) : (stats.comments || 0);
-    const shares = isDaily ? (stats.dailyShares || 0) : (stats.shares || 0);
-    const saves = isDaily ? (stats.dailySaves || 0) : (stats.saves || 0);
-    const postCountResult = (isDaily || isQuantity) ? (stats.dailyPosts || 0) : (stats.posts || 0);
+    // No diário e quantidade mostra ganhos de hoje, no mensal mostra totais
+    const views = useDailyStats ? (stats.dailyViews || 0) : (stats.views || 0);
+    const likes = useDailyStats ? (stats.dailyLikes || 0) : (stats.likes || 0);
+    const comments = useDailyStats ? (stats.dailyComments || 0) : (stats.comments || 0);
+    const shares = useDailyStats ? (stats.dailyShares || 0) : (stats.shares || 0);
+    const saves = useDailyStats ? (stats.dailySaves || 0) : (stats.saves || 0);
+    const postCountResult = useDailyStats ? (stats.dailyPosts || 0) : (stats.posts || 0);
     
     // Se for ranking de Instagram, forçamos a contagem para mostrar posts de Insta
     const postCount = postCountResult;
