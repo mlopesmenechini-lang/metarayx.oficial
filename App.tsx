@@ -5439,8 +5439,8 @@ const AdminPanel = ({
       return;
     }
     try {
-      await setDoc(doc(db, 'config', 'settings'), { apifyKey });
-      onSettingsUpdate({ apifyKey });
+      await updateDoc(doc(db, 'config', 'settings'), { apifyKey });
+      onSettingsUpdate({ ...settings, apifyKey });
       alert('✅ Chave API salva com sucesso!');
     } catch (error: any) {
       alert(`❌ Erro ao salvar chave: ${error.message}`);
@@ -5643,68 +5643,82 @@ const AdminPanel = ({
         </div>
 
         {userRole === 'admin' && (
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 bg-zinc-900/50 p-4 rounded-3xl border border-zinc-800/50">
-            <div className="flex items-center gap-2 flex-1 sm:w-80">
-              <div className="relative flex-1">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                <input
-                  type="text"
-                  value={apifyKey}
-                  onChange={(e) => setApifyKey(e.target.value)}
-                  placeholder="Insira sua Chave API aqui"
-                  className="w-full bg-black border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-xs font-bold focus:border-amber-500 outline-none transition-all"
-                />
+          <div className="flex flex-wrap items-center gap-6 bg-zinc-900/50 p-6 rounded-[32px] border border-zinc-800/50">
+            {/* CONFIGURAÇÃO DA CHAVE API */}
+            <div className="flex flex-col gap-2 flex-1 min-w-[320px]">
+              <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Configuração Apify</label>
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1 group">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none group-focus-within:text-amber-500 transition-colors" />
+                  <input
+                    type="text"
+                    value={apifyKey}
+                    onChange={(e) => setApifyKey(e.target.value)}
+                    placeholder="Insira sua Chave API aqui"
+                    className="w-full bg-black border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-xs font-bold focus:border-amber-500 outline-none transition-all placeholder:text-zinc-700"
+                  />
+                </div>
+                <button
+                  onClick={handleSaveApiKey}
+                  className="px-6 py-3 gold-bg text-black font-black rounded-xl hover:scale-105 active:scale-95 transition-all shadow-lg shadow-amber-500/20 text-[10px] uppercase whitespace-nowrap"
+                >
+                  Salvar
+                </button>
               </div>
+            </div>
+
+            {/* RESET DIÁRIO */}
+            <div className="flex flex-col gap-2 min-w-[240px]">
+              <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Zerar Ranking Diário</label>
+              <div className="flex items-center gap-2">
+                <select
+                  value={selectedResetCompId}
+                  onChange={(e) => setSelectedResetCompId(e.target.value)}
+                  className="bg-black border border-zinc-800 rounded-xl py-3 px-4 text-[10px] font-bold focus:border-amber-500 outline-none transition-all text-white flex-1"
+                >
+                  <option value="">Selecione Competição</option>
+                  {competitions.filter(c => c.isActive).map(comp => (
+                    <option key={comp.id} value={comp.id}>{comp.title}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => handleResetDailyRanking(selectedResetCompId)}
+                  disabled={!selectedResetCompId}
+                  className="p-3 bg-red-500/10 text-red-500 font-black rounded-xl hover:bg-red-500 hover:text-black transition-all shadow-lg shadow-red-500/10 disabled:opacity-30 flex items-center justify-center"
+                  title="Zerar Diário"
+                >
+                  <Trash2 className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* AÇÕES DE SISTEMA */}
+            <div className="flex flex-wrap items-center gap-3">
               <button
-                onClick={handleSaveApiKey}
-                className="px-4 py-3 gold-bg text-black font-black rounded-xl hover:scale-105 active:scale-95 transition-all shadow-lg shadow-amber-500/20 text-[10px] uppercase"
+                onClick={handleRepairMetrics}
+                disabled={repairing}
+                className="flex items-center justify-center gap-2 px-6 py-3 bg-amber-500/10 text-amber-500 font-black rounded-xl hover:bg-amber-500 hover:text-black transition-all shadow-lg shadow-amber-500/10 disabled:opacity-50 text-[10px] uppercase"
               >
-                Salvar
+                {repairing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                Reparar Rankings
+              </button>
+
+              <button
+                onClick={handleRankingResetOnly}
+                className="flex items-center justify-center gap-2 px-6 py-3 bg-amber-500/20 text-amber-500 font-black rounded-xl hover:bg-amber-500 hover:text-white transition-all shadow-lg shadow-amber-500/20 text-[10px] uppercase"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Zerar Rankings (Soft)
+              </button>
+
+              <button
+                onClick={handleSystemCleanup}
+                className="flex items-center justify-center gap-2 px-6 py-3 bg-red-600/20 text-red-600 font-black rounded-xl hover:bg-red-600 hover:text-white transition-all shadow-lg shadow-red-600/20 text-[10px] uppercase"
+              >
+                <Shield className="w-4 h-4" />
+                Factory Reset
               </button>
             </div>
-            <div className="flex flex-col gap-1.5 sm:w-64">
-              <label className="text-[9px] font-black text-zinc-500 uppercase tracking-widest ml-1 text-center">Resetar Ranking Diário de:</label>
-              <select
-                value={selectedResetCompId}
-                onChange={(e) => setSelectedResetCompId(e.target.value)}
-                className="w-full bg-black border border-zinc-800 rounded-xl py-2 px-4 text-[10px] font-bold focus:border-amber-500 outline-none transition-all text-white"
-              >
-                <option value="">Selecione Competição</option>
-                {competitions.filter(c => c.isActive).map(comp => (
-                  <option key={comp.id} value={comp.id}>{comp.title}</option>
-                ))}
-              </select>
-            </div>
-            <button
-              onClick={handleRepairMetrics}
-              disabled={repairing}
-              className="flex items-center justify-center gap-2 px-8 py-3 bg-amber-500/10 text-amber-500 font-black rounded-xl hover:bg-amber-500 hover:text-black transition-all shadow-lg shadow-amber-500/10 disabled:opacity-50"
-            >
-              {repairing ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
-              REPARAR RANKINGS
-            </button>
-            <button
-              onClick={() => handleResetDailyRanking(selectedResetCompId)}
-              disabled={!selectedResetCompId}
-              className="flex items-center justify-center gap-2 px-8 py-3 bg-red-500/10 text-red-500 font-black rounded-xl hover:bg-red-500 hover:text-black transition-all shadow-lg shadow-red-500/10 disabled:opacity-30 disabled:hover:bg-red-500/10 disabled:hover:text-red-500"
-            >
-              <Trash2 className="w-5 h-5" />
-              ZERAR DIÁRIO
-            </button>
-            <button
-              onClick={handleRankingResetOnly}
-              className="flex items-center justify-center gap-2 px-8 py-3 bg-amber-500/20 text-amber-500 font-black rounded-xl hover:bg-amber-500 hover:text-white transition-all shadow-lg shadow-amber-500/20"
-            >
-              <RefreshCw className="w-5 h-5" />
-              ZERAR RANKINGS (MANTER LINKS)
-            </button>
-            <button
-              onClick={handleSystemCleanup}
-              className="flex items-center justify-center gap-2 px-8 py-3 bg-red-600/20 text-red-600 font-black rounded-xl hover:bg-red-600 hover:text-white transition-all shadow-lg shadow-red-600/20"
-            >
-              <Shield className="w-5 h-5" />
-              FACTORY RESET
-            </button>
           </div>
         )}
       </div>
