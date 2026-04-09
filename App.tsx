@@ -2052,6 +2052,76 @@ const App: React.FC = () => {
     });
   };
 
+  const handleRankingResetOnly = async () => {
+    setConfirmModal({
+      isOpen: true,
+      title: '⚠️ ZERAR RANKINGS (MANTER LINKS)',
+      message: 'Isso zerará todas as estatísticas e rankings de todos os usuários, mas MANTERÁ os vídeos vinculados no sistema. Os vídeos voltarão ao status APROVADO para permitir uma nova sincronização total do zero. Deseja prosseguir?',
+      onConfirm: async () => {
+        try {
+          let batch = writeBatch(db);
+          let count = 0;
+
+          // 1. Reset all posts (metrics to 0 and status to approved)
+          const postsSnap = await getDocs(collection(db, 'posts'));
+          for (const postDoc of postsSnap.docs) {
+            batch.update(postDoc.ref, {
+              views: 0,
+              likes: 0,
+              comments: 0,
+              shares: 0,
+              saves: 0,
+              status: 'approved'
+            });
+            count++;
+            if (count >= 400) {
+              await batch.commit();
+              batch = writeBatch(db);
+              count = 0;
+            }
+          }
+
+          // 2. Reset all users (stats to 0 and clear competitionStats)
+          const usersSnap = await getDocs(collection(db, 'users'));
+          for (const uDoc of usersSnap.docs) {
+            batch.update(uDoc.ref, {
+              totalViews: 0,
+              totalLikes: 0,
+              totalComments: 0,
+              totalShares: 0,
+              totalSaves: 0,
+              totalPosts: 0,
+              dailyViews: 0,
+              dailyLikes: 0,
+              dailyComments: 0,
+              dailyShares: 0,
+              dailySaves: 0,
+              dailyPosts: 0,
+              dailyInstaPosts: 0,
+              competitionStats: {}
+            });
+            count++;
+            if (count >= 400) {
+              await batch.commit();
+              batch = writeBatch(db);
+              count = 0;
+            }
+          }
+
+          if (count > 0) {
+            await batch.commit();
+          }
+
+          alert('✨ Rankings resetados com sucesso! Os vídeos foram liberados para nova sincronização.');
+        } catch (error) {
+          console.error('Error during ranking reset:', error);
+          alert('Erro ao resetar rankings. Veja o console.');
+        }
+      }
+    });
+  };
+
+
   const handleSystemCleanup = async () => {
     setConfirmModal({
       isOpen: true,
@@ -5598,6 +5668,13 @@ const AdminPanel = ({
             >
               <Trash2 className="w-5 h-5" />
               ZERAR DIÁRIO
+            </button>
+            <button
+              onClick={handleRankingResetOnly}
+              className="flex items-center justify-center gap-2 px-8 py-3 bg-amber-500/20 text-amber-500 font-black rounded-xl hover:bg-amber-500 hover:text-white transition-all shadow-lg shadow-amber-500/20"
+            >
+              <RefreshCw className="w-5 h-5" />
+              ZERAR RANKINGS (MANTER LINKS)
             </button>
             <button
               onClick={handleSystemCleanup}
