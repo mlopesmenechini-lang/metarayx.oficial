@@ -47,7 +47,7 @@ const runActorAndGetResults = async (apiKey: string, actorId: string, input: any
   return await itemsResponse.json();
 };
 
-export const updateUserMetrics = async (userId: string) => {
+export const updateUserMetrics = async (userId: string, skipDaily: boolean = false) => {
   const userRef = doc(db, 'users', userId);
   const userSnap = await getDoc(userRef);
   if (!userSnap.exists()) return;
@@ -120,17 +120,19 @@ export const updateUserMetrics = async (userId: string) => {
     competitionStats[cid].posts += 1;
     if (isInsta) competitionStats[cid].instaPosts += 1;
 
-    // Update Competition Daily Stats (Gains)
-    competitionStats[cid].dailyViews += viewsGain;
-    competitionStats[cid].dailyLikes += likesGain;
-    competitionStats[cid].dailyComments += commentsGain;
-    competitionStats[cid].dailyShares += sharesGain;
-    competitionStats[cid].dailySaves += savesGain;
-    
-    // Daily Post count: Only if approved after last reset
-    if (isNewDailyPost) {
-      competitionStats[cid].dailyPosts += 1;
-      if (isInsta) competitionStats[cid].dailyInstaPosts += 1;
+    // Update Competition Daily Stats (Gains) - ONLY if not skipped
+    if (!skipDaily) {
+      competitionStats[cid].dailyViews += viewsGain;
+      competitionStats[cid].dailyLikes += likesGain;
+      competitionStats[cid].dailyComments += commentsGain;
+      competitionStats[cid].dailyShares += sharesGain;
+      competitionStats[cid].dailySaves += savesGain;
+      
+      // Daily Post count: Only if approved after last reset
+      if (isNewDailyPost) {
+        competitionStats[cid].dailyPosts += 1;
+        if (isInsta) competitionStats[cid].dailyInstaPosts += 1;
+      }
     }
 
     // Update Global Totals (Display in main profile cards)
@@ -142,19 +144,23 @@ export const updateUserMetrics = async (userId: string) => {
     globalTotals.posts += 1;
     if (isInsta) globalTotals.instaPosts += 1;
 
-    globalTotals.dailyViews += viewsGain;
-    globalTotals.dailyLikes += likesGain;
-    globalTotals.dailyComments += commentsGain;
-    globalTotals.dailyShares += sharesGain;
-    globalTotals.dailySaves += savesGain;
-    
-    if (isNewDailyPost) {
-      globalTotals.dailyPosts += 1;
-      if (isInsta) globalTotals.dailyInstaPosts += 1;
+    // ONLY update daily if not skipped
+    if (!skipDaily) {
+      globalTotals.dailyViews += viewsGain;
+      globalTotals.dailyLikes += likesGain;
+      globalTotals.dailyComments += commentsGain;
+      globalTotals.dailyShares += sharesGain;
+      globalTotals.dailySaves += savesGain;
+      
+      if (isNewDailyPost) {
+        globalTotals.dailyPosts += 1;
+        if (isInsta) globalTotals.dailyInstaPosts += 1;
+      }
     }
   });
-  
-  await updateDoc(userRef, {
+
+  // Prepare final update object
+  const finalUpdate: any = {
     totalViews: globalTotals.views,
     totalLikes: globalTotals.likes,
     totalComments: globalTotals.comments,
@@ -162,24 +168,30 @@ export const updateUserMetrics = async (userId: string) => {
     totalSaves: globalTotals.saves,
     totalPosts: globalTotals.posts,
     instaPosts: globalTotals.instaPosts,
-    dailyViews: globalTotals.dailyViews,
-    dailyLikes: globalTotals.dailyLikes,
-    dailyComments: globalTotals.dailyComments,
-    dailyShares: globalTotals.dailyShares,
-    dailySaves: globalTotals.dailySaves,
-    dailyPosts: globalTotals.dailyPosts,
-    dailyInstaPosts: globalTotals.dailyInstaPosts,
     competitionStats: competitionStats
-  });
+  };
+
+  // Only include daily updates if we are not skipping
+  if (!skipDaily) {
+    finalUpdate.dailyViews = globalTotals.dailyViews;
+    finalUpdate.dailyLikes = globalTotals.dailyLikes;
+    finalUpdate.dailyComments = globalTotals.dailyComments;
+    finalUpdate.dailyShares = globalTotals.dailyShares;
+    finalUpdate.dailySaves = globalTotals.dailySaves;
+    finalUpdate.dailyPosts = globalTotals.dailyPosts;
+    finalUpdate.dailyInstaPosts = globalTotals.dailyInstaPosts;
+  }
+
+  await updateDoc(userRef, finalUpdate);
 };
 
-export const repairAllUserMetrics = async () => {
+export const repairAllUserMetrics = async (skipDaily: boolean = false) => {
   const usersSnapshot = await getDocs(collection(db, 'users'));
   const results = { total: usersSnapshot.size, success: 0, error: 0 };
   
   for (const userDoc of usersSnapshot.docs) {
     try {
-      await updateUserMetrics(userDoc.id);
+      await updateUserMetrics(userDoc.id, skipDaily);
       results.success++;
     } catch (err) {
       console.error(`Error repairing user ${userDoc.id}:`, err);
@@ -197,7 +209,7 @@ const formatYoutubeUrl = (url: string) => {
   return url;
 };
 
-export const syncSinglePostWithApify = async (apiKey: string, post: Post) => {
+export const syncSinglePostWithApify = async (apiKey: string, post: Post, skipDaily: boolean = false) => {
   if (!apiKey) throw new Error('Apify API Key is required.');
 
   let items = [];
@@ -255,7 +267,7 @@ export const syncSinglePostWithApify = async (apiKey: string, post: Post) => {
     }
   }
 
-  await updateUserMetrics(post.userId);
+  await updateUserMetrics(post.userId, skipDaily);
 };
 
 export const syncViewsWithApify = async (apiKey: string) => {

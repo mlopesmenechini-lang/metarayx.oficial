@@ -5559,7 +5559,7 @@ const AdminPanel = ({
   const handleRepairMetrics = async () => {
     setRepairing(true);
     try {
-      const res = await repairAllUserMetrics();
+      const res = await repairAllUserMetrics(true);
       alert(`✅ Reparo concluído!\n\nUsuários processados: ${res.total}\nSucesso: ${res.success}\nErros: ${res.error}`);
     } catch (error: any) {
       alert(`Erro no reparo: ${error.message}`);
@@ -5595,7 +5595,7 @@ const AdminPanel = ({
     }
     setSyncingPostId(post.id);
     try {
-      await syncSinglePostWithApify(apifyKey, post);
+      await syncSinglePostWithApify(apifyKey, post, true);
       alert('Sincronização do vídeo concluída!');
     } catch (error: any) {
       alert(`Erro na sincronização: ${error.message}`);
@@ -5619,7 +5619,7 @@ const AdminPanel = ({
     try {
       for (const post of approvedPosts) {
         setSyncingPostId(post.id);
-        await syncSinglePostWithApify(apifyKey, post);
+        await syncSinglePostWithApify(apifyKey, post, true);
         // Important: Update status to synced after successful sync
         await updateDoc(doc(db, 'posts', post.id), { status: 'synced' });
       }
@@ -5668,7 +5668,7 @@ const AdminPanel = ({
     try {
       for (const post of syncedPosts) {
         setSyncingPostId(post.id);
-        await syncSinglePostWithApify(apifyKey, post);
+        await syncSinglePostWithApify(apifyKey, post, true);
       }
       // Update last resync timestamp
       await updateDoc(doc(db, 'config', 'settings'), { lastResync: new Date().toISOString() });
