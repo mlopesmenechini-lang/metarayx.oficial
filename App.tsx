@@ -5997,7 +5997,7 @@ const AdminPanel = ({
           await updateDoc(doc(db, 'posts', post.id), { status: 'synced' });
           completed++;
           setSyncProgress(completed);
-          setSessionSyncedIds(prev => [...prev, post.id]);
+          setSessionSyncedIds((prev: string[]) => [...prev, post.id]);
         } catch (err) {
           console.error(`Erro no worker com chave ${key}:`, err);
         }
@@ -9541,7 +9541,7 @@ const AdminPanel = ({
               </div>
             </div>
           </div>
-        ) : tab === 'RELATORIOS' && (isAdmin || user.role === 'auditor') ? (
+        ) : tab === 'RELATORIOS' && (userRole === 'admin' || userRole === 'auditor') ? (
           <div className="space-y-6 animate-in fade-in duration-500 max-w-7xl mx-auto">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-zinc-900/50 p-8 rounded-[40px] border border-zinc-800/50">
               <div className="space-y-2">
