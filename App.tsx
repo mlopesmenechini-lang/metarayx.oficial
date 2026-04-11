@@ -5602,6 +5602,23 @@ const AdminPanel = ({
     return now - lastPost > 3 * dayMs;
   });
 
+  const userPostAverages = useMemo(() => {
+    const currentNow = Date.now();
+    return approvedUsers
+      .map(u => {
+        const approvedAt = u.approvedAt || currentNow;
+        const daysActive = Math.max(1, Math.floor((currentNow - approvedAt) / (24 * 60 * 60 * 1000)));
+        const avg = (u.totalPosts || 0) / daysActive;
+        return {
+          uid: u.uid,
+          displayName: u.displayName,
+          photoURL: u.photoURL,
+          avgPostsPerDay: avg
+        };
+      })
+      .sort((a, b) => b.avgPostsPerDay - a.avgPostsPerDay);
+  }, [approvedUsers]);
+
   const newUsers7d = approvedUsers.filter(u => u.approvedAt && u.approvedAt > now - 7 * dayMs).length;
 
   const totalPaidGlobal = approvedUsers.reduce((sum, u) => {
@@ -6844,51 +6861,50 @@ const AdminPanel = ({
                 </div>
               </div>
 
-              {/* Inactive Users Preview */}
+              {/* Efficiency Metric Card */}
               <div className="p-8 rounded-[40px] bg-zinc-950 border border-zinc-900 flex flex-col">
                 <div className="flex items-center justify-between mb-8">
                   <div>
-                    <h4 className="text-lg font-black uppercase text-white tracking-tight">Fila de Inatividade</h4>
-                    <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest text-red-500/70">Integrantes sem postar há 3 dias</p>
+                    <h4 className="text-lg font-black uppercase text-white tracking-tight">Eficiência de Postagem</h4>
+                    <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Média de posts por dia / criador</p>
                   </div>
-                  <UserX className="w-6 h-6 text-red-500/30" />
+                  <TrendingUp className="w-6 h-6 text-amber-500/30" />
                 </div>
                 
-                <div className="flex-1 space-y-3 overflow-y-auto max-h-[220px] custom-scrollbar pr-1">
-                  {inactiveUsers.slice(0, 10).map((u, i) => (
-                    <div key={u.uid} className="flex items-center justify-between p-3 rounded-2xl bg-black border border-zinc-900 group">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg overflow-hidden border border-zinc-800">
-                          <img src={u.photoURL || `https://ui-avatars.com/api/?name=${u.displayName}`} alt="" className="w-full h-full object-cover" />
+                <div className="flex-1 space-y-3 overflow-y-auto max-h-[300px] custom-scrollbar pr-1">
+                  {userPostAverages.map((u) => {
+                    const avg = u.avgPostsPerDay || 0;
+                    const colorClass = avg >= 1.0 ? 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20' :
+                                     avg >= 0.5 ? 'text-amber-500 bg-amber-500/10 border-amber-500/20' :
+                                     'text-zinc-500 bg-zinc-500/10 border-zinc-500/20';
+                    return (
+                      <div key={u.uid} className="flex items-center justify-between p-3 rounded-2xl bg-black border border-zinc-900 group">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg overflow-hidden border border-zinc-800">
+                            <img src={u.photoURL || `https://ui-avatars.com/api/?name=${u.displayName}`} alt="" className="w-full h-full object-cover" />
+                          </div>
+                          <span className="text-[10px] font-black text-zinc-400 uppercase truncate max-w-[100px]">{u.displayName}</span>
                         </div>
-                        <span className="text-[10px] font-black text-zinc-400 uppercase truncate max-w-[100px]">{u.displayName}</span>
+                        <div className={`px-3 py-1 rounded-full border text-[9px] font-black tracking-widest ${colorClass}`}>
+                          {avg.toFixed(2)} / DIA
+                        </div>
                       </div>
-                      <span className="text-[8px] font-bold text-zinc-700 uppercase tracking-widest">Sem posts</span>
-                    </div>
-                  ))}
-                  {inactiveUsers.length === 0 && (
+                    );
+                  })}
+                  {userPostAverages.length === 0 && (
                     <div className="h-full flex flex-col items-center justify-center text-center py-10">
                       <ShieldCheck className="w-8 h-8 text-emerald-500/20 mb-2" />
-                      <p className="text-[9px] font-black text-zinc-700 uppercase">Todos os ativos postaram!</p>
+                      <p className="text-[9px] font-black text-zinc-700 uppercase">Aguardando dados...</p>
                     </div>
                   )}
                 </div>
-                
-                {userRole === 'admin' && (
-                  <button 
-                    onClick={() => setTab('USERS_APPROVED')}
-                    className="mt-6 w-full py-4 rounded-2xl border border-zinc-800 text-[9px] font-black uppercase tracking-widest text-zinc-500 hover:text-white hover:border-zinc-700 transition-all"
-                  >
-                    Ver todos os {inactiveUsers.length} inativos
-                  </button>
-                )}
               </div>
             </div>
 
             {/* Middle Section: Distribution & Status */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Distribution Card */}
-              <div className="lg:col-span-2 p-8 rounded-[40px] bg-zinc-950 border border-zinc-900">
+              {/* Distribution Card - Full width now */}
+              <div className="lg:col-span-3 p-8 rounded-[40px] bg-zinc-950 border border-zinc-900">
                 <div className="flex items-center justify-between mb-8">
                   <div>
                     <h4 className="text-lg font-black uppercase text-white tracking-tight flex items-center">
@@ -6932,54 +6948,6 @@ const AdminPanel = ({
                       </>
                     );
                   })()}
-                </div>
-              </div>
-
-              {/* Redes Sociais - Substituindo Integridade */}
-              <div className="p-8 rounded-[40px] gold-bg border border-white/10 group overflow-hidden relative flex flex-col justify-between">
-                <div className="absolute top-0 right-0 w-40 h-40 bg-white/20 blur-[80px] -mr-20 -mt-20 rounded-full" />
-                <div>
-                  <h4 className="text-lg font-black uppercase text-black tracking-tight mb-1 relative z-10">Redes Sociais</h4>
-                  <p className="text-[10px] font-black text-black/60 uppercase tracking-widest mb-8 relative z-10">Contas registradas no hub</p>
-                  
-                  <div className="space-y-4 relative z-10">
-                    <div className="p-4 rounded-2xl bg-black/5 border border-black/10 flex items-center justify-between group/item hover:bg-black/10 transition-all">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-xl bg-black/10 flex items-center justify-center">
-                          <Zap className="w-4 h-4 text-black" />
-                        </div>
-                        <span className="text-[10px] font-black text-black uppercase">TikTok</span>
-                      </div>
-                      <span className="text-lg font-black text-black">{socialCounts.tiktok}</span>
-                    </div>
-
-                    <div className="p-4 rounded-2xl bg-black/5 border border-black/10 flex items-center justify-between group/item hover:bg-black/10 transition-all">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-xl bg-black/10 flex items-center justify-center">
-                          <Camera className="w-4 h-4 text-black" />
-                        </div>
-                        <span className="text-[10px] font-black text-black uppercase">Instagram</span>
-                      </div>
-                      <span className="text-lg font-black text-black">{socialCounts.instagram}</span>
-                    </div>
-
-                    <div className="p-4 rounded-2xl bg-black/5 border border-black/10 flex items-center justify-between group/item hover:bg-black/10 transition-all">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-xl bg-black/10 flex items-center justify-center">
-                          <Eye className="w-4 h-4 text-black" />
-                        </div>
-                        <span className="text-[10px] font-black text-black uppercase">YouTube</span>
-                      </div>
-                      <span className="text-lg font-black text-black">{socialCounts.youtube}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-8 pt-4 border-t border-black/10 flex justify-between items-center relative z-10">
-                  <span className="text-[9px] font-black text-black/40 uppercase tracking-widest">Total Geral</span>
-                  <span className="text-xs font-black text-black uppercase tracking-tighter">
-                    {socialCounts.tiktok + socialCounts.instagram + socialCounts.youtube} Canais
-                  </span>
                 </div>
               </div>
             </div>
