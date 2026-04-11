@@ -1,0 +1,106 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (
+          request.auth.token.email == "matheusmenechini18@gmail.com" ||
+          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+        );
+    }
+
+    function isAuditor() {
+       return isAuthenticated() &&
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'auditor');
+    }
+
+    function isAdministrativo() {
+       return isAuthenticated() &&
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'administrativo');
+    }
+
+    function isStaff() {
+      return isAdmin() || isAuditor() || isAdministrativo();
+    }
+
+    function isApproved() {
+      return isAuthenticated() && 
+        (
+          request.auth.token.email == "matheusmenechini18@gmail.com" ||
+          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+           (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isApproved == true || 
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'auditor' ||
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'administrativo'))
+        );
+    }
+
+    match /users/{userId} {
+      allow get: if isAuthenticated() && (isOwner(userId) || isStaff() || (resource != null && resource.data.isApproved == true));
+      allow list: if isApproved();
+      allow create: if isAuthenticated() && (isAdmin() || (isOwner(userId) && request.resource.data.keys().hasAll(['uid', 'email', 'role'])));
+      allow update: if isAuthenticated() && ((isOwner(userId) && request.resource.data.isApproved == resource.data.isApproved && request.resource.data.role == resource.data.role) || isStaff());
+      allow delete: if isAdmin();
+    }
+
+    match /config/settings {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /posts/{postId} {
+      allow read: if isApproved();
+      allow create: if isApproved() && request.resource.data.userId == request.auth.uid && request.resource.data.status == 'pending';
+      allow update: if isAdmin() || isAuditor() || isAdministrativo() || (isApproved() && isOwner(resource.data.userId) && request.resource.data.status == resource.data.status);
+      allow delete: if isAdmin() || (isApproved() && isOwner(resource.data.userId));
+    }
+
+    match /seasons/{seasonId} {
+      allow read: if isApproved();
+      allow write: if isAdmin();
+    }
+
+    match /announcements/{announcementId} {
+      allow read: if isApproved();
+      allow write: if isAdmin();
+    }
+
+    match /competitions/{competitionId} {
+      allow read: if isApproved();
+      allow write: if isAdmin();
+    }
+
+    match /competition_registrations/{registrationId} {
+      allow read: if isApproved();
+      allow create: if isApproved() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /rankings/{rankingId} {
+      allow read: if isApproved();
+      allow write: if isAdmin() || isAdministrativo();
+    }
+
+    match /test/connection {
+      allow read: if isAuthenticated();
+    }
+
+    match /transactions/{transactionId} {
+      allow read: if isOwner(resource.data.userId) || isStaff();
+      allow create, write: if isStaff();
+    }
+  }
+}
