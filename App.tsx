@@ -2118,9 +2118,26 @@ const App: React.FC = () => {
             }
           }
 
-          // 2. Reset all users (stats to 0 and clear competitionStats)
+          // 2. Reset all users (stats to 0 but PRESERVE balance and paidTotal in competitionStats)
           const usersSnap = await getDocs(collection(db, 'users'));
           for (const uDoc of usersSnap.docs) {
+            const userData = uDoc.data();
+            const existingStats = userData.competitionStats || {};
+            const newStats: any = {};
+            
+            // Rebuild stats preserving financial data
+            Object.keys(existingStats).forEach(cid => {
+              newStats[cid] = {
+                ...existingStats[cid],
+                views: 0, likes: 0, comments: 0, shares: 0, saves: 0, posts: 0,
+                dailyViews: 0, dailyLikes: 0, dailyComments: 0, dailyShares: 0, dailySaves: 0, dailyPosts: 0, dailyInstaPosts: 0,
+                // Ensure financial fields are kept as they are
+                balance: existingStats[cid].balance || 0,
+                paidTotal: existingStats[cid].paidTotal || 0,
+                paidHistory: existingStats[cid].paidHistory || []
+              };
+            });
+
             batch.update(uDoc.ref, {
               totalViews: 0,
               totalLikes: 0,
@@ -2135,7 +2152,7 @@ const App: React.FC = () => {
               dailySaves: 0,
               dailyPosts: 0,
               dailyInstaPosts: 0,
-              competitionStats: {}
+              competitionStats: newStats
             });
             count++;
             if (count >= 400) {
@@ -7455,21 +7472,23 @@ const AdminPanel = ({
                             }
 
                             const filteredUsers = approvedUsers.filter(u => {
+                              const b = financeCompId ? (u.competitionStats?.[financeCompId]?.balance || 0) : 0;
+                              const paid = financeCompId ? (u.competitionStats?.[financeCompId]?.paidTotal || 0) : 0;
+                              
                               if (financeDateFilter && financeTab === 'PENDING') {
-                                // Filtra usuários que tiveram posts aprovados na data selecionada
+                                // Filtra usuários que tiveram posts aprovados na data selecionada E possuem saldo
                                 const dailyPosts = posts.filter(p => 
                                   p.userId === u.uid && 
                                   p.competitionId === financeCompId && 
                                   (p.status === 'approved' || p.status === 'synced') &&
                                   p.approvedAt && isSameDay(p.approvedAt, financeDateFilter)
                                 );
-                                return dailyPosts.length > 0;
+                                return b > 0 && dailyPosts.length > 0;
                               }
 
-                              const b = financeCompId ? (u.competitionStats?.[financeCompId]?.balance || 0) : 0;
-                              const paid = financeCompId ? (u.competitionStats?.[financeCompId]?.paidTotal || 0) : 0;
                               if (financeTab === 'PENDING') return b > 0;
-                              return paid > 0 && b <= 0;
+                              // Para REALIZED, mostramos quem já recebeu qualquer valor
+                              return paid > 0;
                             });
                             
                             return (
