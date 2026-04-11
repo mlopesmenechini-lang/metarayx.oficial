@@ -116,19 +116,19 @@ export const updateUserMetrics = async (userId: string, skipDaily: boolean = fal
     const lastReset = compConfig?.lastDailyReset || 0;
 
     const postTime = (data.approvedAt || data.timestamp || 0);
-    const isNewDailyPost = lastReset === 0 || postTime > lastReset;
+    const isFirstSync = (data.viewsBaseline || 0) === 0;
+    
+    // Um post conta para o dia se: foi aprovado após o reset OU se está sendo sincronizado pela primeira vez agora
+    const isNewDailyPost = lastReset === 0 || postTime > lastReset || isFirstSync;
     
     // Engagement Gain logic:
-    // 1. If it's a new post today (approved after last reset), gain = current - baseline (usually 0).
-    // 2. If it's an old post (approved before reset) AND has no baseline yet (first sync today), 
-    //    we assume gain is 0 to prevent total views from flooding the daily ranking.
-    const isInitialOldSync = !isNewDailyPost && (data.viewsBaseline || 0) === 0;
-
-    const viewsGain = isInitialOldSync ? 0 : Math.max(0, (data.views || 0) - (data.viewsBaseline || 0));
-    const likesGain = isInitialOldSync ? 0 : Math.max(0, (data.likes || 0) - (data.likesBaseline || 0));
-    const commentsGain = isInitialOldSync ? 0 : Math.max(0, (data.comments || 0) - (data.commentsBaseline || 0));
-    const sharesGain = isInitialOldSync ? 0 : Math.max(0, (data.shares || 0) - (data.sharesBaseline || 0));
-    const savesGain = isInitialOldSync ? 0 : Math.max(0, (data.saves || 0) - (data.savesBaseline || 0));
+    // Removemos a 'trava' de isInitialOldSync para que vídeos aprovados antes do reset, 
+    // mas sincronizados agora, contem integralmente no ranking diário atual.
+    const viewsGain = Math.max(0, (data.views || 0) - (data.viewsBaseline || 0));
+    const likesGain = Math.max(0, (data.likes || 0) - (data.likesBaseline || 0));
+    const commentsGain = Math.max(0, (data.comments || 0) - (data.commentsBaseline || 0));
+    const sharesGain = Math.max(0, (data.shares || 0) - (data.sharesBaseline || 0));
+    const savesGain = Math.max(0, (data.saves || 0) - (data.savesBaseline || 0));
     
     const isInsta = data.platform === 'instagram';
 
@@ -297,26 +297,6 @@ export const syncSinglePostWithApify = async (apiKeys: string | string[], post: 
       saves: newSaves,
     };
 
-    // Logical fix: If it's an OLD post being synced for the first time TODAY, 
-    // we set the baseline to current views so it starts at 0 in the daily ranking.
-    if (!post.viewsBaseline && post.competitionId) {
-      const compSnap = await getDoc(doc(db, 'competitions', post.competitionId));
-      if (compSnap.exists()) {
-        const compData = compSnap.data();
-        const lastReset = compData.lastDailyReset || 0;
-        const postTime = post.approvedAt || post.timestamp || 0;
-        
-        // If approved BEFORE last reset and has no baseline, set it now
-        if (lastReset > 0 && postTime <= lastReset) {
-          updateData.viewsBaseline = newViews;
-          updateData.likesBaseline = newLikes;
-          updateData.commentsBaseline = newComments;
-          updateData.sharesBaseline = newShares;
-          updateData.savesBaseline = newSaves;
-        }
-      }
-    }
-
     await updateDoc(doc(db, 'posts', post.id), updateData);
   }
 
@@ -389,20 +369,6 @@ export const syncViewsWithApify = async (apiKeys: string | string[]) => {
           saves: newSaves,
         };
 
-        if (!post.viewsBaseline && post.competitionId) {
-          const comp = activeComps[post.competitionId];
-          if (comp) {
-            const lastReset = comp.lastDailyReset || 0;
-            const postTime = post.approvedAt || post.timestamp || 0;
-            if (lastReset > 0 && postTime <= lastReset) {
-              updateData.viewsBaseline = newViews;
-              updateData.likesBaseline = newLikes;
-              updateData.commentsBaseline = newComments;
-              updateData.sharesBaseline = newShares;
-              updateData.savesBaseline = newSaves;
-            }
-          }
-        }
         await updateDoc(doc(db, 'posts', post.id), updateData);
       }
     }
