@@ -7,14 +7,14 @@ import {
   OperationType, handleFirestoreError, createUserWithEmailAndPassword, signInWithEmailAndPassword, addDoc, serverTimestamp, onAuthStateChanged, writeBatch
 } from './firebase';
 
-import { User, Post, Season, Announcement, Platform, PostStatus, Competition, CompetitionRegistration, UserRole, Transaction, Suggestion, Settings } from './types';
+import { User, Post, Season, Announcement, Platform, PostStatus, Competition, CompetitionRegistration, UserRole, Transaction, Suggestion } from './types';
 import {
-  LayoutDashboard, Trophy, Send, History, Settings as SettingsIcon, LogOut,
+  LayoutDashboard, Trophy, Send, History, Settings, LogOut,
   ShieldCheck, AlertCircle, CheckCircle2, XCircle, Clock,
   TrendingUp, Users, Zap, Calendar, MessageSquare, Menu, X, ChevronLeft, ExternalLink,
   Mail, Lock, User as UserIcon, Eye, EyeOff, Loader2, RefreshCw, Crown, Trash2, Plus,
   Heart, Share2, Bookmark, Bell, Check, Camera, BarChart3, ArrowLeft, ArrowRight, BookOpen, Shield, Star, ChevronRight, Target,
-  Award, UserX, Sparkles, CreditCard, Coins, DollarSign, Info, Archive, Download, RotateCcw
+  Award, UserX, Sparkles, CreditCard, Coins, DollarSign, Info, Archive, Download
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { syncViewsWithApify, syncSinglePostWithApify, updateUserMetrics, repairAllUserMetrics } from './services/apifyService';
@@ -1292,13 +1292,7 @@ const App: React.FC = () => {
   const [archivedUsers, setArchivedUsers] = useState<User[]>([]);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [globalSyncing, setGlobalSyncing] = useState(false);
-  const [settings, setSettings] = useState<Settings>({ apifyKey: '', apifyKeys: [], apifyKeysSync: [] });
-  const [sessionSyncedIds, setSessionSyncedIds] = useState<string[]>([]);
-  const [syncing, setSyncing] = useState(false);
-  const [syncProgress, setSyncProgress] = useState(0);
-  const [syncTotal, setSyncTotal] = useState(0);
-  const [syncingPostId, setSyncingPostId] = useState<string | null>(null);
-  const [syncingCompId, setSyncingCompId] = useState<string | null>(null);
+  const [settings, setSettings] = useState<{ apifyKey: string; lastSync?: string; lastResync?: string }>({ apifyKey: '' });
   const [timerConfig, setTimerConfig] = useState<{ enabled: boolean; endTime: number | null; targetTime: string; message: string }>({
     enabled: false,
     endTime: null,
@@ -1318,7 +1312,6 @@ const App: React.FC = () => {
   const [profilePhoto, setProfilePhoto] = useState('');
   const [settingsTab, setSettingsTab] = useState<'PROFILE' | 'SOCIAL'>('PROFILE');
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
-  const [apifyKeySync, setApifyKeySync] = useState('');
   const [compTitle, setCompTitle] = useState('');
   const [compRankingMetric, setCompRankingMetric] = useState<'views' | 'likes'>('views');
   const [compGoalTarget, setCompGoalTarget] = useState<number>(0);
@@ -1580,14 +1573,7 @@ const App: React.FC = () => {
       // Listener para as configurações globais (ex: chave API)
       unsubSettings = onSnapshot(doc(db, 'config', 'settings'), (docSnap) => {
         if (docSnap.exists()) {
-          const data = docSnap.data();
-          // Migração automática e suporte a múltiplas chaves
-          const keys = data.apifyKeys || (data.apifyKey ? [data.apifyKey] : []);
-          setSettings({
-            ...data,
-            apifyKey: data.apifyKey || (keys[0] || ''),
-            apifyKeys: keys
-          } as any);
+          setSettings(docSnap.data() as { apifyKey: string; lastSync?: string; lastResync?: string });
         }
       }, (error) => console.error('Erro ao carregar configurações:', error));
 
@@ -2060,12 +2046,8 @@ const App: React.FC = () => {
             });
           });
 
-          // 4. Update competition reset timestamp - Anchor to 20:00 of the reset day
-          const resetAnchor = new Date();
-          resetAnchor.setHours(20, 0, 0, 0);
-          // If for some reason reset is done before 20h, it refers to today's 20h (or yesterday's?)
-          // Assuming resets always happen AFTER 20h or mean to start the cycle at 20h.
-          batch.update(doc(db, 'competitions', cid), { lastDailyReset: resetAnchor.getTime() });
+          // 4. Update competition reset timestamp
+          batch.update(doc(db, 'competitions', cid), { lastDailyReset: Date.now() });
 
           await batch.commit();
           if (Object.keys(balanceIncrements).length === 0) {
@@ -2292,12 +2274,10 @@ const App: React.FC = () => {
             });
           });
 
-          // 7. Reset competitions lastDailyReset to now - Anchor to 20:00
-          const resetAnchor = new Date();
-          resetAnchor.setHours(20, 0, 0, 0);
+          // 7. Reset competitions lastDailyReset to now
           const compsSnap = await getDocs(collection(db, 'competitions'));
           compsSnap.docs.forEach(cDoc => {
-            batch.update(cDoc.ref, { lastDailyReset: resetAnchor.getTime() });
+            batch.update(cDoc.ref, { lastDailyReset: Date.now() });
           });
 
           await batch.commit();
@@ -2668,7 +2648,7 @@ const App: React.FC = () => {
                     user.role === 'administrativo' ? "Administrativo" : "Gestão"
                 } />
               )}
-              <NavItem active={view === 'SETTINGS'} onClick={() => setView('SETTINGS')} icon={<SettingsIcon />} label="Configurações" />
+              <NavItem active={view === 'SETTINGS'} onClick={() => setView('SETTINGS')} icon={<Settings />} label="Configurações" />
 
               <div className="pt-2">
                 <NavItem active={view === 'SUGGESTIONS'} onClick={() => setView('SUGGESTIONS')} icon={<MessageSquare />} label="Sugestões" />
@@ -2796,18 +2776,6 @@ const App: React.FC = () => {
                     competitions={competitions}
                     registrations={registrations}
                     announcements={announcements}
-                    sessionSyncedIds={sessionSyncedIds}
-                    setSessionSyncedIds={setSessionSyncedIds}
-                    syncing={syncing}
-                    setSyncing={setSyncing}
-                    syncProgress={syncProgress}
-                    setSyncProgress={setSyncProgress}
-                    syncTotal={syncTotal}
-                    setSyncTotal={setSyncTotal}
-                    syncingPostId={syncingPostId}
-                    setSyncingPostId={setSyncingPostId}
-                    syncingCompId={syncingCompId}
-                    setSyncingCompId={setSyncingCompId}
                     timerConfig={timerConfig}
                     handleUpdateTimer={handleUpdateTimer}
                     onSettingsUpdate={(s) => setSettings(s)}
@@ -2885,8 +2853,6 @@ const App: React.FC = () => {
                     setIsCreatingComp={setIsCreatingComp}
                     editingUser={editingUser}
                     setEditingUser={setEditingUser}
-                    apifyKeySync={apifyKeySync}
-                    setApifyKeySync={setApifyKeySync}
                     editName={editName}
                     setEditName={setEditName}
                     editPass={editPass}
@@ -5122,53 +5088,6 @@ const FinancialRow = ({ user, onViewLinks, compId, isPaidView }: { user: User, o
   );
 };
 
-// Componente para exibir uma transação individual no filtro diário
-const DailyTransactionRow = ({ transaction, users }: { transaction: Transaction, users: User[] }) => {
-  const user = users.find(u => u.uid === transaction.userId);
-  return (
-    <div className="grid grid-cols-[1.5fr_1fr_1.5fr_150px_220px] gap-4 items-center py-4 px-8 hover:bg-white/[0.02] transition-all group border-b border-zinc-900/50 last:border-0 min-h-[72px]">
-      <div className="flex items-center gap-4 min-w-0">
-        <div className="shrink-0 relative">
-          <img src={user?.photoURL || `https://ui-avatars.com/api/?name=${user?.displayName || 'U'}`} className="w-12 h-12 rounded-2xl object-cover border border-zinc-800 shadow-xl" alt="" />
-          <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 border-2 border-black flex items-center justify-center">
-            <CheckCircle2 className="w-2 h-2 text-black" />
-          </div>
-        </div>
-        <div className="flex flex-col min-w-0">
-          <span className="font-black text-[13px] text-white truncate uppercase tracking-tight leading-tight">{user?.displayName || 'Usuário'}</span>
-          <span className="text-zinc-600 text-[9px] font-black uppercase opacity-60 tracking-wider mt-0.5">{new Date(transaction.timestamp).toLocaleTimeString('pt-BR')}</span>
-        </div>
-      </div>
-      <div className="flex flex-col min-w-0">
-        <div className="flex items-center gap-1.5 mb-1">
-          <CreditCard className="w-3 h-3 text-zinc-700" />
-          <span className="text-zinc-600 text-[8px] font-black uppercase tracking-widest whitespace-nowrap">CHAVE PIX</span>
-        </div>
-        <span className="font-black text-[10px] text-zinc-400 truncate tracking-tight uppercase select-all">{user?.pixKey || 'NÃO INFORMADA'}</span>
-      </div>
-      <div className="flex flex-col min-w-0">
-        <div className="flex items-center gap-1.5 mb-1">
-          <Coins className="w-3 h-3 text-emerald-500/50" />
-          <span className="text-zinc-600 text-[8px] font-black uppercase tracking-widest">VALOR PAGO</span>
-        </div>
-        <p className="text-[16px] font-black tabular-nums text-emerald-500 tracking-tighter">
-          R$ {transaction.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-        </p>
-      </div>
-      <div className="text-center">
-        <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-500 text-[9px] font-black uppercase tracking-widest border border-emerald-500/20 shadow-lg shadow-emerald-500/5">
-          PAGAMENTO ÚNICO
-        </span>
-      </div>
-      <div className="flex items-center justify-end">
-        <div className="flex items-center gap-2 px-5 py-2.5 bg-zinc-900 border border-zinc-800 text-zinc-500 rounded-xl text-[9px] font-black uppercase tracking-widest opacity-60">
-          <ShieldCheck className="w-3.5 h-3.5" /> LIQUIDADO
-        </div>
-      </div>
-    </div>
-  );
-};
-
 
 const AdminPanel = ({
   userRole,
@@ -5209,18 +5128,6 @@ const AdminPanel = ({
   handleRankingResetOnly,
   handleResetRankingSimple,
   suggestions,
-  sessionSyncedIds,
-  setSessionSyncedIds,
-  syncing,
-  setSyncing,
-  syncProgress,
-  setSyncProgress,
-  syncTotal,
-  setSyncTotal,
-  syncingPostId,
-  setSyncingPostId,
-  syncingCompId,
-  setSyncingCompId,
   compTitle,
   setCompTitle,
   compRankingMetric,
@@ -5284,34 +5191,20 @@ const AdminPanel = ({
   handleSystemCleanup,
   rejectionReason,
   setRejectionReason,
-  setRejectionModal,
-  apifyKeySync,
-  setApifyKeySync
+  setRejectionModal
 }: {
   userRole: UserRole;
   posts: Post[];
   pendingUsers: User[];
   approvedUsers: User[];
   archivedUsers: User[];
-  settings: Settings;
+  settings: { apifyKey: string; lastSync?: string; lastResync?: string };
   competitions: Competition[];
   registrations: CompetitionRegistration[];
   announcements: Announcement[];
-  sessionSyncedIds: string[];
-  setSessionSyncedIds: (v: any) => void;
-  syncing: boolean;
-  setSyncing: (v: boolean) => void;
-  syncProgress: number;
-  setSyncProgress: (v: number) => void;
-  syncTotal: number;
-  setSyncTotal: (v: number) => void;
-  syncingPostId: string | null;
-  setSyncingPostId: (v: string | null) => void;
-  syncingCompId: string | null;
-  setSyncingCompId: (v: string | null) => void;
   timerConfig: { enabled: boolean; endTime: number | null; targetTime: string; message: string };
   handleUpdateTimer: (config: { enabled: boolean; endTime: number | null; targetTime: string; message: string }) => Promise<void>;
-  onSettingsUpdate: (s: Settings) => void;
+  onSettingsUpdate: (s: { apifyKey: string; lastSync?: string; lastResync?: string }) => void;
   editingCompId: string | null;
   setEditingCompId: (val: string | null) => void;
   setCompToDelete: (val: string | null) => void;
@@ -5402,18 +5295,20 @@ const AdminPanel = ({
   rejectionReason: string;
   setRejectionReason: (v: string) => void;
   setRejectionModal: (v: { isOpen: boolean; postId: string; status: PostStatus }) => void;
-  apifyKeySync: string;
-  setApifyKeySync: (v: string) => void;
 }) => {
   const [tab, setTab] = useState<'VISAO_GERAL' | 'POSTS' | 'USERS' | 'USERS_APPROVED' | 'COMPETITIONS' | 'SYNC' | 'REGISTROS' | 'AVISOS' | 'TIMER' | 'FINANCEIRO' | 'ACESSOS' | 'SUGESTOES' | 'RESSINCRONIZACAO' | 'SINCRONIZACAO' | 'ARCHIVED' | 'RELATORIOS' | 'REMOVED_POSTS' | 'REMOVAL_REQUESTS'>('VISAO_GERAL');
   const [selectedSyncCompId, setSelectedSyncCompId] = useState<string>('ALL');
   const [selectedResetCompId, setSelectedResetCompId] = useState<string>('');
   const [auditUserId, setAuditUserId] = useState<string | null>(null);
   const [selectedCompId, setSelectedCompId] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState(0);
+  const [syncTotal, setSyncTotal] = useState(0);
+  const [syncingCompId, setSyncingCompId] = useState<string | null>(null);
+  const [syncingPostId, setSyncingPostId] = useState<string | null>(null);
   const [apifyKey, setApifyKey] = useState(settings.apifyKey);
   const [financeTab, setFinanceTab] = useState<'RESUMO' | 'PENDING' | 'REALIZED'>('RESUMO');
   const [financeCompId, setFinanceCompId] = useState<string>(() => competitions[0]?.id || '');
-  const [financeDateFilter, setFinanceDateFilter] = useState('');
   const [newUserName, setNewUserName] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserPass, setNewUserPass] = useState('');
@@ -5421,44 +5316,6 @@ const AdminPanel = ({
   const [creatingUser, setCreatingUser] = useState(false);
   const [syncDetailCompId, setSyncDetailCompId] = useState<string | null>(null);
   const [validatedPostsLocal, setValidatedPostsLocal] = useState<string[]>([]);
-  const [realizedPayments, setRealizedPayments] = useState<Transaction[]>([]);
-  const [loadingFinancials, setLoadingFinancials] = useState(false);
-
-  const isSameDay = (timestamp: number, dateStr: string) => {
-    if (!dateStr) return true;
-    const date = new Date(timestamp);
-    const filterDate = new Date(dateStr + 'T12:00:00'); // Use mid-day to avoid TZ issues
-    return date.getFullYear() === filterDate.getFullYear() &&
-           date.getMonth() === filterDate.getMonth() &&
-           date.getDate() === filterDate.getDate();
-  };
-
-  useEffect(() => {
-    const fetchFilteredTransactions = async () => {
-      if (tab === 'FINANCEIRO' && financeTab === 'REALIZED' && financeDateFilter && financeCompId) {
-        setLoadingFinancials(true);
-        try {
-          // Busca transações da competição
-          const q = query(
-            collection(db, 'transactions'), 
-            where('competitionId', '==', financeCompId),
-            orderBy('timestamp', 'desc')
-          );
-          const snap = await getDocs(q);
-          const allTrans = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
-          
-          // Filtra manualmente por dia (mais simples que lidar com timestamps complexos no Firestore query)
-          const filtered = allTrans.filter(t => isSameDay(t.timestamp, financeDateFilter));
-          setRealizedPayments(filtered);
-        } catch (e) {
-          console.error("Erro fetch transações filtradas", e);
-        } finally {
-          setLoadingFinancials(false);
-        }
-      }
-    };
-    fetchFilteredTransactions();
-  }, [tab, financeTab, financeDateFilter, financeCompId]);
 
   // States for Admin Manual Link Submission
   const [adminManualUrl, setAdminManualUrl] = useState('');
@@ -5543,24 +5400,11 @@ const AdminPanel = ({
   }, [approvedUsers, selectedMetaComp]);
 
   const postsToday = useMemo(() => {
-    const now = new Date();
-    const threshold = new Date(now);
-    threshold.setHours(20, 0, 0, 0);
-    
-    if (now < threshold) {
-      threshold.setDate(threshold.getDate() - 1);
-    }
-    
-    const startTime = threshold.getTime();
-    
-    return posts.filter(p => {
-      const isApproved = p.status === 'approved' || p.status === 'synced';
-      const isWithinComp = !selectedMetaComp || p.competitionId === selectedMetaComp.id;
-      // Considera videos aprovados/sincronizados após o reset das 20h
-      const postTime = (p.approvedAt || p.timestamp || 0);
-      return isApproved && isWithinComp && postTime >= startTime;
-    }).length;
-  }, [posts, selectedMetaComp]);
+    return approvedUsers.reduce((sum, u) => {
+      if (!selectedMetaComp) return sum + (u.dailyPosts || 0);
+      return sum + (u.competitionStats?.[selectedMetaComp.id]?.dailyPosts || 0);
+    }, 0);
+  }, [approvedUsers, selectedMetaComp]);
 
   // Fallback para posts rejeitados (usa o array posts já que não temos contador no perfil)
   // Com o limite aumentado para 10.000, deve ser suficiente para quase todos os casos
@@ -5776,68 +5620,13 @@ const AdminPanel = ({
       alert('Por favor, insira uma chave antes de salvar.');
       return;
     }
-    
-    // Evitar duplicatas
-    if (settings.apifyKeys?.includes(trimmedKey)) {
-      alert('Esta chave já está na lista.');
-      return;
-    }
-
     try {
-      const newKeys = [...(settings.apifyKeys || []), trimmedKey];
-      await updateDoc(doc(db, 'config', 'settings'), { 
-        apifyKeys: newKeys,
-        apifyKey: trimmedKey // Mantém a última como principal por compatibilidade
-      });
-      setApifyKey(''); // Limpa o input após adicionar
-      alert('✅ Chave API adicionada com sucesso!');
+      await updateDoc(doc(db, 'config', 'settings'), { apifyKey: trimmedKey });
+      setApifyKey(trimmedKey);
+      onSettingsUpdate({ ...settings, apifyKey: trimmedKey });
+      alert('✅ Chave API salva com sucesso!\nEspaços em branco foram removidos automaticamente.');
     } catch (error: any) {
       alert(`❌ Erro ao salvar chave: ${error.message}`);
-    }
-  };
-
-  const handleDeleteApiKey = async (keyToDelete: string) => {
-    if (!confirm('Tem certeza que deseja remover esta chave?')) return;
-    try {
-      const newKeys = (settings.apifyKeys || []).filter(k => k !== keyToDelete);
-      await updateDoc(doc(db, 'config', 'settings'), { 
-        apifyKeys: newKeys,
-        apifyKey: newKeys[0] || '' // Atualiza a principal
-      });
-      alert('✅ Chave removida.');
-    } catch (error: any) {
-      alert(`❌ Erro ao remover chave: ${error.message}`);
-    }
-  };
-
-  const handleSaveSyncKey = async () => {
-    const trimmedKey = apifyKeySync.trim();
-    if (!trimmedKey) {
-      alert('Por favor, insira uma chave antes de salvar.');
-      return;
-    }
-    if (settings.apifyKeysSync?.includes(trimmedKey)) {
-      alert('Esta chave já está na lista.');
-      return;
-    }
-    try {
-      const newKeys = [...(settings.apifyKeysSync || []), trimmedKey];
-      await updateDoc(doc(db, 'config', 'settings'), { apifyKeysSync: newKeys });
-      setApifyKeySync('');
-      alert('✅ Chave de Sincronização Inicial adicionada!');
-    } catch (error: any) {
-      alert(`❌ Erro ao salvar chave: ${error.message}`);
-    }
-  };
-
-  const handleDeleteSyncKey = async (keyToDelete: string) => {
-    if (!confirm('Remover esta chave de sincronização inicial?')) return;
-    try {
-      const newKeys = (settings.apifyKeysSync || []).filter(k => k !== keyToDelete);
-      await updateDoc(doc(db, 'config', 'settings'), { apifyKeysSync: newKeys });
-      alert('✅ Chave removida.');
-    } catch (error: any) {
-      alert(`❌ Erro ao remover chave: ${error.message}`);
     }
   };
 
@@ -5866,20 +5655,17 @@ const AdminPanel = ({
   };
 
   const handleSync = async () => {
-    const keys = settings.apifyKeys && settings.apifyKeys.length > 0 ? settings.apifyKeys : [apifyKey];
-    if (keys.length === 0 || !keys[0]) {
+    if (!apifyKey) {
       alert('Por favor, insira sua chave Apify para sincronizar.');
       return;
     }
-
     setSyncing(true);
     try {
-      // Save key to Firestore if it's the only one
-      if (!settings.apifyKeys || settings.apifyKeys.length === 0) {
-        await setDoc(doc(db, 'config', 'settings'), { apifyKey });
-      }
+      // Save key to Firestore
+      await setDoc(doc(db, 'config', 'settings'), { apifyKey });
+      onSettingsUpdate({ apifyKey });
 
-      await syncViewsWithApify(keys);
+      await syncViewsWithApify(apifyKey);
       alert('Sincronização concluída com sucesso!');
     } catch (error: any) {
       alert(`Erro na sincronização: ${error.message}`);
@@ -5889,15 +5675,13 @@ const AdminPanel = ({
   };
 
   const handleSingleSync = async (post: Post) => {
-    const keys = settings.apifyKeys && settings.apifyKeys.length > 0 ? settings.apifyKeys : [apifyKey];
-    if (keys.length === 0 || !keys[0]) {
+    if (!apifyKey) {
       alert('Por favor, insira sua chave Apify para sincronizar.');
       return;
     }
-
     setSyncingPostId(post.id);
     try {
-      await syncSinglePostWithApify(keys, post, false);
+      await syncSinglePostWithApify(apifyKey, post, true);
       alert('Sincronização do vídeo concluída!');
     } catch (error: any) {
       alert(`Erro na sincronização: ${error.message}`);
@@ -5907,16 +5691,10 @@ const AdminPanel = ({
   };
 
   const handleSyncApprovedSequentially = async () => {
-    // Prioriza chaves exclusivas de sincronização se fornecidas
-    const keys = (settings.apifyKeysSync && settings.apifyKeysSync.length > 0)
-      ? settings.apifyKeysSync 
-      : (settings.apifyKeys && settings.apifyKeys.length > 0 ? settings.apifyKeys : [apifyKey]);
-
-    if (keys.length === 0 || !keys[0]) {
-      alert('Configurações de API ausentes.');
+    if (!apifyKey) {
+      alert('Por favor, insira sua chave Apify para sincronizar.');
       return;
     }
-
     const approvedPosts = posts.filter(p => p.status === 'approved');
     if (approvedPosts.length === 0) {
       alert('Nenhum vídeo aprovado para sincronizar.');
@@ -5924,86 +5702,21 @@ const AdminPanel = ({
     }
 
     setSyncing(true);
-    setSyncTotal(approvedPosts.length);
-    setSyncProgress(0);
-    setSessionSyncedIds([]);
-    
-    let completed = 0;
     try {
       for (const post of approvedPosts) {
         setSyncingPostId(post.id);
-        await syncSinglePostWithApify(keys, post, false);
+        await syncSinglePostWithApify(apifyKey, post, true);
+        // Important: Update status to synced after successful sync
         await updateDoc(doc(db, 'posts', post.id), { status: 'synced' });
-        completed++;
-        setSyncProgress(completed);
-        setSessionSyncedIds((prev: string[]) => [...prev, post.id]);
       }
+      // Update last sync timestamp
       await updateDoc(doc(db, 'config', 'settings'), { lastSync: new Date().toISOString() });
-      alert('Sincronização sequencial concluída!');
-    } catch (e: any) {
-      alert(`Erro na sincronização: ${e.message}`);
+      alert('Sincronização sequencial de todos os vídeos aprovados concluída!');
+    } catch (error: any) {
+      alert(`Erro na sincronização sequencial: ${error.message}`);
     } finally {
       setSyncing(false);
       setSyncingPostId(null);
-      setSyncProgress(0);
-      setSyncTotal(0);
-    }
-  };
-
-  const handleSyncApprovedParallel = async () => {
-    const syncKeys = settings.apifyKeysSync || [];
-    if (syncKeys.length < 2) {
-      if (confirm('Você não tem chaves exclusivas de sincronização configuradas (mínimo 2). Deseja usar o modo sequencial com as chaves disponíveis?')) {
-        handleSyncApprovedSequentially();
-      }
-      return;
-    }
-
-    const approvedPosts = posts.filter(p => p.status === 'approved');
-    if (approvedPosts.length === 0) {
-      alert('Nenhum vídeo aprovado para sincronizar.');
-      return;
-    }
-
-    setSyncing(true);
-    setSyncTotal(approvedPosts.length);
-    setSyncProgress(0);
-    setSessionSyncedIds([]);
-
-    const mid = Math.ceil(approvedPosts.length / 2);
-    const forwardGroup = approvedPosts.slice(0, mid);
-    const backwardGroup = approvedPosts.slice(mid).reverse();
-
-    let completed = 0;
-    const worker = async (group: Post[], key: string) => {
-      for (const post of group) {
-        try {
-          setSyncingPostId(post.id);
-          await syncSinglePostWithApify([key], post, false);
-          await updateDoc(doc(db, 'posts', post.id), { status: 'synced' });
-          completed++;
-          setSyncProgress(completed);
-          setSessionSyncedIds(prev => [...prev, post.id]);
-        } catch (err) {
-          console.error(`Erro no worker com chave ${key}:`, err);
-        }
-      }
-    };
-
-    try {
-      await Promise.all([
-        worker(forwardGroup, syncKeys[0]),
-        worker(backwardGroup, syncKeys[1])
-      ]);
-      await updateDoc(doc(db, 'config', 'settings'), { lastSync: new Date().toISOString() });
-      alert('Sincronização Paralela (Dual-Sync) concluída com sucesso!');
-    } catch (e: any) {
-      alert('Erro na sincronização paralela: ' + e.message);
-    } finally {
-      setSyncing(false);
-      setSyncingPostId(null);
-      setSyncProgress(0);
-      setSyncTotal(0);
     }
   };
 
@@ -6027,12 +5740,10 @@ const AdminPanel = ({
   };
 
   const handleSyncAllSequentially = async () => {
-    const keys = settings.apifyKeys && settings.apifyKeys.length > 0 ? settings.apifyKeys : [apifyKey];
-    if (keys.length === 0 || !keys[0]) {
+    if (!apifyKey) {
       alert('Por favor, insira sua chave Apify para sincronizar.');
       return;
     }
-
     const syncedPosts = posts.filter(p => p.status === 'synced');
     if (syncedPosts.length === 0) {
       alert('Nenhum vídeo sincronizado para ressincronizar.');
@@ -6042,13 +5753,11 @@ const AdminPanel = ({
     setSyncing(true);
     setSyncProgress(0);
     setSyncTotal(syncedPosts.length);
-    setSessionSyncedIds([]);
     try {
       let current = 0;
       for (const post of syncedPosts) {
         setSyncingPostId(post.id);
-        await syncSinglePostWithApify(keys, post, false);
-        setSessionSyncedIds((prev: string[]) => [...prev, post.id]);
+        await syncSinglePostWithApify(apifyKey, post, true);
         current++;
         setSyncProgress(current);
       }
@@ -6064,69 +5773,11 @@ const AdminPanel = ({
     }
   };
 
-  const handleSyncAllParallel = async () => {
-    const keys = settings.apifyKeys && settings.apifyKeys.length > 1 ? settings.apifyKeys : [apifyKey];
-    if (keys.length < 2) {
-      alert('O modo Dual-Sync requer pelo menos 2 chaves de API configuradas nas Configurações. Usando modo sequencial...');
-      handleSyncAllSequentially();
-      return;
-    }
-
-    const syncedPosts = posts.filter(p => p.status === 'synced' || p.status === 'banned');
-    if (syncedPosts.length === 0) {
-      alert('Nenhum vídeo sincronizado para ressincronizar.');
-      return;
-    }
-
-    setSyncing(true);
-    setSyncProgress(0);
-    setSyncTotal(syncedPosts.length);
-    setSessionSyncedIds([]);
-    
-    // Divide os posts: um worker do início, outro do fim
-    const mid = Math.ceil(syncedPosts.length / 2);
-    const forwardGroup = syncedPosts.slice(0, mid);
-    const backwardGroup = syncedPosts.slice(mid).reverse();
-
-    let completed = 0;
-
-    const worker = async (list: Post[], key: string) => {
-      for (const post of list) {
-        setSyncingPostId(post.id);
-        try {
-          // Usa apenas a chave específica deste worker
-          await syncSinglePostWithApify([key], post, false);
-          setSessionSyncedIds((prev: string[]) => [...prev, post.id]);
-          completed++;
-          setSyncProgress(completed);
-        } catch (e) {
-          console.error(`Erro no Dual-Sync (all) para o post ${post.id}:`, e);
-        }
-      }
-    };
-
-    try {
-      await Promise.all([
-        worker(forwardGroup, keys[0]),
-        worker(backwardGroup, keys[1])
-      ]);
-      alert('Sincronização Paralela (Dual-Sync) finalizada com sucesso!');
-    } catch (error: any) {
-      alert(`Erro no Dual-Sync: ${error.message}`);
-    } finally {
-      setSyncing(false);
-      setSyncingCompId(null);
-      setSyncingPostId(null);
-    }
-  };
-
   const handleSyncCompetitionSequentially = async (compId: string) => {
-    const keys = settings.apifyKeys && settings.apifyKeys.length > 0 ? settings.apifyKeys : [apifyKey];
-    if (keys.length === 0 || !keys[0]) {
+    if (!apifyKey) {
       alert('Por favor, insira sua chave Apify para sincronizar.');
       return;
     }
-
     const compPosts = posts.filter(p => p.competitionId === compId && (p.status === 'synced' || p.status === 'banned'));
     if (compPosts.length === 0) {
       alert('Nenhum vídeo nesta competição para ressincronizar.');
@@ -6137,74 +5788,17 @@ const AdminPanel = ({
     setSyncingCompId(compId);
     setSyncProgress(0);
     setSyncTotal(compPosts.length);
-    setSessionSyncedIds([]);
     try {
       let current = 0;
       for (const post of compPosts) {
         setSyncingPostId(post.id);
-        await syncSinglePostWithApify(keys, post, false);
-        setSessionSyncedIds((prev: string[]) => [...prev, post.id]);
+        await syncSinglePostWithApify(apifyKey, post, true);
         current++;
         setSyncProgress(current);
       }
       alert('Sincronização desta competição concluída com sucesso!');
     } catch (error: any) {
       alert(`Erro na sincronização: ${error.message}`);
-    } finally {
-      setSyncing(false);
-      setSyncingCompId(null);
-      setSyncingPostId(null);
-    }
-  };
-
-  const handleSyncCompetitionParallel = async (compId: string) => {
-    const keys = settings.apifyKeys && settings.apifyKeys.length > 1 ? settings.apifyKeys : [apifyKey];
-    if (keys.length < 2) {
-      alert('O modo Dual-Sync requer pelo menos 2 chaves de API configuradas. Usando modo sequencial...');
-      handleSyncCompetitionSequentially(compId);
-      return;
-    }
-
-    const compPosts = posts.filter(p => p.competitionId === compId && (p.status === 'synced' || p.status === 'banned'));
-    if (compPosts.length === 0) {
-      alert('Nenhum vídeo nesta competição para ressincronizar.');
-      return;
-    }
-
-    setSyncing(true);
-    setSyncingCompId(compId);
-    setSyncProgress(0);
-    setSyncTotal(compPosts.length);
-    setSessionSyncedIds([]);
-
-    const mid = Math.ceil(compPosts.length / 2);
-    const forwardGroup = compPosts.slice(0, mid);
-    const backwardGroup = compPosts.slice(mid).reverse();
-
-    let completed = 0;
-
-    const worker = async (list: Post[], key: string) => {
-      for (const post of list) {
-        setSyncingPostId(post.id);
-        try {
-          await syncSinglePostWithApify([key], post, false);
-          setSessionSyncedIds((prev: string[]) => [...prev, post.id]);
-          completed++;
-          setSyncProgress(completed);
-        } catch (e) {
-          console.error(`Erro no Dual-Sync (comp) para o post ${post.id}:`, e);
-        }
-      }
-    };
-
-    try {
-      await Promise.all([
-        worker(forwardGroup, keys[0]),
-        worker(backwardGroup, keys[1])
-      ]);
-      alert('Sincronização Paralela da Competição concluída!');
-    } catch (error: any) {
-      alert(`Erro no Dual-Sync: ${error.message}`);
     } finally {
       setSyncing(false);
       setSyncingCompId(null);
@@ -6272,98 +5866,27 @@ const AdminPanel = ({
 
         {userRole === 'admin' && (
           <div className="flex flex-wrap items-center gap-6 bg-zinc-900/50 p-6 rounded-[32px] border border-zinc-800/50">
-            {/* CONFIGURAÇÃO DA CHAVE API GERAL */}
-            <div className="flex flex-col gap-4 flex-1 min-w-[300px]">
-              <div className="flex flex-col gap-2">
-                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-2">
-                  Chaves Gerais (Ressincronização)
-                  <InfoTooltip text="Chaves usadas para a atualização periódica de todos os vídeos já auditados." />
-                </label>
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1 group">
-                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none group-focus-within:text-amber-500 transition-colors" />
-                    <input
-                      type="text"
-                      value={apifyKey}
-                      onChange={(e) => setApifyKey(e.target.value)}
-                      placeholder="Adicionar chave..."
-                      className="w-full bg-black border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-xs font-bold focus:border-amber-500 outline-none transition-all placeholder:text-zinc-700"
-                    />
-                  </div>
-                  <button
-                    onClick={handleSaveApiKey}
-                    className="px-6 py-3 bg-zinc-800 text-zinc-300 font-black rounded-xl hover:bg-zinc-700 active:scale-95 transition-all text-[10px] uppercase whitespace-nowrap"
-                  >
-                    Salvar
-                  </button>
+            {/* CONFIGURAÇÃO DA CHAVE API */}
+            <div className="flex flex-col gap-2 flex-1 min-w-[320px]">
+              <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Configuração Apify</label>
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1 group">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none group-focus-within:text-amber-500 transition-colors" />
+                  <input
+                    type="text"
+                    value={apifyKey}
+                    onChange={(e) => setApifyKey(e.target.value)}
+                    placeholder="Insira sua Chave API aqui"
+                    className="w-full bg-black border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-xs font-bold focus:border-amber-500 outline-none transition-all placeholder:text-zinc-700"
+                  />
                 </div>
+                <button
+                  onClick={handleSaveApiKey}
+                  className="px-6 py-3 gold-bg text-black font-black rounded-xl hover:scale-105 active:scale-95 transition-all shadow-lg shadow-amber-500/20 text-[10px] uppercase whitespace-nowrap"
+                >
+                  Salvar
+                </button>
               </div>
-
-              {settings.apifyKeys && settings.apifyKeys.length > 0 && (
-                <div className="flex flex-wrap gap-2 max-h-[80px] overflow-y-auto pr-2 custom-scrollbar">
-                  {settings.apifyKeys.map((key, idx) => (
-                    <div key={idx} className="flex items-center gap-2 bg-black/40 border border-zinc-800/50 px-3 py-1.5 rounded-lg group">
-                      <code className="text-[9px] text-zinc-500 font-mono truncate max-w-[80px]">
-                        {key.substring(0, 6)}...{key.substring(key.length - 4)}
-                      </code>
-                      <button 
-                        onClick={() => handleDeleteApiKey(key)}
-                        className="text-zinc-600 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
-                        title="Remover Chave"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* CONFIGURAÇÃO DA CHAVE API EXCLUSIVA PARA SINCRONISMO */}
-            <div className="flex flex-col gap-4 flex-1 min-w-[300px] border-l border-zinc-800/50 pl-6">
-              <div className="flex flex-col gap-2">
-                <label className="text-[10px] font-black text-amber-500 uppercase tracking-widest ml-1 flex items-center gap-2">
-                  <Zap className="w-3 h-3 fill-current" /> Chaves Sincronismo Inicial
-                  <InfoTooltip text="Chaves usadas exclusivamente para a primeira validação de links aprovados. Recomendado usar chaves diferentes das gerais." />
-                </label>
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1 group">
-                    <Zap className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none group-focus-within:text-amber-500 transition-colors" />
-                    <input
-                      type="text"
-                      value={apifyKeySync}
-                      onChange={(e) => setApifyKeySync(e.target.value)}
-                      placeholder="Adicionar chave sync..."
-                      className="w-full bg-black border border-amber-500/20 rounded-xl py-3 pl-12 pr-4 text-xs font-bold focus:border-amber-500 outline-none transition-all placeholder:text-zinc-700"
-                    />
-                  </div>
-                  <button
-                    onClick={handleSaveSyncKey}
-                    className="px-6 py-3 gold-bg text-black font-black rounded-xl hover:scale-105 active:scale-95 transition-all shadow-lg shadow-amber-500/20 text-[10px] uppercase whitespace-nowrap"
-                  >
-                    Adicionar
-                  </button>
-                </div>
-              </div>
-
-              {settings.apifyKeysSync && settings.apifyKeysSync.length > 0 && (
-                <div className="flex flex-wrap gap-2 max-h-[80px] overflow-y-auto pr-2 custom-scrollbar">
-                  {settings.apifyKeysSync.map((key, idx) => (
-                    <div key={idx} className="flex items-center gap-2 bg-amber-500/5 border border-amber-500/20 px-3 py-1.5 rounded-lg group">
-                      <code className="text-[9px] text-zinc-400 font-mono truncate max-w-[80px]">
-                        {key.substring(0, 6)}...{key.substring(key.length - 4)}
-                      </code>
-                      <button 
-                        onClick={() => handleDeleteSyncKey(key)}
-                        className="text-zinc-600 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
-                        title="Remover Chave"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
 
             {/* RESET DIÁRIO */}
@@ -7053,27 +6576,6 @@ const AdminPanel = ({
                   </select>
                 </div>
 
-                <div className="flex flex-col gap-1 px-2">
-                  <label className="text-[8px] font-black text-zinc-600 uppercase tracking-[0.2em] ml-1">Filtrar por Dia:</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="date"
-                      value={financeDateFilter}
-                      onChange={(e) => setFinanceDateFilter(e.target.value)}
-                      className="bg-black border border-zinc-800 rounded-xl py-2 px-4 text-[10px] font-black text-amber-500 outline-none focus:border-amber-500 transition-all cursor-pointer hover:bg-zinc-900 icon-calendar-white"
-                    />
-                    {financeDateFilter && (
-                      <button 
-                        onClick={() => setFinanceDateFilter('')}
-                        className="p-2.5 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all border border-red-500/20"
-                        title="Limpar Filtro"
-                      >
-                        <XCircle className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-
                 <div className="flex p-1 bg-black rounded-2xl border border-zinc-800">
                   {[
                     { id: 'RESUMO', label: 'DASHBOARD', icon: BarChart3 },
@@ -7429,46 +6931,11 @@ const AdminPanel = ({
                         <ListHeader columns={['INTEGRANTE', 'CHAVE PIX', 'SALDO', 'STATUS', 'GERENCIAR']} gridClass="grid-cols-[1.5fr_1fr_1.5fr_150px_220px]" />
                         <div className="max-h-[700px] overflow-y-auto custom-scrollbar">
                           {(() => {
-                            if (loadingFinancials) {
-                              return (
-                                <div className="py-32 text-center">
-                                  <RefreshCw className="w-10 h-10 text-amber-500 animate-spin mx-auto mb-4" />
-                                  <p className="text-zinc-600 font-black uppercase text-[10px] tracking-widest">Carregando dados financeiros...</p>
-                                </div>
-                              );
-                            }
-
-                            if (financeTab === 'REALIZED' && financeDateFilter) {
-                              return (
-                                <>
-                                  {realizedPayments.map(t => (
-                                    <DailyTransactionRow key={t.id} transaction={t} users={approvedUsers} />
-                                  ))}
-                                  {realizedPayments.length === 0 && (
-                                    <div className="py-32 text-center">
-                                      <History className="w-12 h-12 text-zinc-900 mx-auto mb-4" />
-                                      <p className="text-zinc-700 font-black uppercase text-[10px] tracking-widest">Nenhum pagamento registrado neste dia.</p>
-                                    </div>
-                                  )}
-                                </>
-                              );
-                            }
-
                             const filteredUsers = approvedUsers.filter(u => {
-                              if (financeDateFilter && financeTab === 'PENDING') {
-                                // Filtra usuários que tiveram posts aprovados na data selecionada
-                                const dailyPosts = posts.filter(p => 
-                                  p.userId === u.uid && 
-                                  p.competitionId === financeCompId && 
-                                  (p.status === 'approved' || p.status === 'synced') &&
-                                  p.approvedAt && isSameDay(p.approvedAt, financeDateFilter)
-                                );
-                                return dailyPosts.length > 0;
-                              }
-
                               const b = financeCompId ? (u.competitionStats?.[financeCompId]?.balance || 0) : 0;
                               const paid = financeCompId ? (u.competitionStats?.[financeCompId]?.paidTotal || 0) : 0;
                               if (financeTab === 'PENDING') return b > 0;
+                              // REALIZED: teve pagamento confirmado nesta competição
                               return paid > 0 && b <= 0;
                             });
                             
@@ -7655,11 +7122,8 @@ const AdminPanel = ({
                         <button
                           onClick={async () => {
                             setSyncingPostId(post.id);
-                            const keys = (settings.apifyKeysSync && settings.apifyKeysSync.length > 0)
-                              ? settings.apifyKeysSync 
-                              : (settings.apifyKeys && settings.apifyKeys.length > 0 ? settings.apifyKeys : [apifyKey]);
                             try {
-                              await syncSinglePostWithApify(keys, post, false);
+                              await syncSinglePostWithApify(apifyKey, post, true);
                               await updateDoc(doc(db, 'posts', post.id), { status: 'synced' });
                               alert('Vídeo sincronizado com sucesso!');
                             } catch (e: any) {
@@ -7683,32 +7147,22 @@ const AdminPanel = ({
               <div className="space-y-6">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-zinc-900/30 p-8 rounded-[40px] border border-zinc-800/50">
                   <div className="space-y-2">
-                    <h3 className="text-2xl font-black uppercase gold-gradient">Sincronização de Triagem</h3>
-                    <p className="text-zinc-500 font-bold text-xs uppercase tracking-widest">Validação inicial de links aprovados. Selecione uma competição ou processe todos.</p>
+                    <h3 className="text-2xl font-black uppercase gold-gradient">Sincronização por Competição</h3>
+                    <p className="text-zinc-500 font-bold text-xs uppercase tracking-widest">Selecione uma competição ou processe todos de forma sequencial.</p>
                     {settings.lastSync && (
                       <p className="text-amber-500/60 font-black text-[10px] uppercase tracking-[0.2em] mt-2">
                         ÚLTIMA SINCRONIZAÇÃO: {formatLastSyncDate(settings.lastSync)}
                       </p>
                     )}
                   </div>
-                  <div className="flex flex-wrap items-center gap-4">
-                    <button
-                      onClick={handleSyncApprovedParallel}
-                      disabled={syncing}
-                      className="px-8 py-5 bg-gradient-to-r from-amber-600 to-amber-500 text-black font-black rounded-2xl hover:scale-[1.02] transition-all flex items-center justify-center gap-3 shadow-[0_0_20px_rgba(245,158,11,0.3)] disabled:opacity-50"
-                    >
-                      {syncing ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
-                      DUAL-SYNC (ALTA PERFORMANCE)
-                    </button>
-                    <button
-                      onClick={handleSyncApprovedSequentially}
-                      disabled={syncing}
-                      className="px-8 py-5 bg-zinc-800 text-white font-black rounded-2xl hover:scale-[1.02] transition-all flex items-center justify-center gap-3 border border-zinc-700 disabled:opacity-50"
-                    >
-                      {syncing ? <RefreshCw className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
-                      SEQUENCIAL
-                    </button>
-                  </div>
+                  <button
+                    onClick={handleSyncApprovedSequentially}
+                    disabled={syncing}
+                    className="px-10 py-5 gold-bg text-black font-black rounded-2xl hover:scale-[1.02] transition-all flex items-center justify-center gap-3 shadow-2xl shadow-amber-500/20 disabled:opacity-50"
+                  >
+                    {syncing ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
+                    SINCRONIZAR TUDO (SEQUENCIAL)
+                  </button>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {competitions.map(comp => {
@@ -9068,33 +8522,18 @@ const AdminPanel = ({
                       <p className="text-zinc-500 font-bold text-xs uppercase tracking-widest">Atualização Individual de Métricas</p>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-4">
-                      <button
-                        onClick={() => handleSyncCompetitionSequentially(syncDetailCompId!)}
-                        disabled={syncing}
-                        className={`px-8 py-4 rounded-2xl border transition-all flex items-center gap-3 text-[10px] font-black uppercase tracking-widest
-                          ${syncingCompId === syncDetailCompId && !sessionSyncedIds.length 
-                            ? 'bg-amber-500 text-black border-amber-500 shadow-xl shadow-amber-500/20' 
-                            : 'bg-zinc-800/50 border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:text-white'
-                          } disabled:opacity-50`}
-                      >
-                        {syncingCompId === syncDetailCompId && !sessionSyncedIds.length ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
-                        SEQUENCIAL
-                      </button>
-
-                      <button
-                        onClick={() => handleSyncCompetitionParallel(syncDetailCompId!)}
-                        disabled={syncing}
-                        className={`px-8 py-4 rounded-2xl border transition-all flex items-center gap-3 text-[10px] font-black uppercase tracking-widest
-                          ${syncingCompId === syncDetailCompId
-                            ? 'bg-amber-500 text-black border-amber-500 shadow-xl shadow-amber-500/20' 
-                            : 'gold-bg text-black hover:scale-[1.02]'
-                          } disabled:opacity-50`}
-                      >
-                        {syncingCompId === syncDetailCompId ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
-                        {syncingCompId === syncDetailCompId ? `DUAL-SYNC: ${syncProgress} / ${syncTotal}` : 'DUAL-SYNC (ALTA PERFORMANCE)'}
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => handleSyncCompetitionSequentially(syncDetailCompId!)}
+                      disabled={syncing}
+                      className={`px-8 py-4 rounded-2xl border transition-all flex items-center gap-3 text-xs font-black uppercase tracking-widest
+                        ${syncingCompId === syncDetailCompId 
+                          ? 'bg-amber-500 text-black border-amber-500 shadow-xl shadow-amber-500/20' 
+                          : 'bg-amber-500/10 border-amber-500/30 text-amber-500 hover:bg-amber-500 hover:text-black'
+                        } disabled:opacity-50`}
+                    >
+                      {syncingCompId === syncDetailCompId ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
+                      {syncingCompId === syncDetailCompId ? `SINCRONIZANDO: ${syncProgress} / ${syncTotal}` : 'RESSINCRONIZAR TODOS'}
+                    </button>
                   </div>
 
                   <button
@@ -9106,19 +8545,8 @@ const AdminPanel = ({
                 </div>
 
                 <div className="grid grid-cols-1 gap-4">
-                  {posts.filter(p => (p.status === 'synced' || p.status === 'banned') && p.competitionId === syncDetailCompId).map(post => {
-                    const isSyncedInSession = sessionSyncedIds.includes(post.id);
-                    const isCurrentlyPending = syncing && syncingCompId === syncDetailCompId && !isSyncedInSession;
-
-                    return (
-                      <div 
-                        key={post.id} 
-                        className={`p-6 rounded-[32px] glass-card border transition-all duration-500 group flex flex-col md:flex-row items-center gap-8 
-                          ${post.status === 'banned' ? 'border-red-500/10 opacity-60' : 'border-zinc-800/50 hover:border-amber-500/30'}
-                          ${isCurrentlyPending ? 'opacity-30 grayscale blur-[1px]' : 'opacity-100 grayscale-0'}
-                          ${isSyncedInSession ? 'border-emerald-500/30 bg-emerald-500/[0.02]' : ''}
-                        `}
-                      >
+                  {posts.filter(p => (p.status === 'synced' || p.status === 'banned') && p.competitionId === syncDetailCompId).map(post => (
+                    <div key={post.id} className={`p-6 rounded-[32px] glass-card border transition-all duration-500 group flex flex-col md:flex-row items-center gap-8 ${post.status === 'banned' ? 'border-red-500/10 opacity-60' : 'border-zinc-800/50 hover:border-amber-500/30'}`}>
                       {/* Ícone da Plataforma com Glow */}
                       <div className={`w-20 h-20 rounded-3xl flex items-center justify-center shrink-0 transition-all duration-500 group-hover:scale-110 relative ${
                         post.platform === 'tiktok' ? 'bg-amber-500/10 text-amber-500 shadow-lg shadow-amber-500/5' :
@@ -9138,11 +8566,7 @@ const AdminPanel = ({
                             {post.userName}
                           </p>
                           <div className="flex gap-2">
-                            {isSyncedInSession ? (
-                              <span className="px-3 py-1 rounded-full bg-emerald-500 text-black text-[8px] font-black uppercase tracking-widest border border-emerald-400 flex items-center gap-1 shadow-lg shadow-emerald-500/20 animate-in zoom-in-50 duration-300">
-                                <CheckCircle2 className="w-3 h-3" /> OK / CONCLUÍDO
-                              </span>
-                            ) : post.status === 'synced' ? (
+                            {post.status === 'synced' ? (
                               <span className="px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-500 text-[8px] font-black uppercase tracking-widest border border-emerald-500/20">ATUALIZADO</span>
                             ) : (
                               <span className="px-3 py-1 rounded-full bg-red-500/10 text-red-500 text-[8px] font-black uppercase tracking-widest border border-red-500/20">SUSPENSO</span>
@@ -9182,47 +8606,45 @@ const AdminPanel = ({
                           <ExternalLink className="w-5 h-5" />
                         </a>
 
+                        {post.status === 'synced' ? (
+                          <button
+                            onClick={async () => {
+                              try {
+                                await updateDoc(doc(db, 'posts', post.id), { status: 'banned' });
+                                await updateUserMetrics(post.userId);
+                                alert('Vídeo suspenso com sucesso.');
+                              } catch(e: any) { alert('Erro: ' + e.message); }
+                            }}
+                            className="px-6 py-3.5 bg-red-500/10 text-red-500 font-black rounded-2xl hover:bg-red-500 hover:text-white transition-all text-[9px] tracking-widest uppercase"
+                          >
+                            SUSPENDER
+                          </button>
+                        ) : (
+                          <button
+                            onClick={async () => {
+                              try {
+                                await updateDoc(doc(db, 'posts', post.id), { status: 'synced' });
+                                await updateUserMetrics(post.userId);
+                                alert('Vídeo reativado com sucesso.');
+                              } catch(e: any) { alert('Erro: ' + e.message); }
+                            }}
+                            className="px-6 py-3.5 bg-emerald-500/10 text-emerald-500 font-black rounded-2xl hover:bg-emerald-500 hover:text-black transition-all text-[9px] tracking-widest uppercase"
+                          >
+                            REATIVAR
+                          </button>
+                        )}
+                        
                         <button
                           onClick={async () => {
-                            if (!confirm('Tem certeza que deseja voltar este link para a sincronização? As métricas atuais serão ZERADAS para que ele seja recolocado no ranking corretamente.')) return;
+                            setSyncingPostId(post.id);
                             try {
-                              await updateDoc(doc(db, 'posts', post.id), { 
-                                status: 'approved',
-                                views: 0,
-                                likes: 0,
-                                comments: 0,
-                                shares: 0,
-                                saves: 0,
-                                viewsBaseline: 0,
-                                likesBaseline: 0,
-                                commentsBaseline: 0,
-                                sharesBaseline: 0,
-                                savesBaseline: 0
-                              });
-                              await updateUserMetrics(post.userId);
-                              alert('Link enviado de volta para Sincronização e métricas zeradas.');
-                            } catch(e: any) { alert('Erro: ' + e.message); }
-                          }}
-                          className="w-12 h-12 rounded-2xl bg-zinc-800 text-zinc-400 flex items-center justify-center hover:bg-blue-600 hover:text-white transition-all shadow-lg"
-                          title="Voltar para Sincronização (Zerar Métricas)"
-                        >
-                          <RotateCcw className="w-5 h-5" />
-                        </button>
-
-                        <button
-                          onClick={async () => {
-                            const keys = settings.apifyKeys && settings.apifyKeys.length > 0 ? settings.apifyKeys : [apifyKey];
-                            if (keys.length === 0 || !keys[0]) {
-                              alert('Configurações de API ausentes.');
-                              return;
+                              await syncSinglePostWithApify(apifyKey, post, true);
+                              alert('Métricas atualizadas!');
+                            } catch (e: any) {
+                              alert('Erro ao atualizar: ' + e.message);
+                            } finally {
+                              setSyncingPostId(null);
                             }
-                            try {
-                              setSyncingPostId(post.id);
-                              await syncSinglePostWithApify(keys, post, false);
-                              setSessionSyncedIds((prev: string[]) => [...prev, post.id]);
-                              alert('Sincronização individual concluída!');
-                            } catch (e: any) { alert('Erro: ' + e.message); }
-                            finally { setSyncingPostId(null); }
                           }}
                           disabled={syncingPostId === post.id}
                           className={`flex items-center justify-center gap-3 px-6 py-3.5 rounded-2xl transition-all text-[9px] tracking-widest uppercase font-black whitespace-nowrap
@@ -9236,45 +8658,33 @@ const AdminPanel = ({
                         </button>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-zinc-900/30 p-8 rounded-[40px] border border-zinc-800/50">
-                <div className="space-y-2">
-                  <h3 className="text-2xl font-black uppercase gold-gradient">Ressincronização de Rankings</h3>
-                  <p className="text-zinc-500 font-bold text-xs uppercase tracking-[0.2em]">Selecione uma competição para atualizar as métricas gerais.</p>
+                  ))}
                 </div>
-                <div className="flex flex-wrap items-center gap-4">
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-zinc-900/30 p-8 rounded-[40px] border border-zinc-800/50">
+                  <div className="space-y-2">
+                    <h3 className="text-2xl font-black uppercase gold-gradient">Ressincronização de Rankings</h3>
+                    <p className="text-zinc-500 font-bold text-xs uppercase tracking-[0.2em]">Selecione uma competição para atualizar as métricas gerais.</p>
+                  </div>
                   <button
                     onClick={handleSyncAllSequentially}
-                    disabled={syncing}
-                    className="px-8 py-5 bg-zinc-800 text-zinc-400 font-black rounded-2xl border border-zinc-700 hover:bg-zinc-700 hover:text-white transition-all flex items-center justify-center gap-3 disabled:opacity-50"
-                  >
-                    {syncing && !syncingCompId ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
-                    SEQUENCIAL
-                  </button>
-
-                  <button
-                    onClick={handleSyncAllParallel}
                     disabled={syncing}
                     className="px-10 py-5 gold-bg text-black font-black rounded-2xl hover:scale-[1.02] transition-all flex items-center justify-center gap-3 shadow-2xl shadow-amber-500/20 disabled:opacity-50"
                   >
                     {syncing && !syncingCompId ? (
                       <>
                         <RefreshCw className="w-5 h-5 animate-spin" />
-                        DUAL-SYNC: {syncProgress} / {syncTotal}
+                        SINCRONIZANDO: {syncProgress} / {syncTotal}
                       </>
                     ) : (
                       <>
-                        <Zap className="w-5 h-5 font-black" />
-                        DUAL-SYNC (PARALELO)
+                        <Zap className="w-5 h-5" />
+                        RESSINCRONIZAR TUDO
                       </>
                     )}
                   </button>
-                </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -9325,48 +8735,30 @@ const AdminPanel = ({
                           </div>
 
                           {/* Botão de Ressincronizar - Estilo Pílula Premium */}
-                          <div className="grid grid-cols-2 gap-3">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleSyncCompetitionSequentially(comp.id);
-                              }}
-                              disabled={syncing}
-                              className={`py-4 px-4 rounded-2xl border transition-all flex items-center justify-center gap-2 text-[8px] font-black uppercase tracking-widest
-                                ${syncingCompId === comp.id 
-                                  ? 'bg-zinc-800 border-zinc-700 text-zinc-400' 
-                                  : 'bg-black border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white'
-                                } disabled:opacity-50`}
-                            >
-                              {syncingCompId === comp.id ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
-                              SEQUENCIAL
-                            </button>
-
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleSyncCompetitionParallel(comp.id);
-                              }}
-                              disabled={syncing}
-                              className={`py-4 px-4 rounded-2xl border transition-all flex items-center justify-center gap-2 text-[8px] font-black uppercase tracking-widest
-                                ${syncingCompId === comp.id 
-                                  ? 'bg-amber-500 text-black border-amber-500 shadow-lg shadow-amber-500/20' 
-                                  : 'gold-bg text-black border-amber-500/50 hover:scale-[1.05] shadow-md'
-                                } disabled:opacity-50`}
-                            >
-                              {syncingCompId === comp.id ? (
-                                <>
-                                  <RefreshCw className="w-3 h-3 animate-spin" />
-                                  {syncProgress}/{syncTotal}
-                                </>
-                              ) : (
-                                <>
-                                  <Zap className="w-3 h-3" />
-                                  DUAL-SYNC
-                                </>
-                              )}
-                            </button>
-                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSyncCompetitionSequentially(comp.id);
+                            }}
+                            disabled={syncing}
+                            className={`w-full py-4 px-6 rounded-2xl border transition-all flex items-center justify-center gap-3 text-[10px] font-black uppercase tracking-[0.2em]
+                              ${syncingCompId === comp.id 
+                                ? 'bg-amber-500 text-black border-amber-500 animate-pulse-gold shadow-lg shadow-amber-500/40' 
+                                : 'bg-black border-zinc-800 text-amber-500 hover:bg-amber-500 hover:text-black hover:border-amber-500 hover:shadow-lg hover:shadow-amber-500/20'
+                              } disabled:opacity-50`}
+                          >
+                            {syncingCompId === comp.id ? (
+                              <>
+                                <RefreshCw className="w-4 h-4 animate-spin" />
+                                {syncProgress} / {syncTotal}
+                              </>
+                            ) : (
+                              <>
+                                <Zap className="w-4 h-4" />
+                                RESSINCRONIZAR AGORA
+                              </>
+                            )}
+                          </button>
                         </div>
                       </div>
                     );

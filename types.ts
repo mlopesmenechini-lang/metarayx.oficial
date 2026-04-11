@@ -172,3 +172,11 @@ export interface Suggestion {
   timestamp: number;
   status: 'pendente' | 'analise' | 'desenvolvimento' | 'concluido';
 }
+
+export interface Settings {
+  apifyKey: string;
+  apifyKeys?: string[];
+  apifyKeysSync?: string[];
+  lastSync?: string;
+  lastResync?: string;
+}
