@@ -5604,11 +5604,30 @@ const AdminPanel = ({
 
   const userPostAverages = useMemo(() => {
     const currentNow = Date.now();
+    
+    // First, map each user to their earliest post timestamp to avoid O(N*M) lookups inside the map
+    const userFirstPostTime: Record<string, number> = {};
+    posts.forEach(p => {
+       if (!userFirstPostTime[p.userId] || p.timestamp < userFirstPostTime[p.userId]) {
+         userFirstPostTime[p.userId] = p.timestamp;
+       }
+    });
+
     return approvedUsers
       .map(u => {
-        const approvedAt = u.approvedAt || currentNow;
-        const daysActive = Math.max(1, Math.floor((currentNow - approvedAt) / (24 * 60 * 60 * 1000)));
+        // Find the timestamp of their first ever post as the true "start" date
+        const firstPostTime = userFirstPostTime[u.uid];
+        
+        // If they have no posts, use current time (0 days active = 0 avg)
+        const activeStart = firstPostTime || currentNow;
+        
+        // Calculate days between first post and now.
+        // Math.ceil ensures that if they posted today, it counts as 1 day (not 0).
+        // Math.max guarantees we never divide by zero.
+        const daysActive = Math.max(1, Math.ceil((currentNow - activeStart) / (24 * 60 * 60 * 1000)));
+        
         const avg = (u.totalPosts || 0) / daysActive;
+        
         return {
           uid: u.uid,
           displayName: u.displayName,
@@ -5617,7 +5636,7 @@ const AdminPanel = ({
         };
       })
       .sort((a, b) => b.avgPostsPerDay - a.avgPostsPerDay);
-  }, [approvedUsers]);
+  }, [approvedUsers, posts]);
 
   const newUsers7d = approvedUsers.filter(u => u.approvedAt && u.approvedAt > now - 7 * dayMs).length;
 
