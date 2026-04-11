@@ -2060,12 +2060,9 @@ const App: React.FC = () => {
             });
           });
 
-          // 4. Update competition reset timestamp - Anchor to 20:00 of the reset day
-          const resetAnchor = new Date();
-          resetAnchor.setHours(20, 0, 0, 0);
-          // If for some reason reset is done before 20h, it refers to today's 20h (or yesterday's?)
-          // Assuming resets always happen AFTER 20h or mean to start the cycle at 20h.
-          batch.update(doc(db, 'competitions', cid), { lastDailyReset: resetAnchor.getTime() });
+          // 4. Update competition reset timestamp - Set to current time to start new cycle immediately
+          const resetTime = Date.now();
+          batch.update(doc(db, 'competitions', cid), { lastDailyReset: resetTime });
 
           await batch.commit();
           if (Object.keys(balanceIncrements).length === 0) {
@@ -2786,7 +2783,7 @@ const App: React.FC = () => {
                       comp={competitions.find(c => c.id === selectedActiveCompId)!}
                       user={user}
                       rankings={rankings}
-                      posts={posts}
+                      posts={posts.filter(p => isAdmin || p.userId === user.uid)}
                       registrations={registrations}
                       onBack={() => setSelectedActiveCompId(null)}
                       setView={setView}
@@ -2795,7 +2792,7 @@ const App: React.FC = () => {
                 )}
                 {view === 'HISTORY' && (
                   <HistoryView 
-                    posts={posts} 
+                    posts={posts.filter(p => isAdmin || p.userId === user.uid)} 
                     onDelete={handleDeletePost} 
                     onRemove={setRemovalModal}
                     isAdmin={isAdmin} 
@@ -9544,7 +9541,7 @@ const AdminPanel = ({
               </div>
             </div>
           </div>
-        ) : tab === 'RELATORIOS' ? (
+        ) : tab === 'RELATORIOS' && (isAdmin || user.role === 'auditor') ? (
           <div className="space-y-6 animate-in fade-in duration-500 max-w-7xl mx-auto">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-zinc-900/50 p-8 rounded-[40px] border border-zinc-800/50">
               <div className="space-y-2">
