@@ -14,7 +14,7 @@ import {
   TrendingUp, Users, Zap, Calendar, MessageSquare, Menu, X, ChevronLeft, ExternalLink,
   Mail, Lock, User as UserIcon, Eye, EyeOff, Loader2, RefreshCw, Crown, Trash2, Plus,
   Heart, Share2, Bookmark, Bell, Check, Camera, BarChart3, ArrowLeft, ArrowRight, BookOpen, Shield, Star, ChevronRight, Target,
-  Award, UserX, Sparkles, CreditCard, Coins, DollarSign, Info, Archive, Download, RotateCcw
+  Award, UserX, Sparkles, CreditCard, Coins, DollarSign, Info, Archive, Download, RotateCcw, Pencil, PlusCircle, MinusCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { syncViewsWithApify, syncSinglePostWithApify, updateUserMetrics, repairAllUserMetrics } from './services/apifyService';
@@ -5117,6 +5117,56 @@ const FinancialRow = ({ user, onViewLinks, compId, isPaidView }: { user: User, o
     }
   };
 
+  const [adjustmentValue, setAdjustmentValue] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
+  const [processingAdjustment, setProcessingAdjustment] = useState(false);
+
+  const handleManualAdjustment = async (type: 'add' | 'subtract') => {
+    const val = parseFloat(adjustmentValue.replace(',', '.'));
+    if (isNaN(val) || val <= 0) {
+      alert('Insira um valor válido');
+      return;
+    }
+
+    const finalAmount = type === 'subtract' ? -val : val;
+    setProcessingAdjustment(true);
+
+    try {
+      const batch = writeBatch(db);
+      
+      const newGlobalBalance = Math.max(0, (user.balance || 0) + finalAmount);
+      const newCompBalance = Math.max(0, (user.competitionStats?.[compId || '']?.balance || 0) + finalAmount);
+
+      const transRef = doc(collection(db, 'transactions'));
+      batch.set(transRef, {
+        userId: user.uid,
+        amount: finalAmount,
+        timestamp: Date.now(),
+        status: type === 'subtract' ? 'cancelled' : 'credit',
+        type: 'adjustment',
+        description: `AJUSTE MANUAL ADMIN (${type === 'subtract' ? 'ESTORNO' : 'BÔNUS'}): ${compId || 'GERAL'}`,
+        competitionId: compId
+      });
+
+      const dataToUpdate: any = {
+        [`competitionStats.${compId}.balance`]: newCompBalance,
+        balance: newGlobalBalance
+      };
+
+      const userRef = doc(db, 'users', user.uid);
+      batch.update(userRef, dataToUpdate);
+
+      await batch.commit();
+      setAdjustmentValue('');
+      setIsEditing(false);
+    } catch (error: any) {
+      console.error('Erro no ajuste manual:', error);
+      alert('Erro ao processar ajuste');
+    } finally {
+      setProcessingAdjustment(false);
+    }
+  };
+
   return (
     <div className="grid grid-cols-[1.5fr_1fr_1.5fr_150px_220px] gap-4 items-center py-4 px-8 hover:bg-white/[0.02] transition-all group border-b border-zinc-900/50 last:border-0 min-h-[72px]">
       <div className="flex items-center gap-4 min-w-0">
@@ -5184,23 +5234,66 @@ const FinancialRow = ({ user, onViewLinks, compId, isPaidView }: { user: User, o
         >
           <BarChart3 className="w-4 h-4" />
         </button>
+
         {!isPaidView && (
-          <button
-            onClick={handlePay}
-            disabled={saving || balance <= 0}
-            className={`px-5 py-2.5 disabled:bg-zinc-900 disabled:text-zinc-700 disabled:border-zinc-800 rounded-2xl font-black text-[10px] hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2.5 uppercase tracking-widest disabled:shadow-none min-w-[120px] ${
-              confirming ? 'bg-red-500 text-white animate-pulse shadow-[0_4px_20px_rgba(239,68,68,0.4)]' : 'gold-bg text-black shadow-[0_4px_20px_rgba(245,158,11,0.2)]'
-            }`}
-          >
-            {saving ? (
-              <RefreshCw className="w-4 h-4 animate-spin" />
-            ) : confirming ? (
-              <AlertCircle className="w-4 h-4 text-white" />
+          <div className="flex items-center gap-2">
+            {isEditing ? (
+              <div className="flex items-center gap-2 animate-in slide-in-from-right-4 duration-300">
+                <input
+                  type="text"
+                  value={adjustmentValue}
+                  onChange={(e) => setAdjustmentValue(e.target.value)}
+                  placeholder="0.00"
+                  className="w-20 bg-black border border-zinc-800 rounded-lg px-2 py-2 text-[10px] font-black text-white outline-none focus:border-amber-500 transition-all font-mono"
+                />
+                <button
+                  onClick={() => handleManualAdjustment('subtract')}
+                  disabled={processingAdjustment}
+                  className="p-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all shadow-lg shadow-red-500/5 border border-red-500/20"
+                  title="Subtrair do Saldo"
+                >
+                  {processingAdjustment ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <MinusCircle className="w-3.5 h-3.5" />}
+                </button>
+                <button
+                  onClick={() => handleManualAdjustment('add')}
+                  disabled={processingAdjustment}
+                  className="p-2 rounded-lg bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white transition-all shadow-lg shadow-emerald-500/5 border border-emerald-500/20"
+                  title="Adicionar ao Saldo"
+                >
+                  {processingAdjustment ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <PlusCircle className="w-3.5 h-3.5" />}
+                </button>
+                <button
+                  onClick={() => setIsEditing(false)}
+                  className="p-2 rounded-lg bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-all"
+                  title="Cancelar"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
             ) : (
-              <Zap className="w-4 h-4 fill-current" />
+              <button
+                onClick={() => setIsEditing(true)}
+                disabled={saving}
+                className="p-2 rounded-xl bg-zinc-900/60 border border-zinc-800 text-zinc-500 hover:text-amber-500 hover:border-amber-500/30 transition-all"
+                title="Ajustar Saldo Manualmente"
+              >
+                <Pencil className="w-4 h-4" />
+              </button>
             )}
-            {saving ? 'PAGANDO...' : confirming ? 'CONFIRMAR?' : 'PAGAR'}
-          </button>
+
+            {!isEditing && (
+              <button
+                onClick={handlePay}
+                disabled={saving || balance <= 0}
+                className={`px-5 py-2.5 disabled:opacity-30 rounded-2xl font-black text-[10px] hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2.5 uppercase tracking-widest min-w-[100px] ${
+                  confirming ? 'bg-red-500 text-white animate-pulse' : 'gold-bg text-black shadow-lg shadow-amber-500/10'
+                }`}
+              >
+                {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : confirming ? <AlertCircle className="w-4 h-4" /> : <Zap className="w-4 h-4" />}
+                {saving ? 'PAGANDO...' : confirming ? 'CONFIRMAR?' : 'PAGAR'}
+              </button>
+            )}
+          </div>
         )}
       </div>
     </div>
@@ -5638,8 +5731,20 @@ const AdminPanel = ({
     activeCycleStart.setDate(activeCycleStart.getDate() - 1);
     activeCycleStart.setHours(20, 0, 0, 0); // Inicia cravado às 20:00 do dia anterior
 
-    const startTime = activeCycleStart.getTime();
-    const endTime = activeCycleEnd.getTime();
+    let startTime = activeCycleStart.getTime();
+    let endTime = activeCycleEnd.getTime();
+    
+    // Se a competição atual já foi fechada hoje, andamos para o próximo ciclo
+    const lastReset = selectedMetaComp?.lastDailyReset || 0;
+    if (lastReset >= endTime) {
+      const nextStart = new Date(activeCycleEnd);
+      nextStart.setHours(20, 0, 0, 0);
+      const nextEnd = new Date(nextStart);
+      nextEnd.setDate(nextEnd.getDate() + 1);
+      nextEnd.setHours(20, 5, 59, 999);
+      startTime = nextStart.getTime();
+      endTime = nextEnd.getTime();
+    }
     
     return posts.filter(p => {
       const isApproved = p.status === 'approved' || p.status === 'synced';

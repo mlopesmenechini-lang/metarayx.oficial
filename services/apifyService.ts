@@ -137,10 +137,26 @@ export const updateUserMetrics = async (userId: string, skipDaily: boolean = fal
     // O horário real em que o post foi feito na plataforma (ou fallback de aprovação)
     const truePostTime = data.timestamp || data.approvedAt || 0;
     
+    // Calcula as bordas dinâmicas: Se o Admin já encerrou (zerou) o dia depois das 20:05,
+    // o ciclo já virou para amanhã para esta competição específica.
+    const lastDailyReset = activeComps[cid]?.lastDailyReset || 0;
+    let postTarget20hMs = target20hMs;
+    let postEnd20hMs = end20hMs;
+
+    if (lastDailyReset >= end20hMs) {
+      const nextStart = new Date(activeCycleEnd);
+      nextStart.setHours(20, 0, 0, 0);
+      const nextEnd = new Date(nextStart);
+      nextEnd.setDate(nextEnd.getDate() + 1);
+      nextEnd.setHours(20, 5, 59, 999);
+      postTarget20hMs = nextStart.getTime();
+      postEnd20hMs = nextEnd.getTime();
+    }
+
     // Um post conta para os quantitativos diários estritamente se foi publicado dentro da janela
-    // do horário das 20h. E a janela ativa permanece até a meia-noite visualmente.
+    // do horário das 20h. E a janela ativa permanece até a meia-noite visualmente, a menos que o admin feche-a primeiro.
     // EXCEÇÃO: forceMonthly=true ignora, forceDaily=true entra a força.
-    const isNewDailyPost = !data.forceMonthly && (data.forceDaily || (truePostTime >= target20hMs && truePostTime < end20hMs));
+    const isNewDailyPost = !data.forceMonthly && (data.forceDaily || (truePostTime >= postTarget20hMs && truePostTime < postEnd20hMs));
     
     // Engagement Gain logic:
     // Removemos a 'trava' de isInitialOldSync para que vídeos aprovados antes do reset, 
