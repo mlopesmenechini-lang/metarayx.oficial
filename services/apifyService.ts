@@ -76,7 +76,9 @@ export const updateUserMetrics = async (userId: string, skipDaily: boolean = fal
   const userPostsSnapshot = await getDocs(userPostsQuery);
   
   // Fetch active competitions to get their lastDailyReset
-  const compsSnapshot = await getDocs(query(collection(db, 'competitions'), where('isActive', '==', true)));
+  // Buscamos TODAS as competições (não apenas as ativas) para garantir que posts de competições 
+  // finalizadas ou arquivadas também respeitem o carimbo de lastDailyReset nas métricas diárias.
+  const compsSnapshot = await getDocs(collection(db, 'competitions'));
   const activeComps = compsSnapshot.docs.reduce((acc, d) => {
     acc[d.id] = d.data();
     return acc;
@@ -155,12 +157,12 @@ export const updateUserMetrics = async (userId: string, skipDaily: boolean = fal
 
     // Um post conta para os quantitativos diários estritamente se foi publicado dentro da janela
     // do horário das 20h. E a janela ativa permanece até a meia-noite visualmente, a menos que o admin feche-a primeiro.
-    // EXCEÇÃO: forceMonthly=true ignora, forceDaily=true entra a força.
-    const isNewDailyPost = !data.forceMonthly && (data.forceDaily || (truePostTime >= postTarget20hMs && truePostTime < postEnd20hMs));
+    // TRAVA DE SEGURANÇA: Se o horário do post for anterior ao último Reset Diário desta competição, 
+    // ele NUNCA entra no diário (evita "ressurreição" pós-pagamento).
+    const isAfterReset = truePostTime > lastDailyReset;
+    const isNewDailyPost = !data.forceMonthly && isAfterReset && (data.forceDaily || (truePostTime >= postTarget20hMs && truePostTime < postEnd20hMs));
     
     // Engagement Gain logic:
-    // Removemos a 'trava' de isInitialOldSync para que vídeos aprovados antes do reset, 
-    // mas sincronizados agora, contem integralmente no ranking diário atual.
     const viewsGain = Math.max(0, (data.views || 0) - (data.viewsBaseline || 0));
     const likesGain = Math.max(0, (data.likes || 0) - (data.likesBaseline || 0));
     const commentsGain = Math.max(0, (data.comments || 0) - (data.commentsBaseline || 0));

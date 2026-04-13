@@ -14,7 +14,7 @@ import {
   TrendingUp, Users, Zap, Calendar, MessageSquare, Menu, X, ChevronLeft, ExternalLink,
   Mail, Lock, User as UserIcon, Eye, EyeOff, Loader2, RefreshCw, Crown, Trash2, Plus,
   Heart, Share2, Bookmark, Bell, Check, Camera, BarChart3, ArrowLeft, ArrowRight, BookOpen, Shield, Star, ChevronRight, Target,
-  Award, UserX, Sparkles, CreditCard, Coins, DollarSign, Info, Archive, Download, RotateCcw, Pencil, PlusCircle, MinusCircle
+  Award, UserX, Sparkles, CreditCard, Coins, DollarSign, Info, Archive, Download, RotateCcw, Pencil, PlusCircle, MinusCircle, Key
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { syncViewsWithApify, syncSinglePostWithApify, updateUserMetrics, repairAllUserMetrics } from './services/apifyService';
@@ -4451,9 +4451,7 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { r
   }, [rankings, selectedCompetition]);
 
   const formatGoalNumber = (num: number) => {
-    if (num >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-    if (num >= 1000) return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
-    return num.toLocaleString();
+    return num.toLocaleString('pt-BR');
   };
 
   const collectiveProgress = useMemo(() => {
@@ -5665,9 +5663,7 @@ const AdminPanel = ({
   });
 
   const formatGoalNumber = (num: number) => {
-    if (num >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-    if (num >= 1000) return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
-    return num.toLocaleString();
+    return num.toLocaleString('pt-BR');
   };
 
   const selectedMetaComp = useMemo(() => 
@@ -5751,7 +5747,8 @@ const AdminPanel = ({
       const isWithinComp = !selectedMetaComp || p.competitionId === selectedMetaComp.id;
       
       const truePostTime = p.timestamp || p.approvedAt || 0;
-      const isNewDailyPost = !(p as any).forceMonthly && ((p as any).forceDaily || (truePostTime >= startTime && truePostTime < endTime));
+      const isAfterReset = truePostTime > lastReset;
+      const isNewDailyPost = !(p as any).forceMonthly && isAfterReset && ((p as any).forceDaily || (truePostTime >= startTime && truePostTime < endTime));
 
       return isApproved && isWithinComp && isNewDailyPost;
     }).length;
@@ -6304,10 +6301,9 @@ const AdminPanel = ({
   };
 
   const handleSyncAllParallel = async () => {
-    const keys = settings.apifyKeys && settings.apifyKeys.length > 1 ? settings.apifyKeys : [apifyKey];
-    if (keys.length < 2) {
-      alert('O modo Dual-Sync requer pelo menos 2 chaves de API configuradas nas Configurações. Usando modo sequencial...');
-      handleSyncAllSequentially();
+    const keys = settings.apifyKeys && settings.apifyKeys.length > 0 ? settings.apifyKeys : [apifyKey];
+    if (keys.length < 1) {
+      alert('Configure pelo menos uma chave de API nas Configurações.');
       return;
     }
 
@@ -6331,11 +6327,6 @@ const AdminPanel = ({
     setSyncProgress(completed);
     setSyncTotal(allSyncedPosts.length);
     
-    // Divide os posts: um worker do início, another do fim
-    const mid = Math.ceil(syncedPosts.length / 2);
-    const forwardGroup = syncedPosts.slice(0, mid);
-    const backwardGroup = syncedPosts.slice(mid).reverse();
-
     const worker = async (list: Post[], key: string) => {
       for (const post of list) {
         setSyncingPostId(post.id);
@@ -6346,19 +6337,23 @@ const AdminPanel = ({
           completed++;
           setSyncProgress(completed);
         } catch (e) {
-          console.error(`Erro no Dual-Sync (all) para o post ${post.id}:`, e);
+          console.error(`Erro no Multi-Sync (all) para o post ${post.id}:`, e);
         }
       }
     };
 
     try {
-      await Promise.all([
-        worker(forwardGroup, keys[0]),
-        worker(backwardGroup, keys[1])
-      ]);
-      alert('Sincronização Paralela (Dual-Sync) finalizada com sucesso!');
+      // Distribui os posts em N grupos, um para cada chave
+      const n = keys.length;
+      const groups: Post[][] = Array.from({ length: n }, () => []);
+      syncedPosts.forEach((post, i) => {
+        groups[i % n].push(post);
+      });
+
+      await Promise.all(groups.map((group, i) => worker(group, keys[i])));
+      alert(`Sincronização Paralela (Multi-Sync) com ${n} chaves finalizada!`);
     } catch (error: any) {
-      alert(`Erro no Dual-Sync: ${error.message}`);
+      alert(`Erro no Multi-Sync: ${error.message}`);
     } finally {
       setSyncing(false);
       setSyncingCompId(null);
@@ -6412,10 +6407,9 @@ const AdminPanel = ({
   };
 
   const handleSyncCompetitionParallel = async (compId: string) => {
-    const keys = settings.apifyKeys && settings.apifyKeys.length > 1 ? settings.apifyKeys : [apifyKey];
-    if (keys.length < 2) {
-      alert('O modo Dual-Sync requer pelo menos 2 chaves de API configuradas. Usando modo sequencial...');
-      handleSyncCompetitionSequentially(compId);
+    const keys = settings.apifyKeys && settings.apifyKeys.length > 0 ? settings.apifyKeys : [apifyKey];
+    if (keys.length < 1) {
+      alert('Configure pelo menos uma chave de API nas Configurações.');
       return;
     }
 
@@ -6440,10 +6434,6 @@ const AdminPanel = ({
     setSyncProgress(completed);
     setSyncTotal(allCompPosts.length);
 
-    const mid = Math.ceil(compPosts.length / 2);
-    const forwardGroup = compPosts.slice(0, mid);
-    const backwardGroup = compPosts.slice(mid).reverse();
-
     const worker = async (list: Post[], key: string) => {
       for (const post of list) {
         setSyncingPostId(post.id);
@@ -6453,19 +6443,22 @@ const AdminPanel = ({
           completed++;
           setSyncProgress(completed);
         } catch (e) {
-          console.error(`Erro no Dual-Sync (comp) para o post ${post.id}:`, e);
+          console.error(`Erro no Multi-Sync (comp) para o post ${post.id}:`, e);
         }
       }
     };
 
     try {
-      await Promise.all([
-        worker(forwardGroup, keys[0]),
-        worker(backwardGroup, keys[1])
-      ]);
-      alert('Sincronização Paralela da Competição concluída!');
+      const n = keys.length;
+      const groups: Post[][] = Array.from({ length: n }, () => []);
+      compPosts.forEach((post, i) => {
+        groups[i % n].push(post);
+      });
+
+      await Promise.all(groups.map((group, i) => worker(group, keys[i])));
+      alert(`Multi-Sync da competição finalizado com ${n} chaves!`);
     } catch (error: any) {
-      alert(`Erro no Dual-Sync: ${error.message}`);
+      alert(`Erro no Multi-Sync: ${error.message}`);
     } finally {
       setSyncing(false);
       setSyncingCompId(null);
@@ -9638,17 +9631,67 @@ const AdminPanel = ({
                     {syncing && !syncingCompId ? (
                       <>
                         <RefreshCw className="w-5 h-5 animate-spin" />
-                        DUAL-SYNC: {syncProgress} / {syncTotal}
+                        MULTI-SYNC: {syncProgress} / {syncTotal}
                       </>
                     ) : (
                       <>
                         <Zap className="w-5 h-5 font-black" />
-                        DUAL-SYNC (PARALELO)
+                        MULTI-SYNC ({settings.apifyKeys?.length || 1} CHAVES)
                       </>
                     )}
                   </button>
                 </div>
+              </div>
+
+              {/* GESTÃO DE CHAVES DIRETO NA ABA DE RESSINCRONIZAÇÃO */}
+              <div className="bg-zinc-900/50 p-6 rounded-[32px] border border-zinc-800/50 space-y-4">
+                <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-amber-500 uppercase tracking-widest flex items-center gap-2">
+                      <Key className="w-3 h-3" /> Gestão de Chaves Apify (Multi-Sync)
+                    </label>
+                    <p className="text-zinc-500 text-[9px] font-bold uppercase">Adicione múltiplas chaves para acelerar o processamento paralelo.</p>
+                  </div>
+
+                  <div className="flex items-center gap-3 flex-1 max-w-2xl">
+                    <div className="relative flex-1 group">
+                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 group-focus-within:text-amber-500 transition-colors" />
+                      <input
+                        type="text"
+                        value={apifyKey}
+                        onChange={(e) => setApifyKey(e.target.value)}
+                        placeholder="Insira nova chave Apify..."
+                        className="w-full bg-black border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-xs font-bold focus:border-amber-500 outline-none transition-all"
+                      />
+                    </div>
+                    <button
+                      onClick={handleSaveApiKey}
+                      className="px-6 py-3 gold-bg text-black font-black rounded-xl hover:scale-105 transition-all text-[10px] uppercase"
+                    >
+                      Adicionar
+                    </button>
+                  </div>
                 </div>
+
+                {settings.apifyKeys && settings.apifyKeys.length > 0 && (
+                  <div className="flex flex-wrap gap-2 pt-2 border-t border-zinc-800/50">
+                    {settings.apifyKeys.map((key, idx) => (
+                      <div key={idx} className="flex items-center gap-2 bg-black/40 border border-zinc-800/50 px-3 py-1.5 rounded-lg group">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        <code className="text-[9px] text-zinc-400 font-mono">
+                          {key.substring(0, 8)}...{key.substring(key.length - 6)}
+                        </code>
+                        <button 
+                          onClick={() => handleDeleteApiKey(key)}
+                          className="text-zinc-600 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {competitions.map(comp => {
@@ -9735,7 +9778,7 @@ const AdminPanel = ({
                               ) : (
                                 <>
                                   <Zap className="w-3 h-3" />
-                                  DUAL-SYNC
+                                  MULTI-SYNC
                                 </>
                               )}
                             </button>
