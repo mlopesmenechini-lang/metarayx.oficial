@@ -91,6 +91,8 @@ export interface Post {
   rejectionReason?: string;
   removalRequestReason?: string;
   removalRequestAt?: number;
+  forceMonthly?: boolean;
+  forceDaily?: boolean;
 }
 
 export interface Season {

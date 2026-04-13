@@ -82,9 +82,30 @@ export const updateUserMetrics = async (userId: string, skipDaily: boolean = fal
     return acc;
   }, {} as Record<string, any>);
   
+  const now = new Date();
+  
+  // A virada oficial do "painel de ranking" só acontece na meia-noite.
+  // Então o ciclo base atual SEMPRE termina às 20:05 do dia corrente,
+  // e começa às 20h cravado do dia anterior.
+  const activeCycleEnd = new Date(now);
+  activeCycleEnd.setHours(20, 5, 59, 999);
+
+  const activeCycleStart = new Date(activeCycleEnd);
+  activeCycleStart.setDate(activeCycleStart.getDate() - 1);
+  activeCycleStart.setHours(20, 0, 0, 0);
+
+  const target20hMs = activeCycleStart.getTime();
+  const end20hMs = activeCycleEnd.getTime();
+
   const globalTotals = {
     views: 0, likes: 0, comments: 0, shares: 0, saves: 0, posts: 0, instaPosts: 0,
-    dailyViews: 0, dailyLikes: 0, dailyComments: 0, dailyShares: 0, dailySaves: 0, dailyPosts: 0, dailyInstaPosts: 0
+    dailyViews: skipDaily ? (userData.dailyViews || 0) : 0, 
+    dailyLikes: skipDaily ? (userData.dailyLikes || 0) : 0, 
+    dailyComments: skipDaily ? (userData.dailyComments || 0) : 0, 
+    dailyShares: skipDaily ? (userData.dailyShares || 0) : 0, 
+    dailySaves: skipDaily ? (userData.dailySaves || 0) : 0, 
+    dailyPosts: skipDaily ? (userData.dailyPosts || 0) : 0, 
+    dailyInstaPosts: skipDaily ? (userData.dailyInstaPosts || 0) : 0
   };
 
   const competitionStats: Record<string, any> = {};
@@ -112,14 +133,14 @@ export const updateUserMetrics = async (userId: string, skipDaily: boolean = fal
   userPostsSnapshot.docs.forEach((doc) => {
     const data = doc.data() as Post;
     const cid = data.competitionId || 'no_competition';
-    const compConfig = activeComps[cid];
-    const lastReset = compConfig?.lastDailyReset || 0;
 
-    const postTime = (data.approvedAt || data.timestamp || 0);
-    const isFirstSync = (data.viewsBaseline || 0) === 0;
+    // O horário real em que o post foi feito na plataforma (ou fallback de aprovação)
+    const truePostTime = data.timestamp || data.approvedAt || 0;
     
-    // Um post conta para o dia se: foi aprovado após o reset OU se está sendo sincronizado pela primeira vez agora
-    const isNewDailyPost = lastReset === 0 || postTime > lastReset || isFirstSync;
+    // Um post conta para os quantitativos diários estritamente se foi publicado dentro da janela
+    // do horário das 20h. E a janela ativa permanece até a meia-noite visualmente.
+    // EXCEÇÃO: forceMonthly=true ignora, forceDaily=true entra a força.
+    const isNewDailyPost = !data.forceMonthly && (data.forceDaily || (truePostTime >= target20hMs && truePostTime < end20hMs));
     
     // Engagement Gain logic:
     // Removemos a 'trava' de isInitialOldSync para que vídeos aprovados antes do reset, 
@@ -149,15 +170,18 @@ export const updateUserMetrics = async (userId: string, skipDaily: boolean = fal
     competitionStats[cid].posts += 1;
     if (isInsta) competitionStats[cid].instaPosts += 1;
 
-    // Update Competition Daily Stats (Gains) - ONLY if not skipped
-    if (!skipDaily) {
-      competitionStats[cid].dailyViews += viewsGain;
-      competitionStats[cid].dailyLikes += likesGain;
-      competitionStats[cid].dailyComments += commentsGain;
-      competitionStats[cid].dailyShares += sharesGain;
-      competitionStats[cid].dailySaves += savesGain;
-      
+    // Update Competition Daily Stats (Gains) - ONLY if not skipped AND not forced to monthly
+    // forceMonthly=true remove o post COMPLETAMENTE do diário: sem gains, sem contagem
+    if (!skipDaily && !data.forceMonthly) {
+      // O usuário pediu explicitamente: "sómente as views reais de quem foi aprovado hoje nao quero nenhum resquicio"
+      // Então NENHUM ganho de engajamento de posts antigos deve entrar no Ranking Diário.
+      // O post SÓ pontua no diário se pertencer ao ciclo atual (isNewDailyPost).
       if (isNewDailyPost) {
+        competitionStats[cid].dailyViews += viewsGain;
+        competitionStats[cid].dailyLikes += likesGain;
+        competitionStats[cid].dailyComments += commentsGain;
+        competitionStats[cid].dailyShares += sharesGain;
+        competitionStats[cid].dailySaves += savesGain;
         competitionStats[cid].dailyPosts += 1;
         if (isInsta) competitionStats[cid].dailyInstaPosts += 1;
       }
@@ -172,26 +196,16 @@ export const updateUserMetrics = async (userId: string, skipDaily: boolean = fal
     globalTotals.posts += 1;
     if (isInsta) globalTotals.instaPosts += 1;
 
-    if (!skipDaily) {
-      globalTotals.dailyViews += viewsGain;
-      globalTotals.dailyLikes += likesGain;
-      globalTotals.dailyComments += commentsGain;
-      globalTotals.dailyShares += sharesGain;
-      globalTotals.dailySaves += savesGain;
-      
+    if (!skipDaily && !data.forceMonthly) {
       if (isNewDailyPost) {
+        globalTotals.dailyViews += viewsGain;
+        globalTotals.dailyLikes += likesGain;
+        globalTotals.dailyComments += commentsGain;
+        globalTotals.dailyShares += sharesGain;
+        globalTotals.dailySaves += savesGain;
         globalTotals.dailyPosts += 1;
         if (isInsta) globalTotals.dailyInstaPosts += 1;
       }
-    } else {
-      // If skipping, preserve global daily totals from current user data
-      globalTotals.dailyViews = userData.dailyViews || 0;
-      globalTotals.dailyLikes = userData.dailyLikes || 0;
-      globalTotals.dailyComments = userData.dailyComments || 0;
-      globalTotals.dailyShares = userData.dailyShares || 0;
-      globalTotals.dailySaves = userData.dailySaves || 0;
-      globalTotals.dailyPosts = userData.dailyPosts || 0;
-      globalTotals.dailyInstaPosts = userData.dailyInstaPosts || 0;
     }
   });
 

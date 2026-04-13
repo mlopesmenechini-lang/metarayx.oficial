@@ -1636,10 +1636,57 @@ const App: React.FC = () => {
 
       const postData = postSnap.data() as Post;
       const authorId = postData.userId;
+      const cid = postData.competitionId;
 
+      // 1. Marca como deletado no Firestore
       await updateDoc(postRef, { status: 'deleted' });
 
-      await updateUserMetrics(authorId);
+      // 2. Subtrai IMEDIATAMENTE os stats do usuário sem depender de propagação de query
+      if (cid) {
+        const userRef = doc(db, 'users', authorId);
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+          const userData = userSnap.data() as any;
+          const compStats = userData.competitionStats?.[cid] || {};
+
+          const wasApproved = postData.status === 'approved' || postData.status === 'synced';
+          const viewsGain  = wasApproved ? Math.max(0, (postData.views    || 0) - (postData.viewsBaseline    || 0)) : 0;
+          const likesGain  = wasApproved ? Math.max(0, (postData.likes    || 0) - (postData.likesBaseline    || 0)) : 0;
+          const commGain   = wasApproved ? Math.max(0, (postData.comments || 0) - (postData.commentsBaseline || 0)) : 0;
+          const shrGain    = wasApproved ? Math.max(0, (postData.shares   || 0) - (postData.sharesBaseline   || 0)) : 0;
+          const savGain    = wasApproved ? Math.max(0, (postData.saves    || 0) - (postData.savesBaseline    || 0)) : 0;
+
+          const patch: any = {
+            // Stats globais mensais
+            totalViews:    Math.max(0, (userData.totalViews    || 0) - (postData.views    || 0)),
+            totalLikes:    Math.max(0, (userData.totalLikes    || 0) - (postData.likes    || 0)),
+            totalComments: Math.max(0, (userData.totalComments || 0) - (postData.comments || 0)),
+            totalPosts:    Math.max(0, (userData.totalPosts    || 0) - 1),
+            // Stats diários globais (só se o post contava para o diário)
+            dailyViews:    Math.max(0, (userData.dailyViews    || 0) - viewsGain),
+            dailyLikes:    Math.max(0, (userData.dailyLikes    || 0) - likesGain),
+            dailyComments: Math.max(0, (userData.dailyComments || 0) - commGain),
+            dailyShares:   Math.max(0, (userData.dailyShares   || 0) - shrGain),
+            dailySaves:    Math.max(0, (userData.dailySaves    || 0) - savGain),
+            dailyPosts:    Math.max(0, (userData.dailyPosts    || 0) - (wasApproved ? 1 : 0)),
+            // Stats da competição
+            [`competitionStats.${cid}.views`]:    Math.max(0, (compStats.views    || 0) - (postData.views    || 0)),
+            [`competitionStats.${cid}.likes`]:    Math.max(0, (compStats.likes    || 0) - (postData.likes    || 0)),
+            [`competitionStats.${cid}.comments`]: Math.max(0, (compStats.comments || 0) - (postData.comments || 0)),
+            [`competitionStats.${cid}.posts`]:    Math.max(0, (compStats.posts    || 0) - 1),
+            // Stats diários da competição
+            [`competitionStats.${cid}.dailyViews`]:    Math.max(0, (compStats.dailyViews    || 0) - viewsGain),
+            [`competitionStats.${cid}.dailyLikes`]:    Math.max(0, (compStats.dailyLikes    || 0) - likesGain),
+            [`competitionStats.${cid}.dailyComments`]: Math.max(0, (compStats.dailyComments || 0) - commGain),
+            [`competitionStats.${cid}.dailyPosts`]:    Math.max(0, (compStats.dailyPosts    || 0) - (wasApproved ? 1 : 0)),
+          };
+
+          await updateDoc(userRef, patch);
+        }
+      }
+
+      // 3. Recálculo completo em background para consistência final
+      updateUserMetrics(authorId).catch(() => {});
 
       setNotification({ message: 'Vídeo removido com sucesso!', type: 'success' });
       setPostToDelete(null);
@@ -4394,6 +4441,15 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { r
     [competitions, selectedCompId, lockedCompetitionId]
   );
 
+  const totalDailyViews = useMemo(() => {
+    if (!selectedCompetition) return 0;
+    return rankings.reduce((acc, user) => {
+      const stats = user.competitionStats?.[selectedCompetition.id];
+      if (!stats) return acc;
+      return acc + (stats.dailyViews || 0);
+    }, 0);
+  }, [rankings, selectedCompetition]);
+
   const formatGoalNumber = (num: number) => {
     if (num >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
     if (num >= 1000) return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
@@ -4614,6 +4670,21 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { r
             </button>
           ))}
         </div>
+
+        {/* Somatória de Views Diários */}
+        {rankingType === 'DAILY' && selectedCompetition && (
+          <div className="hidden md:flex flex-1 items-center justify-center animate-in fade-in zoom-in duration-300">
+            <div className="flex items-center gap-3 px-5 py-2.5 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent rounded-2xl border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.1)]">
+              <div className="w-8 h-8 rounded-xl bg-amber-500/10 flex items-center justify-center">
+                <Eye className="w-4 h-4 text-amber-500" />
+              </div>
+              <div className="flex flex-col items-start leading-none">
+                <span className="text-[8px] font-black uppercase tracking-[0.2em] text-amber-500/70 mb-1">Somatória Diária</span>
+                <span className="text-lg font-black text-amber-400 tabular-nums leading-none tracking-tight">{totalDailyViews.toLocaleString()} <span className="text-[10px] text-amber-500/50 uppercase tracking-widest">views</span></span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Métrica badge (direita) */}
         <div className="md:ml-auto flex items-center gap-3">
@@ -5423,6 +5494,7 @@ const AdminPanel = ({
   const [selectedSyncCompId, setSelectedSyncCompId] = useState<string>('ALL');
   const [selectedResetCompId, setSelectedResetCompId] = useState<string>('');
   const [auditUserId, setAuditUserId] = useState<string | null>(null);
+  const [auditDayFilter, setAuditDayFilter] = useState<string>('');
   const [selectedCompId, setSelectedCompId] = useState<string | null>(null);
   const [apifyKey, setApifyKey] = useState(settings.apifyKey);
   const [financeTab, setFinanceTab] = useState<'RESUMO' | 'PENDING' | 'REALIZED'>('RESUMO');
@@ -5558,21 +5630,25 @@ const AdminPanel = ({
 
   const postsToday = useMemo(() => {
     const now = new Date();
-    const threshold = new Date(now);
-    threshold.setHours(20, 0, 0, 0);
     
-    if (now < threshold) {
-      threshold.setDate(threshold.getDate() - 1);
-    }
-    
-    const startTime = threshold.getTime();
+    const activeCycleEnd = new Date(now);
+    activeCycleEnd.setHours(20, 5, 59, 999); // Termina às 20:05 (com os segundos finais)
+
+    const activeCycleStart = new Date(activeCycleEnd);
+    activeCycleStart.setDate(activeCycleStart.getDate() - 1);
+    activeCycleStart.setHours(20, 0, 0, 0); // Inicia cravado às 20:00 do dia anterior
+
+    const startTime = activeCycleStart.getTime();
+    const endTime = activeCycleEnd.getTime();
     
     return posts.filter(p => {
       const isApproved = p.status === 'approved' || p.status === 'synced';
       const isWithinComp = !selectedMetaComp || p.competitionId === selectedMetaComp.id;
-      // Considera videos aprovados/sincronizados após o reset das 20h
-      const postTime = (p.approvedAt || p.timestamp || 0);
-      return isApproved && isWithinComp && postTime >= startTime;
+      
+      const truePostTime = p.timestamp || p.approvedAt || 0;
+      const isNewDailyPost = !(p as any).forceMonthly && ((p as any).forceDaily || (truePostTime >= startTime && truePostTime < endTime));
+
+      return isApproved && isWithinComp && isNewDailyPost;
     }).length;
   }, [posts, selectedMetaComp]);
 
@@ -6083,18 +6159,26 @@ const AdminPanel = ({
       return;
     }
 
-    const syncedPosts = posts.filter(p => p.status === 'synced');
+    const allSyncedPosts = posts.filter(p => p.status === 'synced');
+    const syncedPosts = allSyncedPosts.filter(p => !sessionSyncedIds.includes(p.id));
+
     if (syncedPosts.length === 0) {
-      alert('Nenhum vídeo sincronizado para ressincronizar.');
+      if (allSyncedPosts.length > 0) {
+        alert('Todos os posts já foram conferidos nesta sessão! Liberando todos os vídeos para uma nova ressincronização completa.');
+        setSessionSyncedIds([]);
+        setSyncProgress(0);
+        setSyncTotal(0);
+      } else {
+        alert('Nenhum vídeo sincronizado para ressincronizar.');
+      }
       return;
     }
 
     setSyncing(true);
-    setSyncProgress(0);
-    setSyncTotal(syncedPosts.length);
-    setSessionSyncedIds([]);
+    let current = sessionSyncedIds.length;
+    setSyncProgress(current);
+    setSyncTotal(allSyncedPosts.length);
     try {
-      let current = 0;
       for (const post of syncedPosts) {
         setSyncingPostId(post.id);
         await syncSinglePostWithApify(keys, post, false);
@@ -6122,23 +6206,30 @@ const AdminPanel = ({
       return;
     }
 
-    const syncedPosts = posts.filter(p => p.status === 'synced' || p.status === 'banned');
+    const allSyncedPosts = posts.filter(p => p.status === 'synced' || p.status === 'banned');
+    const syncedPosts = allSyncedPosts.filter(p => !sessionSyncedIds.includes(p.id));
+
     if (syncedPosts.length === 0) {
-      alert('Nenhum vídeo sincronizado para ressincronizar.');
+      if (allSyncedPosts.length > 0) {
+        alert('Todos os posts já foram conferidos nesta sessão! Liberando todos os vídeos para uma nova ressincronização completa.');
+        setSessionSyncedIds([]);
+        setSyncProgress(0);
+        setSyncTotal(0);
+      } else {
+        alert('Nenhum vídeo sincronizado para ressincronizar.');
+      }
       return;
     }
 
     setSyncing(true);
-    setSyncProgress(0);
-    setSyncTotal(syncedPosts.length);
-    setSessionSyncedIds([]);
+    let completed = sessionSyncedIds.length;
+    setSyncProgress(completed);
+    setSyncTotal(allSyncedPosts.length);
     
-    // Divide os posts: um worker do início, outro do fim
+    // Divide os posts: um worker do início, another do fim
     const mid = Math.ceil(syncedPosts.length / 2);
     const forwardGroup = syncedPosts.slice(0, mid);
     const backwardGroup = syncedPosts.slice(mid).reverse();
-
-    let completed = 0;
 
     const worker = async (list: Post[], key: string) => {
       for (const post of list) {
@@ -6177,19 +6268,27 @@ const AdminPanel = ({
       return;
     }
 
-    const compPosts = posts.filter(p => p.competitionId === compId && (p.status === 'synced' || p.status === 'banned'));
+    const allCompPosts = posts.filter(p => p.competitionId === compId && (p.status === 'synced' || p.status === 'banned'));
+    const compPosts = allCompPosts.filter(p => !sessionSyncedIds.includes(p.id));
+
     if (compPosts.length === 0) {
-      alert('Nenhum vídeo nesta competição para ressincronizar.');
+      if (allCompPosts.length > 0) {
+        alert('Todos os posts desta competição já foram conferidos! Liberando para uma nova bateria completa.');
+        setSessionSyncedIds([]);
+        setSyncProgress(0);
+        setSyncTotal(0);
+      } else {
+        alert('Nenhum vídeo nesta competição para ressincronizar.');
+      }
       return;
     }
 
     setSyncing(true);
     setSyncingCompId(compId);
-    setSyncProgress(0);
-    setSyncTotal(compPosts.length);
-    setSessionSyncedIds([]);
+    let current = sessionSyncedIds.length;
+    setSyncProgress(current);
+    setSyncTotal(allCompPosts.length);
     try {
-      let current = 0;
       for (const post of compPosts) {
         setSyncingPostId(post.id);
         await syncSinglePostWithApify(keys, post, false);
@@ -6215,23 +6314,30 @@ const AdminPanel = ({
       return;
     }
 
-    const compPosts = posts.filter(p => p.competitionId === compId && (p.status === 'synced' || p.status === 'banned'));
+    const allCompPosts = posts.filter(p => p.competitionId === compId && (p.status === 'synced' || p.status === 'banned'));
+    const compPosts = allCompPosts.filter(p => !sessionSyncedIds.includes(p.id));
+
     if (compPosts.length === 0) {
-      alert('Nenhum vídeo nesta competição para ressincronizar.');
+      if (allCompPosts.length > 0) {
+        alert('Todos os posts desta competição já foram conferidos! Liberando para uma nova bateria completa.');
+        setSessionSyncedIds([]);
+        setSyncProgress(0);
+        setSyncTotal(0);
+      } else {
+        alert('Nenhum vídeo nesta competição para ressincronizar.');
+      }
       return;
     }
 
     setSyncing(true);
     setSyncingCompId(compId);
-    setSyncProgress(0);
-    setSyncTotal(compPosts.length);
-    setSessionSyncedIds([]);
+    let completed = sessionSyncedIds.length;
+    setSyncProgress(completed);
+    setSyncTotal(allCompPosts.length);
 
     const mid = Math.ceil(compPosts.length / 2);
     const forwardGroup = compPosts.slice(0, mid);
     const backwardGroup = compPosts.slice(mid).reverse();
-
-    let completed = 0;
 
     const worker = async (list: Post[], key: string) => {
       for (const post of list) {
@@ -7811,6 +7917,11 @@ const AdminPanel = ({
                       </span>
                     </div>
                     <p className="font-bold truncate text-zinc-500 mb-2 text-xs">{post.url}</p>
+                    <div className="flex items-center justify-center md:justify-start gap-4 text-[10px] font-black text-zinc-500 mb-2">
+                      <span className="uppercase">{post.platform}</span>
+                      <span className="w-1 h-1 rounded-full bg-zinc-800" />
+                      <span>{new Date(post.timestamp).toLocaleString()}</span>
+                    </div>
                     <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 text-[10px] font-black text-zinc-500">
                       <div className="flex items-center gap-1"><Eye className="w-3 h-3" /> {post.views.toLocaleString()}</div>
                       <div className="flex items-center gap-1"><Heart className="w-3 h-3" /> {post.likes.toLocaleString()}</div>
@@ -7939,61 +8050,137 @@ const AdminPanel = ({
                   </div>
                 </div>
 
-                <div className="space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
-                  {posts.filter(p => p.userId === auditUserId).map(post => (
-                    <div key={post.id} className="p-4 rounded-2xl bg-black border border-zinc-800 flex flex-col md:flex-row gap-4 items-center justify-between">
-                      <div className="flex items-center gap-4 w-full md:w-auto">
-                        {post.platform === 'tiktok' ? <Zap className="w-6 h-6 text-amber-500" /> :
-                          post.platform === 'youtube' ? <TrendingUp className="w-6 h-6 text-red-500" /> :
-                            <Camera className="w-6 h-6 text-pink-500" />}
-                        <div className="flex flex-col overflow-hidden max-w-[200px]">
-                          <p className="font-bold text-xs truncate text-zinc-300">{post.url}</p>
-                          <p className={`text-[10px] font-black uppercase ${post.status === 'approved' || post.status === 'synced' ? 'text-emerald-500' : post.status === 'rejected' || post.status === 'banned' ? 'text-red-500' : 'text-amber-500'}`}>
-                            STATUS: {post.status === 'approved' || post.status === 'synced' ? 'APROVADO' : post.status === 'rejected' || post.status === 'banned' ? 'RECUSADO' : 'EM TRIAGEM'}
-                          </p>
+                {/* Daily Summary + Filter */}
+                {(() => {
+                  const userPosts = posts.filter(p => p.userId === auditUserId);
+                  
+                  // Agrupar posts por dia (usando timestamp)
+                  const dayMap: Record<string, typeof userPosts> = {};
+                  userPosts.forEach(p => {
+                    const d = new Date(p.timestamp);
+                    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                    if (!dayMap[key]) dayMap[key] = [];
+                    dayMap[key].push(p);
+                  });
+                  const sortedDays = Object.keys(dayMap).sort((a, b) => b.localeCompare(a));
+                  
+                  const filteredPosts = auditDayFilter
+                    ? (dayMap[auditDayFilter] || [])
+                    : userPosts;
+
+                  return (
+                    <>
+                      {/* Cards de resumo por dia */}
+                      {sortedDays.length > 0 && (
+                        <div className="mb-6">
+                          <div className="flex items-center justify-between mb-3">
+                            <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Posts por Dia</p>
+                            {auditDayFilter && (
+                              <button
+                                onClick={() => setAuditDayFilter('')}
+                                className="text-[10px] font-black text-amber-500 uppercase tracking-widest hover:text-amber-400 transition-colors flex items-center gap-1"
+                              >
+                                <X className="w-3 h-3" /> Limpar Filtro
+                              </button>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {sortedDays.map(day => {
+                              const dayPosts = dayMap[day];
+                              const approved = dayPosts.filter(p => p.status === 'approved' || p.status === 'synced').length;
+                              const pending = dayPosts.filter(p => p.status === 'pending').length;
+                              const rejected = dayPosts.filter(p => p.status === 'rejected' || p.status === 'banned').length;
+                              const isSelected = auditDayFilter === day;
+                              const label = new Date(day + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+                              return (
+                                <button
+                                  key={day}
+                                  onClick={() => setAuditDayFilter(isSelected ? '' : day)}
+                                  className={`flex flex-col items-center px-4 py-3 rounded-2xl border transition-all text-left ${
+                                    isSelected
+                                      ? 'bg-amber-500/10 border-amber-500/50 text-amber-500'
+                                      : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-600 hover:text-white'
+                                  }`}
+                                >
+                                  <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
+                                  <span className={`text-xl font-black mt-0.5 ${isSelected ? 'text-amber-500' : 'text-white'}`}>{dayPosts.length}</span>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    {approved > 0 && <span className="text-[8px] font-black text-emerald-500">{approved}✓</span>}
+                                    {pending > 0 && <span className="text-[8px] font-black text-amber-400">{pending}⏳</span>}
+                                    {rejected > 0 && <span className="text-[8px] font-black text-red-500">{rejected}✗</span>}
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {auditDayFilter && (
+                            <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest mt-3">
+                              Mostrando {filteredPosts.length} post{filteredPosts.length !== 1 ? 's' : ''} de {new Date(auditDayFilter + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                            </p>
+                          )}
                         </div>
+                      )}
+
+                      {/* Lista de posts */}
+                      <div className="space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
+                        {filteredPosts.map(post => (
+                          <div key={post.id} className="p-4 rounded-2xl bg-black border border-zinc-800 flex flex-col md:flex-row gap-4 items-center justify-between">
+                            <div className="flex items-center gap-4 w-full md:w-auto">
+                              {post.platform === 'tiktok' ? <Zap className="w-6 h-6 text-amber-500" /> :
+                                post.platform === 'youtube' ? <TrendingUp className="w-6 h-6 text-red-500" /> :
+                                  <Camera className="w-6 h-6 text-pink-500" />}
+                              <div className="flex flex-col overflow-hidden max-w-[200px]">
+                                <p className="font-bold text-xs truncate text-zinc-300">{post.url}</p>
+                                <p className={`text-[10px] font-black uppercase ${post.status === 'approved' || post.status === 'synced' ? 'text-emerald-500' : post.status === 'rejected' || post.status === 'banned' ? 'text-red-500' : 'text-amber-500'}`}>
+                                  STATUS: {post.status === 'approved' || post.status === 'synced' ? 'APROVADO' : post.status === 'rejected' || post.status === 'banned' ? 'RECUSADO' : 'EM TRIAGEM'}
+                                </p>
+                                <p className="text-[9px] font-bold text-zinc-600 mt-0.5">{new Date(post.timestamp).toLocaleString('pt-BR')}</p>
+                              </div>
+                            </div>
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 text-xs w-full md:w-auto">
+                              <div className="flex items-center gap-4 bg-zinc-900/50 p-2 rounded-xl">
+                                <span className="text-zinc-500 font-bold uppercase tracking-widest flex items-center gap-1"><Eye className="w-3 h-3 text-zinc-400" /> {(post.views || 0).toLocaleString()}</span>
+                                <span className="text-zinc-500 font-bold uppercase tracking-widest flex items-center gap-1"><Heart className="w-3 h-3 text-zinc-400" /> {(post.likes || 0).toLocaleString()}</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <a href={post.url} target="_blank" rel="noreferrer" className="flex-1 text-center sm:flex-none px-4 py-2 rounded-xl bg-zinc-900 text-zinc-400 font-bold hover:text-white transition-colors">
+                                  Ver Link
+                                </a>
+                                <button
+                                  onClick={() => handlePostStatus(post.id, 'approved')}
+                                  className={`p-2 rounded-xl transition-all ${post.status === 'approved' || post.status === 'synced' ? 'bg-emerald-500 text-black' : 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-black'}`}
+                                  title="Aprovar Vídeo"
+                                >
+                                  <CheckCircle2 className="w-5 h-5" />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setRejectionReason(post.rejectionReason || '');
+                                    setRejectionModal({ isOpen: true, postId: post.id, status: post.status });
+                                  }}
+                                  className={`p-2 rounded-xl transition-all ${post.rejectionReason ? 'bg-amber-500 text-black' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
+                                  title="Enviar/Editar Mensagem"
+                                >
+                                  <MessageSquare className="w-5 h-5" />
+                                </button>
+                                <button
+                                  onClick={() => handlePostStatus(post.id, 'rejected')}
+                                  className={`p-2 rounded-xl transition-all ${post.status === 'rejected' || post.status === 'banned' ? 'bg-red-500 text-black' : 'bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-black'}`}
+                                  title="Rejeitar Vídeo"
+                                >
+                                  <XCircle className="w-5 h-5" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        {filteredPosts.length === 0 && (
+                          <p className="text-center py-6 text-zinc-500 font-bold">Nenhum vídeo registrado para este usuário{auditDayFilter ? ' neste dia' : ''}.</p>
+                        )}
                       </div>
-                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 text-xs w-full md:w-auto">
-                        <div className="flex items-center gap-4 bg-zinc-900/50 p-2 rounded-xl">
-                          <span className="text-zinc-500 font-bold uppercase tracking-widest flex items-center gap-1"><Eye className="w-3 h-3 text-zinc-400" /> {(post.views || 0).toLocaleString()}</span>
-                          <span className="text-zinc-500 font-bold uppercase tracking-widest flex items-center gap-1"><Heart className="w-3 h-3 text-zinc-400" /> {(post.likes || 0).toLocaleString()}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <a href={post.url} target="_blank" rel="noreferrer" className="flex-1 text-center sm:flex-none px-4 py-2 rounded-xl bg-zinc-900 text-zinc-400 font-bold hover:text-white transition-colors">
-                            Ver Link
-                          </a>
-                          <button
-                            onClick={() => handlePostStatus(post.id, 'approved')}
-                            className={`p-2 rounded-xl transition-all ${post.status === 'approved' || post.status === 'synced' ? 'bg-emerald-500 text-black' : 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-black'}`}
-                            title="Aprovar Vídeo"
-                          >
-                            <CheckCircle2 className="w-5 h-5" />
-                          </button>
-                          <button
-                            onClick={() => {
-                              setRejectionReason(post.rejectionReason || '');
-                              setRejectionModal({ isOpen: true, postId: post.id, status: post.status });
-                            }}
-                            className={`p-2 rounded-xl transition-all ${post.rejectionReason ? 'bg-amber-500 text-black' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
-                            title="Enviar/Editar Mensagem"
-                          >
-                            <MessageSquare className="w-5 h-5" />
-                          </button>
-                          <button
-                            onClick={() => handlePostStatus(post.id, 'rejected')}
-                            className={`p-2 rounded-xl transition-all ${post.status === 'rejected' || post.status === 'banned' ? 'bg-red-500 text-black' : 'bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-black'}`}
-                            title="Rejeitar Vídeo"
-                          >
-                            <XCircle className="w-5 h-5" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  {posts.filter(p => p.userId === auditUserId).length === 0 && (
-                    <p className="text-center py-6 text-zinc-500 font-bold">Nenhum vídeo registrado para este usuário.</p>
-                  )}
-                </div>
+                    </>
+                  );
+                })()}
               </div>
             ) : (
               <div className="space-y-1">
@@ -9111,14 +9298,15 @@ const AdminPanel = ({
                 <div className="grid grid-cols-1 gap-4">
                   {posts.filter(p => (p.status === 'synced' || p.status === 'banned') && p.competitionId === syncDetailCompId).map(post => {
                     const isSyncedInSession = sessionSyncedIds.includes(post.id);
-                    const isCurrentlyPending = syncing && syncingCompId === syncDetailCompId && !isSyncedInSession;
+                    const sessionActive = syncing || sessionSyncedIds.length > 0;
+                    const isDimmed = sessionActive && isSyncedInSession;
 
                     return (
                       <div 
                         key={post.id} 
                         className={`p-6 rounded-[32px] glass-card border transition-all duration-500 group flex flex-col md:flex-row items-center gap-8 
                           ${post.status === 'banned' ? 'border-red-500/10 opacity-60' : 'border-zinc-800/50 hover:border-amber-500/30'}
-                          ${isCurrentlyPending ? 'opacity-30 grayscale blur-[1px]' : 'opacity-100 grayscale-0'}
+                          ${isDimmed ? 'opacity-30 grayscale blur-[1px]' : 'opacity-100 grayscale-0'}
                           ${isSyncedInSession ? 'border-emerald-500/30 bg-emerald-500/[0.02]' : ''}
                         `}
                       >
@@ -9140,7 +9328,7 @@ const AdminPanel = ({
                           <p className={`text-lg font-black uppercase tracking-tight transition-colors ${post.status === 'banned' ? 'text-zinc-600 line-through' : 'text-white group-hover:text-amber-500'}`}>
                             {post.userName}
                           </p>
-                          <div className="flex gap-2">
+                          <div className="flex gap-2 flex-wrap">
                             {isSyncedInSession ? (
                               <span className="px-3 py-1 rounded-full bg-emerald-500 text-black text-[8px] font-black uppercase tracking-widest border border-emerald-400 flex items-center gap-1 shadow-lg shadow-emerald-500/20 animate-in zoom-in-50 duration-300">
                                 <CheckCircle2 className="w-3 h-3" /> OK / CONCLUÍDO
@@ -9150,12 +9338,28 @@ const AdminPanel = ({
                             ) : (
                               <span className="px-3 py-1 rounded-full bg-red-500/10 text-red-500 text-[8px] font-black uppercase tracking-widest border border-red-500/20">SUSPENSO</span>
                             )}
+                            {(post as any).forceMonthly && (
+                              <span className="px-3 py-1 rounded-full bg-violet-500/20 text-violet-400 text-[8px] font-black uppercase tracking-widest border border-violet-500/30 flex items-center gap-1">
+                                <Calendar className="w-2.5 h-2.5" /> SÓ MENSAL
+                              </span>
+                            )}
+                            {(post as any).forceDaily && (
+                              <span className="px-3 py-1 rounded-full bg-amber-500/20 text-amber-500 text-[8px] font-black uppercase tracking-widest border border-amber-500/30 flex items-center gap-1">
+                                <Zap className="w-2.5 h-2.5" /> SÓ DIÁRIO
+                              </span>
+                            )}
                           </div>
                         </div>
                         
                         <p className="font-bold truncate text-zinc-500 text-xs hover:text-zinc-300 transition-colors cursor-pointer max-w-md mx-auto md:mx-0">
                           {post.url}
                         </p>
+
+                        <div className="flex items-center justify-center md:justify-start gap-4 text-[10px] font-black text-zinc-500 mt-1">
+                          <span className="uppercase">{post.platform}</span>
+                          <span className="w-1 h-1 rounded-full bg-zinc-800" />
+                          <span>{new Date(post.timestamp).toLocaleString()}</span>
+                        </div>
 
                         <div className="flex flex-wrap items-center justify-center md:justify-start gap-6 pt-2">
                           <div className="flex items-center gap-2 group/metric">
@@ -9184,6 +9388,67 @@ const AdminPanel = ({
                         <a href={post.url} target="_blank" rel="noreferrer" className="w-12 h-12 rounded-2xl bg-zinc-800 text-zinc-400 flex items-center justify-center hover:bg-amber-500 hover:text-black transition-all shadow-lg" title="Ver Link Original">
                           <ExternalLink className="w-5 h-5" />
                         </a>
+
+                        {/* Botão Forçar Mensal */}
+                        <button
+                          onClick={async () => {
+                            const isAlreadyForced = (post as any).forceMonthly === true;
+                            const msg = isAlreadyForced
+                              ? 'Este link já está forçado para o Mensal. Deseja REVERTER para o comportamento normal (voltará ao Diário se dentro do ciclo)?'
+                              : 'Forçar este link para o Ranking MENSAL? Ele sairá do Diário e todos os seus dados diários serão removidos imediatamente.';
+                            if (!confirm(msg)) return;
+                            try {
+                              // 1. Marca o post no Firestore
+                              await updateDoc(doc(db, 'posts', post.id), { forceMonthly: !isAlreadyForced });
+
+                              // 2. Recálculo completo (para garantir consistência e evitar valores negativos ou duplicados)
+                              await updateUserMetrics(post.userId);
+
+                              alert(isAlreadyForced ? 'Revertido! Link voltou ao comportamento normal.' : '✅ Link forçado para o Mensal! Stats diários removidos.');
+                            } catch(e: any) { alert('Erro: ' + e.message); }
+                          }}
+                          className={`flex items-center justify-center gap-2 px-4 py-3 rounded-2xl transition-all text-[9px] tracking-widest uppercase font-black whitespace-nowrap shadow-lg
+                            ${(post as any).forceMonthly
+                              ? 'bg-violet-500 text-white hover:bg-violet-400'
+                              : 'bg-zinc-800 text-zinc-400 hover:bg-violet-600 hover:text-white'
+                            }`}
+                          title={(post as any).forceMonthly ? 'Clique para reverter ao comportamento normal' : 'Forçar link para Ranking Mensal'}
+                        >
+                          <Calendar className="w-4 h-4" />
+                          {(post as any).forceMonthly ? 'MENSAL ✓' : 'MENSAL'}
+                        </button>
+
+                        {/* Botão Forçar Diário */}
+                        <button
+                          onClick={async () => {
+                            const isAlreadyForcedDaily = (post as any).forceDaily === true;
+                            if (!isAlreadyForcedDaily && (post as any).forceMonthly) {
+                               alert('Remova primeiro a tag Mensal antes de forçar no Diário.');
+                               return;
+                            }
+                            const msg = isAlreadyForcedDaily
+                              ? 'Este link já está forçado para o Diário. Deseja REVERTER para o comportamento normal?'
+                              : 'Forçar este link para o Ranking DIÁRIO? Ele entrará na contagem diária permanentemente.';
+                            if (!confirm(msg)) return;
+                            try {
+                              await updateDoc(doc(db, 'posts', post.id), { forceDaily: !isAlreadyForcedDaily });
+                              
+                              // 2. Recálculo completo garantido
+                              await updateUserMetrics(post.userId);
+
+                              alert(isAlreadyForcedDaily ? 'Revertido! Link voltou ao comportamento normal.' : '✅ Link forçado para o Diário! Stats integrados imediatamente.');
+                            } catch(e: any) { alert('Erro: ' + e.message); }
+                          }}
+                          className={`flex items-center justify-center gap-2 px-4 py-3 rounded-2xl transition-all text-[9px] tracking-widest uppercase font-black whitespace-nowrap shadow-lg
+                            ${(post as any).forceDaily
+                              ? 'bg-amber-500 text-black hover:bg-amber-400'
+                              : 'bg-zinc-800 text-zinc-400 hover:bg-amber-600 hover:text-white'
+                            }`}
+                          title={(post as any).forceDaily ? 'Clique para reverter ao comportamento normal' : 'Forçar link para Ranking Diário'}
+                        >
+                          <Zap className="w-4 h-4" />
+                          {(post as any).forceDaily ? 'DIÁRIO ✓' : 'DIÁRIO'}
+                        </button>
 
                         <button
                           onClick={async () => {
