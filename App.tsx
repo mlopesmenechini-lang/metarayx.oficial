@@ -5591,6 +5591,9 @@ const AdminPanel = ({
   const [financeTab, setFinanceTab] = useState<'RESUMO' | 'PENDING' | 'REALIZED'>('RESUMO');
   const [financeCompId, setFinanceCompId] = useState<string>(() => competitions[0]?.id || '');
   const [financeDateFilter, setFinanceDateFilter] = useState('');
+  const [manuallyAddedFinancialUsers, setManuallyAddedFinancialUsers] = useState<string[]>([]);
+  const [searchManualUser, setSearchManualUser] = useState('');
+  const [showManualUserSelect, setShowManualUserSelect] = useState(false);
   const [newUserName, setNewUserName] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserPass, setNewUserPass] = useState('');
@@ -5600,7 +5603,8 @@ const AdminPanel = ({
   const [validatedPostsLocal, setValidatedPostsLocal] = useState<string[]>([]);
   const [realizedPayments, setRealizedPayments] = useState<Transaction[]>([]);
   const [loadingFinancials, setLoadingFinancials] = useState(false);
-
+  const [selectedNetworkUserId, setSelectedNetworkUserId] = useState<string>('all');
+  const [selectedResyncPostIds, setSelectedResyncPostIds] = useState<string[]>([]);
   const isSameDay = (timestamp: number, dateStr: string) => {
     if (!dateStr) return true;
     const date = new Date(timestamp);
@@ -5609,6 +5613,12 @@ const AdminPanel = ({
            date.getMonth() === filterDate.getMonth() &&
            date.getDate() === filterDate.getDate();
   };
+
+  useEffect(() => {
+    if (!financeCompId && competitions.length > 0) {
+      setFinanceCompId(competitions[0].id);
+    }
+  }, [competitions, financeCompId]);
 
   useEffect(() => {
     const fetchFilteredTransactions = async () => {
@@ -6466,6 +6476,137 @@ const AdminPanel = ({
     }
   };
 
+  const handleBulkForceMonthly = async () => {
+    if (selectedResyncPostIds.length === 0) return;
+    if (!confirm(`Deseja forçar ${selectedResyncPostIds.length} posts para o MENSAL?`)) return;
+    
+    setSyncing(true);
+    try {
+      const userIdsToUpdate = new Set<string>();
+      for (const postId of selectedResyncPostIds) {
+        const post = posts.find(p => p.id === postId);
+        if (post) {
+          await updateDoc(doc(db, 'posts', postId), { forceMonthly: true, forceDaily: false });
+          userIdsToUpdate.add(post.userId);
+        }
+      }
+      
+      for (const userId of userIdsToUpdate) {
+        await updateUserMetrics(userId);
+      }
+      
+      alert('Ação em lote concluída: Posts forçados para o Mensal!');
+      setSelectedResyncPostIds([]);
+    } catch (e: any) {
+      alert('Erro na ação em lote: ' + e.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleBulkForceDaily = async () => {
+    if (selectedResyncPostIds.length === 0) return;
+    if (!confirm(`Deseja forçar ${selectedResyncPostIds.length} posts para o DIÁRIO?`)) return;
+    
+    setSyncing(true);
+    try {
+      const userIdsToUpdate = new Set<string>();
+      for (const postId of selectedResyncPostIds) {
+        const post = posts.find(p => p.id === postId);
+        if (post) {
+          await updateDoc(doc(db, 'posts', postId), { forceDaily: true, forceMonthly: false });
+          userIdsToUpdate.add(post.userId);
+        }
+      }
+      
+      for (const userId of userIdsToUpdate) {
+        await updateUserMetrics(userId);
+      }
+      
+      alert('Ação em lote concluída: Posts forçados para o Diário!');
+      setSelectedResyncPostIds([]);
+    } catch (e: any) {
+      alert('Erro na ação em lote: ' + e.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleBulkResetMetrics = async () => {
+    if (selectedResyncPostIds.length === 0) return;
+    if (!confirm(`Deseja ZERAR as métricas de ${selectedResyncPostIds.length} posts e enviá-los de volta para sincronização?`)) return;
+    
+    setSyncing(true);
+    try {
+      const userIdsToUpdate = new Set<string>();
+      for (const postId of selectedResyncPostIds) {
+        const post = posts.find(p => p.id === postId);
+        if (post) {
+          await updateDoc(doc(db, 'posts', postId), { 
+            status: 'approved',
+            views: 0, likes: 0, comments: 0, shares: 0, saves: 0,
+            viewsBaseline: 0, likesBaseline: 0, commentsBaseline: 0, sharesBaseline: 0, savesBaseline: 0
+          });
+          userIdsToUpdate.add(post.userId);
+        }
+      }
+      
+      for (const userId of userIdsToUpdate) {
+        await updateUserMetrics(userId);
+      }
+      
+      alert('Ação em lote concluída: Posts resetados e enviados para re-sincronia!');
+      setSelectedResyncPostIds([]);
+    } catch (e: any) {
+      alert('Erro na ação em lote: ' + e.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleBulkSyncSelected = async () => {
+    if (selectedResyncPostIds.length === 0) return;
+    const keys = settings.apifyKeys && settings.apifyKeys.length > 0 ? settings.apifyKeys : [apifyKey];
+    if (keys.length < 1) {
+      alert('Configure pelo menos uma chave de API.');
+      return;
+    }
+
+    setSyncing(true);
+    setSyncTotal(selectedResyncPostIds.length);
+    let completed = 0;
+    setSyncProgress(0);
+
+    try {
+      const selectedPosts = posts.filter(p => selectedResyncPostIds.includes(p.id));
+      const n = keys.length;
+      const groups: Post[][] = Array.from({ length: n }, () => []);
+      selectedPosts.forEach((post, i) => groups[i % n].push(post));
+
+      const worker = async (list: Post[], key: string) => {
+        for (const post of list) {
+          setSyncingPostId(post.id);
+          try {
+            await syncSinglePostWithApify([key], post, false);
+            completed++;
+            setSyncProgress(completed);
+          } catch (e) {
+            console.error(`Erro no Bulk Sync para o post ${post.id}:`, e);
+          }
+        }
+      };
+
+      await Promise.all(groups.map((group, i) => worker(group, keys[i])));
+      alert('Sincronização em lote dos selecionados finalizada!');
+      setSelectedResyncPostIds([]);
+    } catch (error: any) {
+      alert(`Erro no Bulk Sync: ${error.message}`);
+    } finally {
+      setSyncing(false);
+      setSyncingPostId(null);
+    }
+  };
+
   const handleExportExcel = () => {
     if (!selectedCompId) {
       alert('Selecione a competição!');
@@ -6988,14 +7129,33 @@ const AdminPanel = ({
                   trend: undefined
                 },
                 { 
-                  label: 'Saúde da Comunidade', 
-                  value: newUsers7d, 
-                  sub: `${inactiveUsers.length} inativos (3d)`, 
-                  icon: Users, 
+                  label: 'Redes Vinculadas', 
+                  value: (() => {
+                    const activeUsers = [...approvedUsers, ...pendingUsers];
+                    const targetUsers = selectedNetworkUserId === 'all' ? activeUsers : activeUsers.filter(u => u.uid === selectedNetworkUserId);
+                    return targetUsers.reduce((acc: number, u: any) => acc + (u.tiktok?.length || 0) + (u.instagram?.length || 0) + ((u as any).userInstagram?.length || 0) + (u.youtube?.length || 0), 0);
+                  })(),
+                  sub: (() => {
+                    const activeUsers = [...approvedUsers, ...pendingUsers];
+                    if (selectedNetworkUserId !== 'all') {
+                      const selUser = activeUsers.find(u => u.uid === selectedNetworkUserId);
+                      if (!selUser) return 'Usuário não encontrado';
+                      const tkCount = (selUser.tiktok || []).length;
+                      const igCount = ((selUser.instagram || []).length + ((selUser as any).userInstagram || []).length);
+                      const ytCount = (selUser.youtube || []).length;
+                      const totalCount = tkCount + igCount + ytCount;
+                      return `Visualizando detalhes de perfis (${totalCount})`;
+                    }
+                    const tk = activeUsers.reduce((acc: number, u: any) => acc + (u.tiktok?.length || 0), 0);
+                    const ig = activeUsers.reduce((acc: number, u: any) => acc + (u.instagram?.length || 0) + ((u as any).userInstagram?.length || 0), 0);
+                    const yt = activeUsers.reduce((acc: number, u: any) => acc + (u.youtube?.length || 0), 0);
+                    return `Tiktok: ${tk} • Insta: ${ig} • YT: ${yt}`;
+                  })(), 
+                  icon: Share2, 
                   color: 'text-pink-500', 
                   bg: 'bg-pink-500/10',
-                  desc: 'Novos integrantes (7 dias)',
-                  tooltip: 'Novos usuários na última semana e usuários inativos nos últimos 3 dias.',
+                  desc: 'Total de contas sociais cadastradas',
+                  tooltip: 'Quantidade de redes sociais conectadas nos perfis dos usuários.',
                   trend: undefined
                 },
               ].map((stat, i) => (
@@ -7033,8 +7193,51 @@ const AdminPanel = ({
                     </div>
                   </div>
 
-                  <div className="mt-8 pt-4 border-t border-zinc-900/50 relative z-10">
+                  <div className="mt-8 pt-4 border-t border-zinc-900/50 relative z-10 flex flex-col gap-3">
                     <p className="text-[9px] font-black text-zinc-700 uppercase tracking-widest leading-none">{stat.desc}</p>
+                    {stat.label === 'Redes Vinculadas' && (
+                      <>
+                        <select
+                          value={selectedNetworkUserId}
+                          onChange={(e) => setSelectedNetworkUserId(e.target.value)}
+                          className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-2 py-1.5 text-[8px] font-black text-zinc-300 uppercase tracking-widest focus:outline-none focus:border-pink-500/50 transition-all cursor-pointer"
+                        >
+                          <option value="all" className="bg-zinc-900 text-zinc-300 font-black">TODOS OS USUÁRIOS</option>
+                          {[...approvedUsers, ...pendingUsers]
+                            .sort((a, b) => (a.displayName || a.name || a.email || '').localeCompare(b.displayName || b.name || b.email || ''))
+                            .map(u => (
+                            <option key={u.uid} value={u.uid} className="bg-zinc-900 text-zinc-300">
+                              {u.displayName ? u.displayName.toUpperCase() : (u.name ? u.name.toUpperCase() : (u.email ? u.email.toUpperCase() : 'SEM NOME'))}
+                            </option>
+                          ))}
+                        </select>
+                        {selectedNetworkUserId !== 'all' && (() => {
+                          const selUser = [...approvedUsers, ...pendingUsers].find(u => u.uid === selectedNetworkUserId);
+                          if (!selUser) return null;
+                          const tks = selUser.tiktok || [];
+                          const igs = [...(selUser.instagram || []), ...((selUser as any).userInstagram || [])];
+                          const yts = selUser.youtube || [];
+                          const allHandles = [
+                            ...tks.map(h => ({ platform: 'TikTok', handle: h, color: 'text-pink-500 bg-pink-500/10 border-pink-500/20' })),
+                            ...igs.map(h => ({ platform: 'Instagram', handle: h, color: 'text-blue-500 bg-blue-500/10 border-blue-500/20' })),
+                            ...yts.map(h => ({ platform: 'YouTube', handle: h, color: 'text-red-500 bg-red-500/10 border-red-500/20' }))
+                          ];
+                          if (allHandles.length === 0) return <div className="text-[9px] text-zinc-500 text-center font-bold mt-2">NENHUMA CONTA ENCONTRADA</div>;
+                          return (
+                            <div className="mt-2 flex flex-col gap-2 max-h-[120px] overflow-y-auto custom-scrollbar pr-1">
+                              {allHandles.map((h, idx) => (
+                                <div key={idx} className="flex flex-col gap-1.5 items-center justify-center p-2 rounded-xl bg-black border border-zinc-900 group text-center">
+                                  <span className="text-[8px] font-black text-zinc-500 uppercase">{h.platform}</span>
+                                  <div className={`px-3 py-1 rounded-full border text-[9px] font-black tracking-widest ${h.color} truncate w-full max-w-[200px]`}>
+                                    {h.handle}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </>
+                    )}
                   </div>
                 </motion.div>
               ))}
@@ -7616,19 +7819,62 @@ const AdminPanel = ({
 
                     {(financeTab === 'PENDING' || financeTab === 'REALIZED') && (
                       <div className="animate-in fade-in duration-500">
-                        <div className="flex items-center gap-2 bg-zinc-900/50 p-1.5 rounded-xl border border-zinc-800/50 overflow-x-auto custom-scrollbar w-full md:w-fit pb-1 md:pb-1.5 mb-6">
-                          {competitions.length === 0 && (
-                            <span className="px-4 py-2 text-zinc-600 font-black text-[10px] uppercase tracking-widest">Nenhuma competição cadastrada</span>
-                          )}
-                          {competitions.map(comp => (
-                            <button
-                              key={comp.id}
-                              onClick={() => setFinanceCompId(comp.id)}
-                              className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all whitespace-nowrap flex items-center gap-1.5 ${financeCompId === comp.id ? 'bg-amber-500/10 text-amber-500 shadow-md border border-amber-500/20' : 'text-zinc-500 hover:text-amber-400 hover:bg-amber-500/5'}`}
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                          <div className="flex items-center gap-2 bg-zinc-900/50 p-1.5 rounded-xl border border-zinc-800/50 overflow-x-auto custom-scrollbar w-full md:w-fit">
+                            {competitions.length === 0 && (
+                              <span className="px-4 py-2 text-zinc-600 font-black text-[10px] uppercase tracking-widest">Nenhuma competição cadastrada</span>
+                            )}
+                            {competitions.map(comp => (
+                              <button
+                                key={comp.id}
+                                onClick={() => setFinanceCompId(comp.id)}
+                                className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all whitespace-nowrap flex items-center gap-1.5 ${financeCompId === comp.id ? 'bg-amber-500/10 text-amber-500 shadow-md border border-amber-500/20' : 'text-zinc-500 hover:text-amber-400 hover:bg-amber-500/5'}`}
+                              >
+                                <Trophy className="w-3.5 h-3.5" /> {comp.title}
+                              </button>
+                            ))}
+                          </div>
+                          
+                          <div className="relative w-full md:w-auto">
+                            <button 
+                              onClick={() => setShowManualUserSelect(!showManualUserSelect)}
+                              className="w-full md:w-auto px-4 py-2.5 bg-zinc-900 text-zinc-300 font-black rounded-xl text-[10px] uppercase tracking-widest border border-zinc-800 hover:border-amber-500/50 hover:text-amber-500 transition-all flex items-center justify-center gap-2 shadow-lg"
                             >
-                              <Trophy className="w-3.5 h-3.5" /> {comp.title}
+                              <Plus className="w-3.5 h-3.5" /> INSERIR USUÁRIO MANUAL
                             </button>
-                          ))}
+
+                            {showManualUserSelect && (
+                              <div className="absolute right-0 top-full mt-2 w-64 bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl z-50 p-3 flex flex-col gap-3">
+                                <input 
+                                  type="text"
+                                  placeholder="Buscar por nome..."
+                                  value={searchManualUser}
+                                  onChange={(e) => setSearchManualUser(e.target.value)}
+                                  className="bg-black border border-zinc-800 rounded-xl py-2 px-3 text-[10px] font-bold text-white outline-none focus:border-amber-500"
+                                />
+                                <div className="max-h-48 overflow-y-auto custom-scrollbar flex flex-col gap-1">
+                                  {approvedUsers
+                                    .filter(u => u.displayName.toLowerCase().includes(searchManualUser.toLowerCase()))
+                                    .map(u => (
+                                      <button
+                                        key={u.uid}
+                                        onClick={() => {
+                                          setManuallyAddedFinancialUsers(prev => prev.includes(u.uid) ? prev : [...prev, u.uid]);
+                                          setShowManualUserSelect(false);
+                                          setSearchManualUser('');
+                                        }}
+                                        className="text-left px-3 py-2 rounded-lg text-[10px] font-black text-zinc-400 hover:bg-zinc-900 hover:text-white uppercase transition-all truncate"
+                                      >
+                                        {u.displayName}
+                                      </button>
+                                  ))}
+                                  {approvedUsers.filter(u => u.displayName.toLowerCase().includes(searchManualUser.toLowerCase())).length === 0 && (
+                                    <p className="text-[10px] font-bold text-zinc-600 text-center py-2">Nenhum usuário encontrado</p>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
                         
                         <ListHeader columns={['INTEGRANTE', 'CHAVE PIX', 'SALDO', 'STATUS', 'GERENCIAR']} gridClass="grid-cols-[1.5fr_1fr_1.5fr_150px_220px]" />
@@ -7674,9 +7920,9 @@ const AdminPanel = ({
                                 return b > 0 && dailyPosts.length > 0;
                               }
 
-                              if (financeTab === 'PENDING') return b > 0;
+                              if (financeTab === 'PENDING') return b > 0 || manuallyAddedFinancialUsers.includes(u.uid);
                               // Para REALIZED, mostramos quem já recebeu qualquer valor
-                              return paid > 0;
+                              return paid > 0 || manuallyAddedFinancialUsers.includes(u.uid);
                             });
                             
                             return (
@@ -9393,6 +9639,67 @@ const AdminPanel = ({
                   </button>
                 </div>
 
+                {/* Bulk Actions Header */}
+                <div className="bg-zinc-900/50 p-6 rounded-[32px] border border-zinc-800/50 flex flex-wrap items-center justify-between gap-6">
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={() => {
+                        const allCompPosts = posts.filter(p => (p.status === 'synced' || p.status === 'banned') && p.competitionId === syncDetailCompId).map(p => p.id);
+                        if (selectedResyncPostIds.length === allCompPosts.length) {
+                          setSelectedResyncPostIds([]);
+                        } else {
+                          setSelectedResyncPostIds(allCompPosts);
+                        }
+                      }}
+                      className="px-4 py-2 rounded-xl bg-zinc-800 text-zinc-400 text-[10px] font-black uppercase tracking-widest border border-zinc-700 hover:bg-zinc-700 hover:text-white transition-all"
+                    >
+                      {selectedResyncPostIds.length > 0 && selectedResyncPostIds.length === posts.filter(p => (p.status === 'synced' || p.status === 'banned') && p.competitionId === syncDetailCompId).length 
+                        ? 'Desmarcar Todos' 
+                        : 'Selecionar Todos'}
+                    </button>
+                    {selectedResyncPostIds.length > 0 && (
+                      <span className="text-amber-500 font-black text-[10px] uppercase tracking-widest">
+                        {selectedResyncPostIds.length} selecionados
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {selectedResyncPostIds.length > 0 && (
+                      <>
+                        <button
+                          onClick={handleBulkForceMonthly}
+                          disabled={syncing}
+                          className="px-4 py-2 rounded-xl bg-violet-500/10 text-violet-400 border border-violet-500/20 text-[9px] font-black uppercase tracking-widest hover:bg-violet-500 hover:text-white transition-all disabled:opacity-50"
+                        >
+                          Mensal em Lote
+                        </button>
+                        <button
+                          onClick={handleBulkForceDaily}
+                          disabled={syncing}
+                          className="px-4 py-2 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20 text-[9px] font-black uppercase tracking-widest hover:bg-amber-500 hover:text-black transition-all disabled:opacity-50"
+                        >
+                          Diário em Lote
+                        </button>
+                        <button
+                          onClick={handleBulkResetMetrics}
+                          disabled={syncing}
+                          className="px-4 py-2 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[9px] font-black uppercase tracking-widest hover:bg-blue-500 hover:text-white transition-all disabled:opacity-50"
+                        >
+                          Zerar e Voltar
+                        </button>
+                        <button
+                          onClick={handleBulkSyncSelected}
+                          disabled={syncing}
+                          className="px-4 py-2 rounded-xl gold-bg text-black text-[9px] font-black uppercase tracking-widest hover:scale-105 transition-all disabled:opacity-50"
+                        >
+                          Sinc. Selecionados
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 gap-4">
                   {posts.filter(p => (p.status === 'synced' || p.status === 'banned') && p.competitionId === syncDetailCompId).map(post => {
                     const isSyncedInSession = sessionSyncedIds.includes(post.id);
@@ -9402,12 +9709,26 @@ const AdminPanel = ({
                     return (
                       <div 
                         key={post.id} 
-                        className={`p-6 rounded-[32px] glass-card border transition-all duration-500 group flex flex-col md:flex-row items-center gap-8 
+                        onClick={() => {
+                          if (selectedResyncPostIds.includes(post.id)) {
+                            setSelectedResyncPostIds(prev => prev.filter(id => id !== post.id));
+                          } else {
+                            setSelectedResyncPostIds(prev => [...prev, post.id]);
+                          }
+                        }}
+                        className={`p-6 rounded-[32px] glass-card border transition-all duration-500 group flex flex-col md:flex-row items-center gap-8 cursor-pointer
                           ${post.status === 'banned' ? 'border-red-500/10 opacity-60' : 'border-zinc-800/50 hover:border-amber-500/30'}
                           ${isDimmed ? 'opacity-30 grayscale blur-[1px]' : 'opacity-100 grayscale-0'}
                           ${isSyncedInSession ? 'border-emerald-500/30 bg-emerald-500/[0.02]' : ''}
+                          ${selectedResyncPostIds.includes(post.id) ? 'border-amber-500/50 bg-amber-500/5 ring-1 ring-amber-500/20' : ''}
                         `}
                       >
+                      {/* Checkbox */}
+                      <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all shrink-0 ${
+                        selectedResyncPostIds.includes(post.id) ? 'bg-amber-500 border-amber-500 text-black' : 'border-zinc-700 bg-zinc-900 group-hover:border-zinc-500'
+                      }`}>
+                        {selectedResyncPostIds.includes(post.id) && <Check className="w-4 h-4" strokeWidth={4} />}
+                      </div>
                       {/* Ícone da Plataforma com Glow */}
                       <div className={`w-20 h-20 rounded-3xl flex items-center justify-center shrink-0 transition-all duration-500 group-hover:scale-110 relative ${
                         post.platform === 'tiktok' ? 'bg-amber-500/10 text-amber-500 shadow-lg shadow-amber-500/5' :
