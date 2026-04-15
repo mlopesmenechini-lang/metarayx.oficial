@@ -1987,19 +1987,41 @@ const App: React.FC = () => {
         try {
           const cid = targetComp.id;
           
-          // Filter users who have daily stats for THIS competition
+          // --- NOVA LÓGICA DE CORTE FIXO (20:05) ---
+          const nowRef = new Date();
+          const boundary = new Date(nowRef);
+          boundary.setHours(20, 5, 0, 0);
+          if (nowRef.getTime() < boundary.getTime()) {
+            boundary.setDate(boundary.getDate() - 1);
+          }
+          const cycleBoundary = boundary.getTime();
+          const previousReset = targetComp.lastDailyReset || 0;
+
+          // Recalcula ganhos REAIS do período que está sendo fechado [previousReset -> cycleBoundary]
+          const usersPeriodStats: Record<string, { views: number, posts: number }> = {};
+          posts.filter(p => p.competitionId === cid && (p.status === 'approved' || p.status === 'synced')).forEach(p => {
+            const t = p.timestamp || p.approvedAt || 0;
+            // Se o post foi feito na janela que estamos fechando agora
+            if (t > previousReset && t <= cycleBoundary && !(p as any).forceMonthly) {
+              const vGain = Math.max(0, (p.views || 0) - (p.viewsBaseline || 0));
+              if (!usersPeriodStats[p.userId]) usersPeriodStats[p.userId] = { views: 0, posts: 0 };
+              usersPeriodStats[p.userId].views += vGain;
+              usersPeriodStats[p.userId].posts += 1;
+            }
+          });
+
+          // Determina vencedores com base nos ganhos filtrados do ciclo
           const dailyViewWinners = [...approvedUsers]
-            .filter(u => (u.competitionStats?.[cid]?.dailyViews || 0) > 0)
-            .sort((a, b) => (b.competitionStats?.[cid]?.dailyViews || 0) - (a.competitionStats?.[cid]?.dailyViews || 0))
+            .filter(u => (usersPeriodStats[u.uid]?.views || 0) > 0)
+            .sort((a, b) => (usersPeriodStats[b.uid]?.views || 0) - (usersPeriodStats[a.uid]?.views || 0))
             .slice(0, targetComp.prizesDaily?.length || 10);
 
           const quantityWinner = [...approvedUsers]
-            .filter(u => (u.competitionStats?.[cid]?.dailyPosts || 0) > 0)
+            .filter(u => (usersPeriodStats[u.uid]?.posts || 0) > 0)
             .sort((a, b) => {
-              const statsA = a.competitionStats?.[cid];
-              const statsB = b.competitionStats?.[cid];
-              if (!statsA || !statsB) return 0;
-              return (statsB.dailyPosts || 0) - (statsA.dailyPosts || 0) || (statsB.dailyViews || 0) - (statsA.dailyViews || 0);
+              const vB = usersPeriodStats[b.uid];
+              const vA = usersPeriodStats[a.uid];
+              return (vB.posts || 0) - (vA.posts || 0) || (vB.views || 0) - (vA.views || 0);
             })[0];
 
           const balanceIncrements: Record<string, { amount: number, desc: string }> = {};
@@ -2007,8 +2029,8 @@ const App: React.FC = () => {
 
           dailyViewWinners.forEach((u, i) => {
             const prize = targetComp.prizesDaily?.[i]?.value || 0;
-            const dailyViews = u.competitionStats?.[cid]?.dailyViews || 0;
-            const bonusFromViews = Math.floor(dailyViews / 1000000) * viewBonusValue;
+            const periodViews = usersPeriodStats[u.uid]?.views || 0;
+            const bonusFromViews = Math.floor(periodViews / 1000000) * viewBonusValue;
             const total = prize + bonusFromViews;
             if (total > 0) {
               balanceIncrements[u.uid] = {
@@ -2034,11 +2056,11 @@ const App: React.FC = () => {
             }
           }
 
-          console.log('--- RESET DAILY RANKING LOG ---');
+          console.log('--- RESET DAILY RANKING LOG (STRICT CUTOFF) ---');
           console.log('Target Competition:', targetComp.title);
-          console.log('Daily View Winners:', dailyViewWinners.map(u => ({ name: u.displayName, views: u.competitionStats?.[cid]?.dailyViews })));
+          console.log('Cycle Boundary (Cutoff):', new Date(cycleBoundary).toLocaleString());
+          console.log('Daily View Winners:', dailyViewWinners.map(u => ({ name: u.displayName, views: usersPeriodStats[u.uid]?.views })));
           console.log('Quantity Winner:', quantityWinner?.displayName);
-          console.log('Calculated Increments:', balanceIncrements);
 
           // Process updates using Batch
           const batch = writeBatch(db);
@@ -2062,8 +2084,10 @@ const App: React.FC = () => {
             const uIncrement = balanceIncrements[u.uid]?.amount || 0;
             const dataToUpdate: any = {};
             
-            // Reset daily stats for THIS competition
-            const oldCompStats = u.competitionStats?.[cid] || {};
+            // O dailyViews será recalculado automaticamente no próximo sync 
+            // porque mudaremos o lastDailyReset para o cycleBoundary.
+            // Para feedback imediato, vamos zerar o que FOI pago.
+            // O que sobrar (posts > cycleBoundary) será somado pelo updateUserMetrics.
             dataToUpdate[`competitionStats.${cid}.dailyViews`] = 0;
             dataToUpdate[`competitionStats.${cid}.dailyLikes`] = 0;
             dataToUpdate[`competitionStats.${cid}.dailyComments`] = 0;
@@ -2079,37 +2103,32 @@ const App: React.FC = () => {
               dataToUpdate[`competitionStats.${cid}.balance`] = currentCompBalance + uIncrement;
             }
 
-            // Recalculate root daily stats (sum of all competitions EXCEPT the one being reset)
-            const otherComps = Object.entries(u.competitionStats || {}).filter(([id]) => id !== cid);
-            const newRootDailyViews = otherComps.reduce((acc, [_, s]) => acc + (s.dailyViews || 0), 0);
-            const newRootDailyLikes = otherComps.reduce((acc, [_, s]) => acc + (s.dailyLikes || 0), 0);
-            const newRootDailyPosts = otherComps.reduce((acc, [_, s]) => acc + (s.dailyPosts || 0), 0);
-            const newRootDailyInstaPosts = otherComps.reduce((acc, [_, s]) => acc + (s.dailyInstaPosts || 0), 0);
-            
-            dataToUpdate.dailyViews = newRootDailyViews;
-            dataToUpdate.dailyLikes = newRootDailyLikes;
-            dataToUpdate.dailyPosts = newRootDailyPosts;
-            dataToUpdate.dailyInstaPosts = newRootDailyInstaPosts;
+            // O root daily será ajustado pelo sync seguinte. Zeramos aqui para limpeza.
+            dataToUpdate.dailyViews = 0;
+            dataToUpdate.dailyLikes = 0;
+            dataToUpdate.dailyPosts = 0;
+            dataToUpdate.dailyInstaPosts = 0;
 
             batch.update(doc(db, 'users', u.uid), dataToUpdate);
           });
 
-          // 3. Reset post baselines for THIS competition
-          // Isso define o ponto de partida para o ranking diário após o reset
+          // 3. Reset post baselines SOMENTE para posts antigos (<= fronteira)
           const postsToReset = posts.filter(p => p.competitionId === cid && (p.status === 'approved' || p.status === 'synced'));
           postsToReset.forEach(p => {
-            batch.update(doc(db, 'posts', p.id), {
-              viewsBaseline: p.views || 0,
-              likesBaseline: p.likes || 0,
-              commentsBaseline: p.comments || 0,
-              sharesBaseline: p.shares || 0,
-              savesBaseline: p.saves || 0
-            });
+            const t = p.timestamp || p.approvedAt || 0;
+            if (t <= cycleBoundary) {
+              batch.update(doc(db, 'posts', p.id), {
+                viewsBaseline: p.views || 0,
+                likesBaseline: p.likes || 0,
+                commentsBaseline: p.comments || 0,
+                sharesBaseline: p.shares || 0,
+                savesBaseline: p.saves || 0
+              });
+            }
           });
 
-          // 4. Update competition reset timestamp - Set to current time to start new cycle immediately
-          const resetTime = Date.now();
-          batch.update(doc(db, 'competitions', cid), { lastDailyReset: resetTime });
+          // 4. Update competition reset timestamp - Definir como a fronteira exata
+          batch.update(doc(db, 'competitions', cid), { lastDailyReset: cycleBoundary });
 
           await batch.commit();
           if (Object.keys(balanceIncrements).length === 0) {
@@ -5730,27 +5749,21 @@ const AdminPanel = ({
   const postsToday = useMemo(() => {
     const now = new Date();
     
+    // Ajuste automático da janela: O ciclo "Diário" sempre aponta para o próximo corte das 20:05.
     const activeCycleEnd = new Date(now);
-    activeCycleEnd.setHours(20, 5, 59, 999); // Termina às 20:05 (com os segundos finais)
+    activeCycleEnd.setHours(20, 5, 59, 999);
+    
+    if (now.getTime() > activeCycleEnd.getTime()) {
+      activeCycleEnd.setDate(activeCycleEnd.getDate() + 1);
+    }
 
     const activeCycleStart = new Date(activeCycleEnd);
     activeCycleStart.setDate(activeCycleStart.getDate() - 1);
-    activeCycleStart.setHours(20, 0, 0, 0); // Inicia cravado às 20:00 do dia anterior
+    activeCycleStart.setHours(20, 0, 0, 0);
 
-    let startTime = activeCycleStart.getTime();
-    let endTime = activeCycleEnd.getTime();
-    
-    // Se a competição atual já foi fechada hoje, andamos para o próximo ciclo
+    const startTime = activeCycleStart.getTime();
+    const endTime = activeCycleEnd.getTime();
     const lastReset = selectedMetaComp?.lastDailyReset || 0;
-    if (lastReset >= endTime) {
-      const nextStart = new Date(activeCycleEnd);
-      nextStart.setHours(20, 0, 0, 0);
-      const nextEnd = new Date(nextStart);
-      nextEnd.setDate(nextEnd.getDate() + 1);
-      nextEnd.setHours(20, 5, 59, 999);
-      startTime = nextStart.getTime();
-      endTime = nextEnd.getTime();
-    }
     
     return posts.filter(p => {
       const isApproved = p.status === 'approved' || p.status === 'synced';

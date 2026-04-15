@@ -86,11 +86,15 @@ export const updateUserMetrics = async (userId: string, skipDaily: boolean = fal
   
   const now = new Date();
   
-  // A virada oficial do "painel de ranking" só acontece na meia-noite.
-  // Então o ciclo base atual SEMPRE termina às 20:05 do dia corrente,
-  // e começa às 20h cravado do dia anterior.
+  // Ajuste automático da janela: O ciclo "Diário" sempre aponta para o próximo corte das 20:05.
+  // Isso garante que após as 20:05, o sistema já comece a contabilizar o novo dia visualmente.
   const activeCycleEnd = new Date(now);
   activeCycleEnd.setHours(20, 5, 59, 999);
+  
+  // Se já passamos das 20:05 de hoje, a janela atual é a que termina AMANHÃ às 20:05.
+  if (now.getTime() > activeCycleEnd.getTime()) {
+    activeCycleEnd.setDate(activeCycleEnd.getDate() + 1);
+  }
 
   const activeCycleStart = new Date(activeCycleEnd);
   activeCycleStart.setDate(activeCycleStart.getDate() - 1);
