@@ -7204,10 +7204,10 @@ const AdminPanel = ({
                         >
                           <option value="all" className="bg-zinc-900 text-zinc-300 font-black">TODOS OS USUÁRIOS</option>
                           {[...approvedUsers, ...pendingUsers]
-                            .sort((a, b) => (a.displayName || a.name || a.email || '').localeCompare(b.displayName || b.name || b.email || ''))
+                            .sort((a, b) => (a.displayName || a.email || '').localeCompare(b.displayName || b.email || ''))
                             .map(u => (
                             <option key={u.uid} value={u.uid} className="bg-zinc-900 text-zinc-300">
-                              {u.displayName ? u.displayName.toUpperCase() : (u.name ? u.name.toUpperCase() : (u.email ? u.email.toUpperCase() : 'SEM NOME'))}
+                              {u.displayName ? u.displayName.toUpperCase() : (u.email ? u.email.toUpperCase() : 'SEM NOME')}
                             </option>
                           ))}
                         </select>
