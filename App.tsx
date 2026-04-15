@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import {
   auth, db, googleProvider, signInWithPopup, signOut,
   onSnapshot, collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, query, where, orderBy, limit,
-  OperationType, handleFirestoreError, createUserWithEmailAndPassword, signInWithEmailAndPassword, addDoc, serverTimestamp, onAuthStateChanged, writeBatch
+  OperationType, handleFirestoreError, createUserWithEmailAndPassword, signInWithEmailAndPassword, addDoc, serverTimestamp, onAuthStateChanged, writeBatch, deleteField
 } from './firebase';
 
 import { User, Post, Season, Announcement, Platform, PostStatus, Competition, CompetitionRegistration, UserRole, Transaction, Suggestion, Settings } from './types';
@@ -20,6 +20,15 @@ import { motion, AnimatePresence } from 'motion/react';
 import { syncViewsWithApify, syncSinglePostWithApify, updateUserMetrics, repairAllUserMetrics } from './services/apifyService';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth as getSecondaryAuth, createUserWithEmailAndPassword as createSecondaryUser, signOut as signSecondaryOut } from 'firebase/auth';
+
+// Componentes Extraídos
+import { InfoTooltip, ErrorBoundary, NavItem } from './components/Shared';
+import { AuthScreen } from './components/AuthScreen';
+import { WalletView } from './components/WalletView';
+import { Dashboard } from './components/Dashboard';
+import { CompetitionRegulamento, CompetitionsView, CompetitionDetailView } from './components/CompetitionViews';
+import { SettingsView } from './components/SettingsView';
+import { SuggestionsView } from './components/SuggestionsView';
 
 const sanitizeString = (text: string) => {
   if (typeof text !== 'string') return text;
@@ -52,1183 +61,9 @@ const sanitizeObject = (obj: any): any => {
 };
 import fbConfig from './firebase-applet-config.json';
 
-const InfoTooltip = ({ text }: { text: string }) => {
-  return (
-    <div className="group relative inline-block ml-1.5 align-middle">
-      <Info className="w-3.5 h-3.5 text-zinc-500 hover:text-amber-500 transition-colors cursor-help" />
-      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-48 opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-300 z-[100]">
-        <div className="bg-zinc-900 border border-zinc-800 text-[10px] font-bold text-zinc-300 p-3 rounded-2xl shadow-2xl backdrop-blur-xl leading-relaxed">
-          {text}
-          <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-zinc-800" />
-        </div>
-      </div>
-    </div>
-  );
-};
 
-// Error Boundary Component
-class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, errorMsg: string }> {
-  constructor(props: { children: React.ReactNode }) {
-    super(props);
-    this.state = { hasError: false, errorMsg: '' };
-  }
 
-  static getDerivedStateFromError(error: any) {
-    return { hasError: true, errorMsg: error?.message || 'Unknown error' };
-  }
 
-  componentDidCatch(error: any, errorInfo: any) {
-    console.error("ErrorBoundary caught an error", error, errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="h-screen w-screen flex flex-col items-center justify-center bg-black text-center p-6">
-          <div className="w-20 h-20 bg-red-500/20 text-red-500 rounded-3xl flex items-center justify-center mb-6">
-            <AlertCircle className="w-10 h-10" />
-          </div>
-          <h1 className="text-2xl font-black mb-2">OPS! ALGO DEU ERRADO</h1>
-          <p className="text-zinc-400 max-w-xs mb-8 text-sm">
-            {this.state.errorMsg}
-          </p>
-          <button
-            onClick={() => window.location.reload()}
-            className="px-8 py-3 gold-bg text-black font-black rounded-xl hover:scale-105 transition-all"
-          >
-            RECARREGAR HUB
-          </button>
-        </div>
-      );
-    }
-
-    return this.props.children;
-  }
-}
-
-const WalletView = ({ user, competitions, showBalances }: { user: User, competitions: Competition[], showBalances: boolean }) => {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'day' | 'week' | 'month'>('all');
-  const [selectedCompId, setSelectedCompId] = useState<string>(() => {
-    const active = competitions?.find(c => c.isActive);
-    return active ? active.id : '';
-  });
-  const [pixKey, setPixKey] = useState(user.pixKey || '');
-  const [isSavingPix, setIsSavingPix] = useState(false);
-
-  const handleSavePix = async () => {
-    if (!pixKey.trim()) return;
-    setIsSavingPix(true);
-    try {
-      await updateDoc(doc(db, 'users', user.uid), { pixKey });
-      alert('✅ Chave PIX salva com sucesso!');
-    } catch (error) {
-      console.error('Erro ao salvar PIX:', error);
-      alert('Erro ao salvar chave PIX.');
-    } finally {
-      setIsSavingPix(false);
-    }
-  };
-
-  useEffect(() => {
-    const fetchTransactions = async () => {
-      try {
-        const q = query(collection(db, 'transactions'), where('userId', '==', user.uid));
-        const snap = await getDocs(q);
-        const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
-        data.sort((a, b) => b.timestamp - a.timestamp);
-        setTransactions(data);
-      } catch (e) {
-        console.error("Erro fetch extrato", e);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchTransactions();
-  }, [user.uid]);
-
-  // Transações filtradas pela competição selecionada
-  const compFiltered = useMemo(() => {
-    if (!selectedCompId) return transactions;
-    return transactions.filter(t => t.competitionId === selectedCompId);
-  }, [transactions, selectedCompId]);
-
-  // Aplica filtro de período sobre transações já filtradas
-  const filtered = useMemo(() => {
-    const now = Date.now();
-    const dayMs = 24 * 60 * 60 * 1000;
-    return compFiltered.filter(t => {
-      if (filter === 'all') return true;
-      if (filter === 'day') return now - t.timestamp <= dayMs;
-      if (filter === 'week') return now - t.timestamp <= 7 * dayMs;
-      if (filter === 'month') return now - t.timestamp <= 30 * dayMs;
-      return true;
-    });
-  }, [compFiltered, filter]);
-
-  // Total pago (repasses já realizados) para a competição filtrada
-  const totalPago = useMemo(() => {
-    if (selectedCompId) {
-      return user?.competitionStats?.[selectedCompId]?.paidTotal || 0;
-    }
-    return user?.lifetimeEarnings || 0;
-  }, [user, selectedCompId]);
-
-  // Ganhos creditados ainda não pagos
-  const totalPendente = useMemo(() => {
-    if (selectedCompId) {
-      return user?.competitionStats?.[selectedCompId]?.balance || 0;
-    }
-    return user?.balance || 0;
-  }, [user, selectedCompId]);
-
-  const selectedComp = competitions?.find(c => c.id === selectedCompId);
-
-  return (
-    <div className="space-y-8 max-w-4xl mx-auto p-4 md:p-6 lg:p-10">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
-        <div className="space-y-2">
-          <h2 className="text-3xl font-black tracking-tight uppercase gold-gradient">Portal Financeiro</h2>
-          <p className="text-zinc-500 font-bold text-xs uppercase tracking-widest">Acompanhe seus rendimentos e recebimentos</p>
-        </div>
-        <div className="flex flex-col gap-1.5 min-w-[240px]">
-          <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Filtrar por Competição:</span>
-          <select
-            value={selectedCompId}
-            onChange={(e) => setSelectedCompId(e.target.value)}
-            className="bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-xs font-bold focus:border-amber-500 outline-none transition-all text-white"
-          >
-            <option value="">Geral (Total Hub)</option>
-            {competitions?.map(c => (
-              <option key={c.id} value={c.id}>{c.title}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      <div className="bg-zinc-950 border border-zinc-800 rounded-[32px] p-8 space-y-6 shadow-2xl">
-        <div className="space-y-4">
-          <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest px-1">Resumo de Saldos</h3>
-          <div className="flex flex-col divide-y divide-zinc-800/50">
-            {/* Lifetime Item */}
-            <div className="flex items-center justify-between py-6 group hover:bg-white/5 transition-all px-2 -mx-2 rounded-2xl">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 group-hover:text-emerald-500 transition-colors">
-                  <Trophy className="w-6 h-6" />
-                </div>
-                <div>
-                  <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">{selectedCompId ? `Total Recebido (${selectedComp?.title})` : 'Total Recebido em Premiações (Hub)'}</p>
-                  <p className="text-xl font-black text-white">R$ {showBalances ? (selectedCompId ? totalPago : (user.lifetimeEarnings || 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '***'}</p>
-                </div>
-              </div>
-              <div className="hidden md:block px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-500 text-[8px] font-black uppercase tracking-widest">HISTÓRICO</div>
-            </div>
-
-            {/* Pending Balance Item */}
-            <div className="flex items-center justify-between py-6 group hover:bg-white/5 transition-all px-2 -mx-2 rounded-2xl">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 group-hover:text-amber-500 transition-colors">
-                  <Zap className="w-6 h-6" />
-                </div>
-                <div>
-                  <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">Ganhos em Análise</p>
-                  <p className="text-xl font-black text-amber-500">R$ {showBalances ? totalPendente.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '***'}</p>
-                </div>
-              </div>
-              <div className="hidden md:block px-3 py-1 rounded-full bg-amber-500/10 text-amber-500 text-[8px] font-black uppercase tracking-widest">PENDENTE</div>
-            </div>
-          </div>
-        </div>
-
-        {/* PIX Section */}
-        <div className="pt-6 border-t border-zinc-900">
-          <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest px-1 mb-4">Dados para Pagamento</h3>
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1 relative">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <Mail className="w-4 h-4 text-zinc-500" />
-              </div>
-              <input
-                type="text"
-                value={pixKey}
-                onChange={(e) => setPixKey(e.target.value)}
-                placeholder="Sua Chave PIX (E-mail, CPF, Celular...)"
-                className="w-full bg-black border border-zinc-800 rounded-2xl py-4 pl-12 pr-4 text-sm font-bold focus:border-amber-500 outline-none transition-all placeholder:text-zinc-700"
-              />
-            </div>
-            <button
-              onClick={handleSavePix}
-              disabled={isSavingPix || !pixKey}
-              className="px-8 py-4 gold-bg text-black font-black rounded-2xl hover:scale-[1.02] transition-all disabled:opacity-50 disabled:scale-100 flex items-center justify-center gap-2 min-w-[140px]"
-            >
-              {isSavingPix ? <Loader2 className="w-5 h-5 animate-spin" /> : 'SALVAR CHAVE'}
-            </button>
-          </div>
-          <p className="mt-3 px-1 text-[10px] font-bold text-zinc-600 uppercase tracking-widest">Atenção: Verifique os dados antes de salvar para evitar erros nos repasses.</p>
-        </div>
-      </div>
-
-      <div className="bg-zinc-950 border border-zinc-800 rounded-3xl p-6 overflow-hidden mt-8">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-          <div>
-            <h3 className="font-black uppercase text-xl text-white">Extrato de Pagamentos</h3>
-            <p className="text-[10px] font-bold text-zinc-500 tracking-widest uppercase">Histórico das transferências enviadas pela Diretoria</p>
-          </div>
-
-          <div className="flex p-1 bg-zinc-900 rounded-xl border border-zinc-800">
-            <button onClick={() => setFilter('all')} className={`px-4 py-2 rounded-lg font-bold text-xs transition-all ${filter === 'all' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}>TUDO</button>
-            <button onClick={() => setFilter('day')} className={`px-4 py-2 rounded-lg font-bold text-xs transition-all ${filter === 'day' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}>HOJE</button>
-            <button onClick={() => setFilter('week')} className={`px-4 py-2 rounded-lg font-bold text-xs transition-all ${filter === 'week' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}>SEMANA</button>
-            <button onClick={() => setFilter('month')} className={`px-4 py-2 rounded-lg font-bold text-xs transition-all ${filter === 'month' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}>MÊS</button>
-          </div>
-        </div>
-
-        {loading ? (
-          <div className="py-20 flex justify-center">
-            <RefreshCw className="w-8 h-8 text-zinc-600 animate-spin" />
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {filtered.map(t => (
-              <div key={t.id} className="flex flex-col md:flex-row md:justify-between items-start md:items-center gap-4 md:gap-0 p-5 bg-black border border-zinc-800 rounded-2xl relative overflow-hidden hover:border-zinc-700 hover:bg-white/[0.02] transition-all group">
-                <div className="flex flex-col gap-1.5 z-10 w-full md:w-auto">
-                  <div className="flex items-center justify-between md:justify-start gap-3">
-                    {t.status === 'credit' ? (
-                      <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 text-[10px] font-black uppercase tracking-widest inline-block border border-amber-500/20">PRÊMIO CONTABILIZADO</span>
-                    ) : (
-                      <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 text-[10px] font-black uppercase tracking-widest inline-block border border-emerald-500/20">REPASSE RECEBIDO</span>
-                    )}
-                    <span className="text-[10px] font-bold text-zinc-600 font-mono tracking-widest uppercase">ID: {t.id}</span>
-                  </div>
-                  <h4 className="font-black text-sm uppercase tracking-tight text-zinc-200">
-                    {t.description || (t.status === 'credit' ? 'Premiação por desempenho' : 'Pagamento via PIX')}
-                  </h4>
-                  <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-                    {new Date(t.timestamp).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })} às {new Date(t.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                  </p>
-                </div>
-                <div className="flex flex-col items-end z-10 w-full md:w-auto border-t md:border-t-0 border-zinc-900 pt-4 md:pt-0">
-                  <span className={`text-2xl font-black tabular-nums ${t.status === 'credit' ? 'text-amber-500' : 'text-emerald-500'}`}>
-                    R$ {showBalances ? t.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '***'}
-                  </span>
-                  <span className="text-[9px] font-black text-zinc-600 uppercase tracking-widest">Valor do {t.status === 'credit' ? 'Crédito' : 'Repasse'}</span>
-                </div>
-              </div>
-            ))}
-            {filtered.length === 0 && (
-              <div className="py-20 flex flex-col items-center gap-4 border-2 border-dashed border-zinc-800 rounded-2xl">
-                <XCircle className="w-12 h-12 text-zinc-800" />
-                <p className="text-zinc-500 font-bold uppercase tracking-widest text-xs">Nenhum pagamento encontrado.</p>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-const AuthScreen = ({ onLoginSuccess }: { onLoginSuccess: (u: User) => void }) => {
-  const [isLogin, setIsLogin] = useState(true);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  const handleGoogleLogin = async () => {
-    try {
-      setLoading(true);
-      await signInWithPopup(auth, googleProvider);
-    } catch (err: any) {
-      if (err.code === 'auth/network-request-failed') {
-        setError('Erro de conexão ou Provedor Google não habilitado no Firebase Console.');
-      } else {
-        setError(err.message);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleEmailAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-    try {
-      if (isLogin) {
-        await signInWithEmailAndPassword(auth, email, password);
-      } else {
-        const cred = await createUserWithEmailAndPassword(auth, email, password);
-        const isAdminEmail = email === 'matheusmenechini18@gmail.com' || email === 'hypedosmemes@gmail.com';
-        const newUser: User = {
-          uid: cred.user.uid,
-          displayName: name || 'Anon',
-          email: email,
-          role: isAdminEmail ? 'admin' : 'user',
-          isApproved: isAdminEmail,
-          balance: 0,
-          totalViews: 0,
-          totalLikes: 0,
-          totalComments: 0,
-          totalShares: 0,
-          totalSaves: 0,
-          totalPosts: 0,
-          dailyViews: 0,
-          dailyLikes: 0,
-          dailyComments: 0,
-          dailyShares: 0,
-          dailySaves: 0,
-          dailyPosts: 0
-        };
-        await setDoc(doc(db, 'users', cred.user.uid), newUser);
-        onLoginSuccess(newUser);
-      }
-    } catch (err: any) {
-      if (err.code === 'auth/network-request-failed') {
-        setError('Erro de conexão ou Provedor E-mail/Senha não habilitado no Firebase Console.');
-      } else {
-        setError(err.message);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="h-screen w-screen flex flex-col items-center justify-center bg-black px-4 overflow-y-auto py-10">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md space-y-8"
-      >
-        <div className="text-center space-y-4">
-          <div className="flex justify-center">
-            <div className="w-20 h-20 gold-bg rounded-3xl flex items-center justify-center shadow-2xl">
-              <Zap className="w-10 h-10 text-black" />
-            </div>
-          </div>
-          <div className="space-y-1">
-            <h1 className="text-4xl font-black gold-gradient tracking-tighter uppercase">MetaRayx Hub</h1>
-            <p className="text-zinc-500 font-bold text-sm uppercase tracking-widest">Hub de Criadores</p>
-          </div>
-        </div>
-
-        <div className="glass p-8 rounded-[32px] border border-zinc-800/50 space-y-6">
-          <div className="flex p-1 bg-zinc-900 rounded-2xl">
-            <button
-              onClick={() => setIsLogin(true)}
-              className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${isLogin ? 'bg-zinc-800 text-white shadow-lg' : 'text-zinc-500'}`}
-            >
-              LOGIN
-            </button>
-            <button
-              onClick={() => setIsLogin(false)}
-              className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${!isLogin ? 'bg-zinc-800 text-white shadow-lg' : 'text-zinc-500'}`}
-            >
-              CADASTRO
-            </button>
-          </div>
-
-          <form onSubmit={handleEmailAuth} className="space-y-4">
-            {!isLogin && (
-              <div className="space-y-1">
-                <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest ml-1">Nome Completo</label>
-                <div className="relative">
-                  <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                  <input
-                    required
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    type="text"
-                    placeholder="Seu nome"
-                    className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-sm font-bold focus:border-amber-500 outline-none transition-all"
-                  />
-                </div>
-              </div>
-            )}
-            <div className="space-y-1">
-              <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest ml-1">E-mail</label>
-              <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                <input
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  type="email"
-                  placeholder="seu@email.com"
-                  className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-sm font-bold focus:border-amber-500 outline-none transition-all"
-                />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest ml-1">Senha</label>
-              <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                <input
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  type="password"
-                  placeholder="********"
-                  className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-sm font-bold focus:border-amber-500 outline-none transition-all"
-                />
-              </div>
-            </div>
-
-            {error && (
-              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-[10px] font-bold uppercase text-center">
-                {error}
-              </div>
-            )}
-
-            <button
-              disabled={loading}
-              className="w-full py-4 gold-bg text-black font-black rounded-2xl hover:scale-[1.02] transition-all shadow-xl flex items-center justify-center gap-2"
-            >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : isLogin ? 'ENTRAR NO HUB' : 'CRIAR CONTA'}
-            </button>
-          </form>
-
-          <div className="relative flex items-center gap-4">
-            <div className="flex-1 h-px bg-zinc-800" />
-            <span className="text-[10px] text-zinc-500 font-black">OU</span>
-            <div className="flex-1 h-px bg-zinc-800" />
-          </div>
-
-          <button
-            onClick={handleGoogleLogin}
-            className="w-full py-4 bg-white text-black font-black rounded-2xl hover:scale-[1.02] transition-all flex items-center justify-center gap-3"
-          >
-            <img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="" />
-            CONTINUAR COM GOOGLE
-          </button>
-        </div>
-        <p className="text-center text-[10px] text-zinc-600 font-black tracking-widest uppercase">Acesso Restrito a Membros Autorizados</p>
-      </motion.div>
-    </div>
-  );
-};
-
-const NavItem = ({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) => (
-  <button
-    onClick={onClick}
-    className={`
-      w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold text-sm
-      ${active ? 'gold-bg text-black shadow-lg shadow-amber-500/20' : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900'}
-    `}
-  >
-    {React.cloneElement(icon as React.ReactElement<any>, { className: 'w-5 h-5' })}
-    {label}
-  </button>
-);
-
-const Dashboard = ({ user, announcements, rankings, competitions, registrations, posts, showBalances }: {
-  user: User,
-  announcements: Announcement[],
-  rankings: User[],
-  competitions: Competition[],
-  registrations: CompetitionRegistration[],
-  posts: Post[],
-  showBalances: boolean
-}) => {
-  const [selectedComp, setSelectedComp] = useState<Competition | null>(null);
-  const [acceptedRules, setAcceptedRules] = useState(false);
-
-  const handleRegister = async (compId: string) => {
-    if (!acceptedRules) {
-      alert('Você precisa aceitar as regras para participar!');
-      return;
-    }
-    try {
-      const existingReg = registrations.find(r => r.competitionId === compId && r.userId === user.uid);
-      if (existingReg && existingReg.status === 'rejected') {
-        const regRef = doc(db, 'competition_registrations', existingReg.id);
-        await updateDoc(regRef, {
-          status: 'pending',
-          timestamp: Date.now()
-        });
-        alert('Nova solicitação enviada! Aguarde a aprovação da diretoria.');
-      } else {
-        const newReg: Omit<CompetitionRegistration, 'id'> = {
-          competitionId: compId,
-          userId: user.uid,
-          userName: user.displayName,
-          userEmail: user.email,
-          status: 'pending',
-          acceptedRules: true,
-          timestamp: Date.now()
-        };
-        await addDoc(collection(db, 'competition_registrations'), newReg);
-        alert('Solicitação de inscrição enviada! Aguarde a aprovação da diretoria.');
-      }
-      setSelectedComp(null);
-      setAcceptedRules(false);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'competition_registrations');
-    }
-  };
-
-  const sortedMonthly = useMemo(() => {
-    return [...rankings].sort((a, b) => (b.totalViews || 0) - (a.totalViews || 0)).slice(0, 3);
-  }, [rankings]);
-
-  // Agregação por plataforma com base nos posts do usuário
-  const platformStats = useMemo(() => {
-    const platforms = ['tiktok', 'youtube', 'instagram'] as const;
-    return platforms.map(platform => {
-      const platformPosts = posts.filter(p => p.platform === platform);
-      const views = platformPosts.reduce((acc, p) => acc + (p.views || 0), 0);
-      const likes = platformPosts.reduce((acc, p) => acc + (p.likes || 0), 0);
-      const comments = platformPosts.reduce((acc, p) => acc + (p.comments || 0), 0);
-      const count = platformPosts.length;
-      return { platform, views, likes, comments, count };
-    });
-  }, [posts]);
-
-  const maxViews = Math.max(...platformStats.map(p => p.views), 1);
-
-  return (
-    <div className="space-y-12 shrink-0">
-      {/* 🚀 Cockpit Pessoal */}
-      <div className="space-y-6">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-          <div>
-            <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tight">
-              Bem-vindo(a), <span className="gold-gradient">{user.displayName.split(' ')[0]}</span>!
-            </h1>
-            <p className="text-zinc-400 font-bold mt-1 text-sm md:text-base">Métricas da sua performance geral no HUB.</p>
-          </div>
-          <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs font-black text-emerald-500 w-fit">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            CONTA ATIVA
-          </div>
-        </div>
-        
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="glass shadow-2xl shadow-amber-500/5 hover:border-amber-500/50 transition-all border border-amber-500/20 p-6 rounded-[32px] relative group flex flex-col justify-between min-h-[140px]">
-            <div className="absolute inset-0 overflow-hidden rounded-[32px] pointer-events-none">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-amber-500/20 transition-all" />
-              <TrendingUp className="absolute -bottom-4 -right-4 w-24 h-24 text-amber-500/10 group-hover:scale-110 transition-transform duration-500" />
-            </div>
-            <h3 className="text-[10px] font-black text-amber-500 uppercase tracking-widest relative z-10 flex items-center">
-              LUCRO ACUMULADO <InfoTooltip text="Total de ganhos que você já acumulou na plataforma até hoje." />
-            </h3>
-            <p className="text-2xl md:text-3xl font-black text-white relative z-10">R$ {showBalances ? (user.lifetimeEarnings || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '***'}</p>
-          </div>
-
-          <div className="glass border border-cyan-500/20 hover:border-cyan-500/50 transition-all p-6 rounded-[32px] relative group flex flex-col justify-between min-h-[140px]">
-            <div className="absolute inset-0 overflow-hidden rounded-[32px] pointer-events-none">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/10 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-cyan-500/20 transition-all" />
-              <Eye className="absolute -bottom-4 -right-4 w-24 h-24 text-cyan-500/10 group-hover:scale-110 transition-transform duration-500" />
-            </div>
-            <h3 className="text-[10px] font-black text-cyan-500 uppercase tracking-widest relative z-10 flex items-center">
-              TOTAL DE VIEWS <InfoTooltip text="Soma das visualizações de todos os seus vídeos aprovados e sincronizados." />
-            </h3>
-            <p className="text-2xl md:text-3xl font-black text-white relative z-10">{(user.totalViews || 0).toLocaleString()}</p>
-          </div>
-
-          <div className="glass border border-pink-500/20 hover:border-pink-500/50 transition-all p-6 rounded-[32px] relative group flex flex-col justify-between min-h-[140px]">
-            <div className="absolute inset-0 overflow-hidden rounded-[32px] pointer-events-none">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-pink-500/10 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-pink-500/20 transition-all" />
-              <Heart className="absolute -bottom-4 -right-4 w-24 h-24 text-pink-500/10 group-hover:scale-110 transition-transform duration-500" />
-            </div>
-            <h3 className="text-[10px] font-black text-pink-500 uppercase tracking-widest relative z-10 flex items-center">
-              TOTAL DE LIKES <InfoTooltip text="Soma das curtidas de todos os seus vídeos aprovados e sincronizados." />
-            </h3>
-            <p className="text-2xl md:text-3xl font-black text-white relative z-10">{(user.totalLikes || 0).toLocaleString()}</p>
-          </div>
-
-          <div className="glass border border-zinc-700/50 hover:border-zinc-500 transition-all p-6 rounded-[32px] relative group flex flex-col justify-between min-h-[140px]">
-            <div className="absolute inset-0 overflow-hidden rounded-[32px] pointer-events-none">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-white/10 transition-all" />
-              <Camera className="absolute -bottom-4 -right-4 w-24 h-24 text-white/5 group-hover:scale-110 transition-transform duration-500" />
-            </div>
-            <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest relative z-10 flex items-center">
-              VÍDEOS SINCRONIZADOS <InfoTooltip text="Quantidade de vídeos seus que já foram validados e processados pelo sistema." />
-            </h3>
-            <p className="text-2xl md:text-3xl font-black text-white relative z-10">{(user.totalPosts || 0).toLocaleString()}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* 🎯 Foco Central: Competições */}
-      {competitions.length > 0 && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-black tracking-tight uppercase flex items-center gap-3">
-              <Target className="w-6 h-6 text-amber-500" /> Foco Atual
-            </h2>
-            <div className="flex items-center gap-2 text-[10px] font-black text-amber-500 bg-amber-500/10 px-3 py-1.5 rounded-full border border-amber-500/20 shadow-lg">
-              <Zap className="w-3 h-3" /> COMPETIÇÕES
-            </div>
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {competitions.map(comp => {
-              const compStatus = comp.status || (comp.isActive ? 'active' : 'inactive');
-              const isLocked = compStatus === 'upcoming' || compStatus === 'inactive';
-
-              return (
-                <motion.div
-                  key={comp.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className={`group relative h-64 rounded-[40px] overflow-hidden border ${isLocked ? 'border-zinc-900 shadow-none cursor-not-allowed opacity-80' : 'border-zinc-800 shadow-2xl cursor-pointer'}`}
-                  onClick={() => {
-                    if (!isLocked) {
-                      setSelectedComp(comp);
-                    }
-                  }}
-                >
-                  <img src={comp.bannerUrl} className={`absolute inset-0 w-full h-full object-cover transition-transform duration-700 ${!isLocked && 'group-hover:scale-110'} ${compStatus === 'inactive' ? 'grayscale opacity-80' : ''}`} alt="" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
-
-                  {isLocked && (
-                    <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
-                       <Lock className={`w-16 h-16 ${compStatus === 'upcoming' ? 'text-amber-500' : 'text-zinc-600'}`} />
-                    </div>
-                  )}
-
-                  <div className="absolute inset-0 p-8 flex flex-col justify-end space-y-4">
-                    <div className="space-y-1 relative z-10">
-                      <h3 className="text-3xl font-black tracking-tighter uppercase leading-none">{comp.title}</h3>
-                      <p className="text-zinc-300 text-xs font-bold line-clamp-2 max-w-md">{comp.description}</p>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-3 relative z-10">
-                      {comp.prizes.slice(0, 3).map((prize, idx) => (
-                        <div key={idx} className={`flex items-center gap-2 backdrop-blur-md px-4 py-2 rounded-2xl border ${isLocked ? 'bg-black/50 border-white/5 opacity-50' : 'bg-white/10 border-white/10'}`}>
-                          <Trophy className={`w-4 h-4 ${idx === 0 ? 'text-amber-400' : idx === 1 ? 'text-zinc-300' : 'text-amber-700'}`} />
-                          <div className="flex flex-col">
-                            <span className="text-[8px] font-black text-zinc-400 uppercase leading-none">{prize.label}</span>
-                            <span className="text-xs font-black text-white">R$ {prize.value.toLocaleString()}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="absolute top-6 right-6 z-10">
-                    {(() => {
-                      if (compStatus === 'upcoming') {
-                        return (
-                          <div className="bg-amber-500 text-black px-4 py-1.5 rounded-full text-[10px] font-black shadow-xl uppercase tracking-widest">
-                            EM BREVE
-                          </div>
-                        );
-                      }
-                      if (compStatus === 'inactive') {
-                        return (
-                          <div className="bg-zinc-800 text-zinc-400 px-4 py-1.5 rounded-full text-[10px] font-black shadow-xl uppercase tracking-widest">
-                            FINALIZADA
-                          </div>
-                        );
-                      }
-
-                      const reg = registrations.find(r => r.competitionId === comp.id && r.userId === user.uid);
-                      if (!reg) {
-                        return (
-                          <div className="bg-amber-500 text-black px-6 py-2 rounded-full text-xs font-black shadow-xl hover:scale-105 transition-all">
-                            VER DETALHES
-                          </div>
-                        );
-                      }
-                      return (
-                        <div className={`px-4 py-1.5 rounded-full text-[10px] font-black shadow-xl ${reg.status === 'approved' ? 'bg-emerald-500 text-black' :
-                            reg.status === 'rejected' ? 'bg-red-500 text-white' :
-                              'bg-amber-500/20 text-amber-500 border border-amber-500/30'
-                          }`}>
-                          {reg.status === 'approved' ? 'PARTICIPANDO' :
-                            reg.status === 'rejected' ? 'RECUSADO' : 'AGUARDANDO APROVAÇÃO'}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                </motion.div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* 🏅 Competições e Pódio */}
-      <div className="grid grid-cols-1 gap-6 items-start pb-10">
-        
-        {/* Elite do Mês */}
-        <div className="glass border border-zinc-800 rounded-[40px] p-8">
-          {sortedMonthly.length > 0 ? (
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-xl bg-amber-500/20 text-amber-500">
-                    <Trophy className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-black tracking-tight uppercase">Elite do Mês</h2>
-                    <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Global</p>
-                  </div>
-                </div>
-                <div className="hidden md:flex items-center gap-2 px-4 py-1.5 rounded-full bg-zinc-900 border border-zinc-800 text-[10px] font-black text-zinc-400">
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  TEMPO REAL
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4 items-end pt-10 pb-4">
-                {/* 2nd Place */}
-                {sortedMonthly[1] && (
-                  <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="flex flex-col items-center space-y-4">
-                    <div className="relative">
-                      <div className="absolute -top-4 -right-2 w-8 h-8 rounded-full bg-zinc-400 flex items-center justify-center border-2 border-black z-10">
-                        <span className="text-[10px] font-black text-black">2º</span>
-                      </div>
-                      <img src={sortedMonthly[1].photoURL || `https://ui-avatars.com/api/?name=${sortedMonthly[1].displayName}`} className="w-16 h-16 md:w-20 md:h-20 rounded-[32px] border-4 border-zinc-400/30 object-cover shadow-2xl" alt="" referrerPolicy="no-referrer" />
-                    </div>
-                    <div className="text-center">
-                      <p className="text-xs md:text-sm font-black truncate max-w-[90px]">@{sortedMonthly[1].displayName}</p>
-                      <div className="flex flex-col items-center mt-1">
-                        <span className="text-[8px] text-zinc-500 uppercase font-black tracking-widest leading-none">Views</span>
-                        <span className="text-xs md:text-sm font-black text-cyan-400">{(sortedMonthly[1].totalViews || 0).toLocaleString()}</span>
-                      </div>
-                    </div>
-                    <div className="w-full h-24 md:h-28 bg-gradient-to-t from-zinc-800/50 to-zinc-800/20 rounded-t-3xl border-x border-t border-zinc-800 flex flex-col items-center justify-start pt-4">
-                      <div className="w-6 h-6 rounded-full bg-zinc-400/10 flex items-center justify-center"><Trophy className="w-3 h-3 text-zinc-400" /></div>
-                    </div>
-                  </motion.div>
-                )}
-
-                {/* 1st Place */}
-                {sortedMonthly[0] && (
-                  <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center space-y-4">
-                    <div className="relative">
-                      <motion.div animate={{ y: [0, -5, 0] }} transition={{ duration: 2, repeat: Infinity }} className="absolute -top-6 left-1/2 -translate-x-1/2 z-10">
-                        <Crown className="w-8 h-8 text-amber-500 drop-shadow-[0_0_15px_rgba(245,158,11,0.5)]" />
-                      </motion.div>
-                      <div className="absolute -top-4 -right-2 w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center border-2 border-black z-10 shadow-[0_0_20px_rgba(245,158,11,0.3)]">
-                        <span className="text-xs font-black text-black">1º</span>
-                      </div>
-                      <img src={sortedMonthly[0].photoURL || `https://ui-avatars.com/api/?name=${sortedMonthly[0].displayName}`} className="w-20 h-20 md:w-28 md:h-28 rounded-[40px] border-4 border-amber-500 object-cover shadow-[0_0_40px_rgba(245,158,11,0.2)]" alt="" referrerPolicy="no-referrer" />
-                    </div>
-                    <div className="text-center">
-                      <p className="text-sm md:text-base font-black gold-gradient truncate max-w-[110px]">@{sortedMonthly[0].displayName}</p>
-                      <div className="flex flex-col items-center mt-1">
-                        <span className="text-[8px] text-zinc-500 uppercase font-black tracking-widest leading-none">Views</span>
-                        <span className="text-sm md:text-lg font-black text-cyan-400">{(sortedMonthly[0].totalViews || 0).toLocaleString()}</span>
-                      </div>
-                    </div>
-                    <div className="w-full h-32 md:h-36 bg-gradient-to-t from-amber-500/20 to-amber-500/5 rounded-t-[40px] border-x border-t border-amber-500/30 flex flex-col items-center justify-start pt-4 relative overflow-hidden">
-                      <div className="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center relative z-10"><Trophy className="w-4 h-4 text-amber-500" /></div>
-                    </div>
-                  </motion.div>
-                )}
-
-                {/* 3rd Place */}
-                {sortedMonthly[2] && (
-                  <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="flex flex-col items-center space-y-4">
-                    <div className="relative">
-                      <div className="absolute -top-4 -right-2 w-8 h-8 rounded-full bg-amber-800 flex items-center justify-center border-2 border-black z-10">
-                        <span className="text-[10px] font-black text-white">3º</span>
-                      </div>
-                      <img src={sortedMonthly[2].photoURL || `https://ui-avatars.com/api/?name=${sortedMonthly[2].displayName}`} className="w-16 h-16 md:w-20 md:h-20 rounded-[32px] border-4 border-amber-800/30 object-cover shadow-2xl" alt="" referrerPolicy="no-referrer" />
-                    </div>
-                    <div className="text-center">
-                      <p className="text-xs md:text-sm font-black truncate max-w-[90px]">@{sortedMonthly[2].displayName}</p>
-                      <div className="flex flex-col items-center mt-1">
-                        <span className="text-[8px] text-zinc-500 uppercase font-black tracking-widest leading-none">Views</span>
-                        <span className="text-xs md:text-sm font-black text-cyan-400">{(sortedMonthly[2].totalViews || 0).toLocaleString()}</span>
-                      </div>
-                    </div>
-                    <div className="w-full h-20 md:h-24 bg-gradient-to-t from-amber-900/40 to-amber-900/10 rounded-t-3xl border-x border-t border-amber-900/30 flex flex-col items-center justify-start pt-4">
-                      <div className="w-6 h-6 rounded-full bg-amber-900/20 flex items-center justify-center"><Trophy className="w-3 h-3 text-amber-800" /></div>
-                    </div>
-                  </motion.div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="py-20 flex flex-col items-center justify-center text-center opacity-50">
-              <Trophy className="w-12 h-12 text-zinc-700 mb-4" />
-              <p className="text-zinc-500 font-black uppercase tracking-widest text-xs">Ranking em apuração</p>
-            </div>
-          )}
-        </div>
-
-
-      </div>
-
-      {/* Competition Details Modal */}
-      <AnimatePresence>
-        {selectedComp && (
-          <div className="fixed inset-0 z-[120] flex items-center justify-center p-6">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setSelectedComp(null)}
-              className="absolute inset-0 bg-black/90 backdrop-blur-xl"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative w-full max-w-2xl glass rounded-[40px] border border-zinc-800 overflow-hidden flex flex-col max-h-[90vh]"
-            >
-              <div className="h-48 shrink-0 relative">
-                <img src={selectedComp.bannerUrl} className="w-full h-full object-cover" alt="" />
-                <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 to-transparent" />
-                <button
-                  onClick={() => setSelectedComp(null)}
-                  className="absolute top-6 right-6 p-2 rounded-full bg-black/50 text-white hover:bg-black transition-all"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-                <div className="absolute bottom-6 left-8">
-                  <h3 className="text-3xl font-black uppercase tracking-tighter">{selectedComp.title}</h3>
-                </div>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
-                    <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">Hashtags</p>
-                    <p className="text-xs font-bold text-amber-500">{selectedComp.hashtags || 'Nenhuma'}</p>
-                  </div>
-                  <div className="p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
-                    <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">Marcações</p>
-                    <p className="text-xs font-bold text-amber-500">{selectedComp.mentions || 'Nenhuma'}</p>
-                  </div>
-                  <div className="p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
-                    <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">Bônus</p>
-                    <p className="text-xs font-bold text-emerald-500">{selectedComp.bonuses || 'Nenhum'}</p>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">Regras da Competição</h4>
-                  <div className="p-6 rounded-3xl bg-zinc-900/30 border border-zinc-800/50 text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap font-medium">
-                    {selectedComp.rules || selectedComp.description}
-                  </div>
-                </div>
-
-                <div className="space-y-6">
-                  {selectedComp.prizesMonthly && selectedComp.prizesMonthly.length > 0 && (
-                    <div className="space-y-4">
-                      <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">Premiação Mensal (Tempo de Competição)</h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {selectedComp.prizesMonthly.map((prize, idx) => (
-                          <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-[10px] font-black text-zinc-500">
-                                {prize.position}º
-                              </div>
-                              <span className="text-xs font-bold">{prize.label}</span>
-                            </div>
-                            <span className="text-sm font-black text-amber-500">R$ {prize.value.toLocaleString()}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {selectedComp.prizesDaily && selectedComp.prizesDaily.length > 0 && (
-                    <div className="space-y-4">
-                      <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">Premiação Diária</h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {selectedComp.prizesDaily.map((prize, idx) => (
-                          <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-[10px] font-black text-zinc-500">
-                                {prize.position}º
-                              </div>
-                              <span className="text-xs font-bold">{prize.label}</span>
-                            </div>
-                            <span className="text-sm font-black text-cyan-500">R$ {prize.value.toLocaleString()}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {selectedComp.prizesInstagram && selectedComp.prizesInstagram.length > 0 && (
-                    <div className="space-y-4">
-                      <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">Premiação Instagram (Quantidade)</h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {selectedComp.prizesInstagram.map((prize, idx) => (
-                          <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-[10px] font-black text-zinc-500">
-                                {prize.position}º
-                              </div>
-                              <span className="text-xs font-bold">{prize.label}</span>
-                            </div>
-                            <span className="text-sm font-black text-pink-500">R$ {prize.value.toLocaleString()}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {(!selectedComp.prizesDaily && !selectedComp.prizesMonthly && !selectedComp.prizesInstagram) && (
-                    <div className="space-y-4">
-                      <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">Premiação</h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {selectedComp.prizes.map((prize, idx) => (
-                          <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-[10px] font-black text-zinc-500">
-                                {prize.position}º
-                              </div>
-                              <span className="text-xs font-bold">{prize.label}</span>
-                            </div>
-                            <span className="text-sm font-black text-amber-500">R$ {prize.value.toLocaleString()}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="p-8 bg-zinc-950 border-t border-zinc-900 space-y-6">
-                {(() => {
-                  const existingReg = registrations.find(r => r.competitionId === selectedComp.id && r.userId === user.uid);
-                  if (!existingReg || existingReg.status === 'rejected') {
-                    return (
-                      <>
-                        <label className="flex items-start gap-4 cursor-pointer group">
-                          <div className="relative flex items-center mt-1">
-                            <input
-                              type="checkbox"
-                              checked={acceptedRules}
-                              onChange={(e) => setAcceptedRules(e.target.checked)}
-                              className="peer h-5 w-5 appearance-none rounded border-2 border-zinc-800 bg-zinc-900 transition-all checked:border-amber-500 checked:bg-amber-500"
-                            />
-                            <Check className="absolute h-3.5 w-3.5 text-black opacity-0 transition-opacity peer-checked:opacity-100 left-0.5" />
-                          </div>
-                          <span className="text-xs font-bold text-zinc-500 group-hover:text-zinc-300 transition-colors">
-                            Eu li e aceito todas as regras e condições desta competição.
-                          </span>
-                        </label>
-                        <button
-                          onClick={() => handleRegister(selectedComp.id)}
-                          disabled={!acceptedRules}
-                          className={`w-full py-5 font-black rounded-2xl transition-all shadow-xl ${
-                            acceptedRules 
-                              ? 'gold-bg text-black hover:scale-[1.02] shadow-amber-500/20' 
-                              : 'bg-zinc-800 text-zinc-500 cursor-not-allowed opacity-50'
-                          }`}
-                        >
-                          {existingReg?.status === 'rejected' ? 'SOLICITAR NOVAMENTE' : 'SOLICITAR INSCRIÇÃO'}
-                        </button>
-                      </>
-                    );
-                  }
-                  return (
-                    <div className="text-center py-2">
-                      <p className="text-amber-500 font-black uppercase tracking-widest text-sm">
-                        {existingReg.status === 'approved' 
-                          ? 'Você já está participando desta competição' 
-                          : 'Você já solicitou inscrição nesta competição'}
-                      </p>
-                    </div>
-                  );
-                })()}
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Seção: Performance por Rede + Elite Global */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 pb-6">
-
-        {/* Performance por Rede Social (2/3) */}
-        <div className="xl:col-span-2 space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-violet-500/20 text-violet-400">
-              <TrendingUp className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-xl font-black tracking-tight uppercase">Desempenho por Rede</h2>
-              <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Suas métricas por plataforma</p>
-            </div>
-          </div>
-
-          {posts.length > 0 ? (
-            <div className="space-y-4">
-              {platformStats.map(({ platform, views, likes, comments, count }) => {
-                const barWidth = maxViews > 0 ? Math.max((views / maxViews) * 100, count > 0 ? 4 : 0) : 0;
-                const platformConfig = {
-                  tiktok: {
-                    label: 'TikTok',
-                    emoji: '🎵',
-                    color: 'from-pink-500 to-rose-500',
-                    border: 'border-pink-500/20',
-                    glow: 'shadow-pink-500/20',
-                    text: 'text-pink-400',
-                    bg: 'bg-pink-500/10',
-                  },
-                  youtube: {
-                    label: 'YouTube',
-                    emoji: '▶️',
-                    color: 'from-red-500 to-orange-500',
-                    border: 'border-red-500/20',
-                    glow: 'shadow-red-500/20',
-                    text: 'text-red-400',
-                    bg: 'bg-red-500/10',
-                  },
-                  instagram: {
-                    label: 'Instagram',
-                    emoji: '📸',
-                    color: 'from-purple-500 to-pink-500',
-                    border: 'border-purple-500/20',
-                    glow: 'shadow-purple-500/20',
-                    text: 'text-purple-400',
-                    bg: 'bg-purple-500/10',
-                  },
-                };
-                const cfg = platformConfig[platform];
-                const isLeader = views === maxViews && views > 0;
-
-                return (
-                  <motion.div
-                    key={platform}
-                    initial={{ opacity: 0, y: 16 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className={`glass border ${cfg.border} p-6 rounded-[28px] space-y-4 relative overflow-hidden`}
-                  >
-                    {isLeader && (
-                      <div className="absolute top-3 right-4 px-3 py-1 bg-amber-500/20 border border-amber-500/30 rounded-full text-[9px] font-black text-amber-400 uppercase tracking-widest flex items-center gap-1">
-                        <Star className="w-2.5 h-2.5" /> Melhor desempenho
-                      </div>
-                    )}
-
-                    {/* Header */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className={`text-2xl w-10 h-10 rounded-2xl ${cfg.bg} flex items-center justify-center`}>{cfg.emoji}</div>
-                        <div>
-                          <p className="font-black text-base">{cfg.label}</p>
-                          <p className="text-[10px] text-zinc-500 font-bold">{count} vídeo{count !== 1 ? 's' : ''} sincronizado{count !== 1 ? 's' : ''}</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className={`text-2xl font-black ${count > 0 ? cfg.text : 'text-zinc-700'}`}>{views.toLocaleString()}</p>
-                        <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">views</p>
-                      </div>
-                    </div>
-
-                    {/* Barra de progresso */}
-                    <div className="relative">
-                      <div className="w-full h-2.5 bg-zinc-800 rounded-full overflow-hidden">
-                        <motion.div
-                          initial={{ width: 0 }}
-                          animate={{ width: `${barWidth}%` }}
-                          transition={{ duration: 1, ease: 'easeOut', delay: 0.2 }}
-                          className={`h-full rounded-full bg-gradient-to-r ${cfg.color}`}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Métricas secundárias */}
-                    <div className="grid grid-cols-3 gap-3">
-                      <div className={`${cfg.bg} border ${cfg.border} rounded-2xl p-3 text-center`}>
-                        <p className={`text-sm font-black ${cfg.text}`}>{likes.toLocaleString()}</p>
-                        <p className="text-[9px] text-zinc-500 font-black uppercase tracking-widest mt-0.5">Likes</p>
-                      </div>
-                      <div className={`${cfg.bg} border ${cfg.border} rounded-2xl p-3 text-center`}>
-                        <p className={`text-sm font-black ${cfg.text}`}>{comments.toLocaleString()}</p>
-                        <p className="text-[9px] text-zinc-500 font-black uppercase tracking-widest mt-0.5">Comentários</p>
-                      </div>
-                      <div className={`${cfg.bg} border ${cfg.border} rounded-2xl p-3 text-center`}>
-                        <p className={`text-sm font-black ${cfg.text}`}>{count > 0 ? Math.round(views / count).toLocaleString() : '—'}</p>
-                        <p className="text-[9px] text-zinc-500 font-black uppercase tracking-widest mt-0.5">Média/vídeo</p>
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="py-16 flex flex-col items-center justify-center glass rounded-[32px] border border-zinc-800 text-center">
-              <BarChart3 className="w-12 h-12 text-zinc-700 mb-4" />
-              <p className="text-zinc-500 font-black uppercase tracking-widest text-xs">Nenhum vídeo sincronizado ainda</p>
-              <p className="text-zinc-600 text-xs mt-2 font-bold">Envie seus links para começar a ver os dados</p>
-            </div>
-          )}
-        </div>
-
-        {/* Elite Global (1/3) */}
-        <div className="space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-amber-500/20 text-amber-500">
-              <Crown className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-xl font-black tracking-tight uppercase">Elite Global</h2>
-              <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Top do HUB</p>
-            </div>
-          </div>
-          <div className="glass border border-zinc-800/50 rounded-[32px] p-4 space-y-2 max-h-[400px] overflow-y-auto custom-scrollbar">
-            {[...rankings].sort((a, b) => (b.totalViews || 0) - (a.totalViews || 0)).map((player, i) => {
-              const isMe = player.uid === user.uid;
-              const rankStyles = ['text-amber-400 border-amber-500/30 bg-amber-500/10','text-zinc-300 border-zinc-500/30 bg-zinc-500/10','text-orange-500 border-orange-700/30 bg-orange-700/10'];
-              const badgeStyle = rankStyles[i] || 'text-zinc-500 border-zinc-800 bg-zinc-900/30';
-              return (
-                <motion.div key={player.uid} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }}
-                  className={`flex items-center gap-3 p-3 rounded-2xl transition-all ${isMe ? 'bg-amber-500/10 border border-amber-500/20' : 'hover:bg-zinc-800/40'}`}
-                >
-                  <div className={`w-8 h-8 rounded-xl border flex items-center justify-center text-[10px] font-black shrink-0 ${badgeStyle}`}>
-                    {i === 0 ? <Crown className="w-3.5 h-3.5" /> : `${i + 1}º`}
-                  </div>
-                  <img src={player.photoURL || `https://ui-avatars.com/api/?name=${player.displayName}&background=random&bold=true`}
-                    className={`w-9 h-9 rounded-xl object-cover shrink-0 ${isMe ? 'ring-2 ring-amber-500' : ''}`}
-                    alt="" referrerPolicy="no-referrer" />
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-xs font-black truncate ${isMe ? 'text-amber-400' : 'text-white'}`}>{isMe ? 'Você' : player.displayName}</p>
-                    <p className="text-[10px] text-zinc-500 font-bold">{(player.totalViews || 0).toLocaleString()} views</p>
-                  </div>
-                  {i === 0 && <Trophy className="w-4 h-4 text-amber-500 shrink-0" />}
-                </motion.div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const StatCard = ({ title, value, sub, icon, color }: { title: string, value: string, sub: string, icon: React.ReactNode, color: 'amber' | 'emerald' | 'blue' | 'purple' }) => {
-  const colors = {
-    amber: 'bg-amber-500/20 text-amber-500 border-amber-500/20',
-    emerald: 'bg-emerald-500/20 text-emerald-500 border-emerald-500/20',
-    blue: 'bg-blue-500/20 text-blue-500 border-blue-500/20',
-    purple: 'bg-purple-500/20 text-purple-500 border-purple-500/20'
-  };
-
-  const glowColors = {
-    amber: 'bg-amber-500',
-    emerald: 'bg-emerald-500',
-    blue: 'bg-blue-500',
-    purple: 'bg-purple-500'
-  };
-
-  return (
-    <div className="p-6 rounded-3xl glass relative overflow-hidden group border border-zinc-800/50">
-      <div className={`absolute top-0 right-0 w-32 h-32 -mr-16 -mt-16 rounded-full opacity-10 blur-3xl transition-opacity group-hover:opacity-20 ${glowColors[color]}`} />
-      <div className="relative z-10">
-        <div className={`w-10 h-10 rounded-xl mb-4 flex items-center justify-center ${colors[color]}`}>
-          {React.cloneElement(icon as React.ReactElement<any>, { className: 'w-5 h-5' })}
-        </div>
-        <p className="text-[10px] text-zinc-500 uppercase font-black tracking-widest mb-1">{title}</p>
-        <p className="text-3xl font-black mb-1">{value}</p>
-        <p className="text-xs text-zinc-400 font-medium">{sub}</p>
-      </div>
-    </div>
-  );
-};
 
 const normalizeUrl = (url: string) => {
   try {
@@ -1987,41 +822,20 @@ const App: React.FC = () => {
         try {
           const cid = targetComp.id;
           
-          // --- NOVA LÓGICA DE CORTE FIXO (20:05) ---
-          const nowRef = new Date();
-          const boundary = new Date(nowRef);
-          boundary.setHours(20, 5, 0, 0);
-          if (nowRef.getTime() < boundary.getTime()) {
-            boundary.setDate(boundary.getDate() - 1);
-          }
-          const cycleBoundary = boundary.getTime();
-          const previousReset = targetComp.lastDailyReset || 0;
-
-          // Recalcula ganhos REAIS do período que está sendo fechado [previousReset -> cycleBoundary]
-          const usersPeriodStats: Record<string, { views: number, posts: number }> = {};
-          posts.filter(p => p.competitionId === cid && (p.status === 'approved' || p.status === 'synced')).forEach(p => {
-            const t = p.timestamp || p.approvedAt || 0;
-            // Se o post foi feito na janela que estamos fechando agora
-            if (t > previousReset && t <= cycleBoundary && !(p as any).forceMonthly) {
-              const vGain = Math.max(0, (p.views || 0) - (p.viewsBaseline || 0));
-              if (!usersPeriodStats[p.userId]) usersPeriodStats[p.userId] = { views: 0, posts: 0 };
-              usersPeriodStats[p.userId].views += vGain;
-              usersPeriodStats[p.userId].posts += 1;
-            }
-          });
-
-          // Determina vencedores com base nos ganhos filtrados do ciclo
+          // --- LÓGICA V3: RESET MANUAL ABSOLUTO ---
+          // Filtra usuários que possuem estatísticas diárias para ESTA competição
           const dailyViewWinners = [...approvedUsers]
-            .filter(u => (usersPeriodStats[u.uid]?.views || 0) > 0)
-            .sort((a, b) => (usersPeriodStats[b.uid]?.views || 0) - (usersPeriodStats[a.uid]?.views || 0))
+            .filter(u => (u.competitionStats?.[cid]?.dailyViews || 0) > 0)
+            .sort((a, b) => (b.competitionStats?.[cid]?.dailyViews || 0) - (a.competitionStats?.[cid]?.dailyViews || 0))
             .slice(0, targetComp.prizesDaily?.length || 10);
 
           const quantityWinner = [...approvedUsers]
-            .filter(u => (usersPeriodStats[u.uid]?.posts || 0) > 0)
+            .filter(u => (u.competitionStats?.[cid]?.dailyPosts || 0) > 0)
             .sort((a, b) => {
-              const vB = usersPeriodStats[b.uid];
-              const vA = usersPeriodStats[a.uid];
-              return (vB.posts || 0) - (vA.posts || 0) || (vB.views || 0) - (vA.views || 0);
+              const statsA = a.competitionStats?.[cid];
+              const statsB = b.competitionStats?.[cid];
+              if (!statsA || !statsB) return 0;
+              return (statsB.dailyPosts || 0) - (statsA.dailyPosts || 0) || (statsB.dailyViews || 0) - (statsA.dailyViews || 0);
             })[0];
 
           const balanceIncrements: Record<string, { amount: number, desc: string }> = {};
@@ -2029,8 +843,8 @@ const App: React.FC = () => {
 
           dailyViewWinners.forEach((u, i) => {
             const prize = targetComp.prizesDaily?.[i]?.value || 0;
-            const periodViews = usersPeriodStats[u.uid]?.views || 0;
-            const bonusFromViews = Math.floor(periodViews / 1000000) * viewBonusValue;
+            const dailyViews = u.competitionStats?.[cid]?.dailyViews || 0;
+            const bonusFromViews = Math.floor(dailyViews / 1000000) * viewBonusValue;
             const total = prize + bonusFromViews;
             if (total > 0) {
               balanceIncrements[u.uid] = {
@@ -2056,10 +870,9 @@ const App: React.FC = () => {
             }
           }
 
-          console.log('--- RESET DAILY RANKING LOG (STRICT CUTOFF) ---');
+          console.log('--- RESET DAILY RANKING LOG (ACTION BASED) ---');
           console.log('Target Competition:', targetComp.title);
-          console.log('Cycle Boundary (Cutoff):', new Date(cycleBoundary).toLocaleString());
-          console.log('Daily View Winners:', dailyViewWinners.map(u => ({ name: u.displayName, views: usersPeriodStats[u.uid]?.views })));
+          console.log('Daily View Winners:', dailyViewWinners.map(u => ({ name: u.displayName, views: u.competitionStats?.[cid]?.dailyViews })));
           console.log('Quantity Winner:', quantityWinner?.displayName);
 
           // Process updates using Batch
@@ -2084,10 +897,7 @@ const App: React.FC = () => {
             const uIncrement = balanceIncrements[u.uid]?.amount || 0;
             const dataToUpdate: any = {};
             
-            // O dailyViews será recalculado automaticamente no próximo sync 
-            // porque mudaremos o lastDailyReset para o cycleBoundary.
-            // Para feedback imediato, vamos zerar o que FOI pago.
-            // O que sobrar (posts > cycleBoundary) será somado pelo updateUserMetrics.
+            // Reset daily stats for THIS competition
             dataToUpdate[`competitionStats.${cid}.dailyViews`] = 0;
             dataToUpdate[`competitionStats.${cid}.dailyLikes`] = 0;
             dataToUpdate[`competitionStats.${cid}.dailyComments`] = 0;
@@ -2103,32 +913,36 @@ const App: React.FC = () => {
               dataToUpdate[`competitionStats.${cid}.balance`] = currentCompBalance + uIncrement;
             }
 
-            // O root daily será ajustado pelo sync seguinte. Zeramos aqui para limpeza.
-            dataToUpdate.dailyViews = 0;
-            dataToUpdate.dailyLikes = 0;
-            dataToUpdate.dailyPosts = 0;
-            dataToUpdate.dailyInstaPosts = 0;
+            // Recalculate root daily stats (sum of all competitions EXCEPT the one being reset)
+            const otherComps = Object.entries(u.competitionStats || {}).filter(([id]) => id !== cid);
+            const newRootDailyViews = otherComps.reduce((acc, [_, s]) => acc + (s.dailyViews || 0), 0);
+            const newRootDailyLikes = otherComps.reduce((acc, [_, s]) => acc + (s.dailyLikes || 0), 0);
+            const newRootDailyPosts = otherComps.reduce((acc, [_, s]) => acc + (s.dailyPosts || 0), 0);
+            const newRootDailyInstaPosts = otherComps.reduce((acc, [_, s]) => acc + (s.dailyInstaPosts || 0), 0);
+            
+            dataToUpdate.dailyViews = newRootDailyViews;
+            dataToUpdate.dailyLikes = newRootDailyLikes;
+            dataToUpdate.dailyPosts = newRootDailyPosts;
+            dataToUpdate.dailyInstaPosts = newRootDailyInstaPosts;
 
             batch.update(doc(db, 'users', u.uid), dataToUpdate);
           });
 
-          // 3. Reset post baselines SOMENTE para posts antigos (<= fronteira)
+          // 3. Reset post baselines para TODOS os posts ativos (pois o ciclo acabou)
           const postsToReset = posts.filter(p => p.competitionId === cid && (p.status === 'approved' || p.status === 'synced'));
           postsToReset.forEach(p => {
-            const t = p.timestamp || p.approvedAt || 0;
-            if (t <= cycleBoundary) {
-              batch.update(doc(db, 'posts', p.id), {
-                viewsBaseline: p.views || 0,
-                likesBaseline: p.likes || 0,
-                commentsBaseline: p.comments || 0,
-                sharesBaseline: p.shares || 0,
-                savesBaseline: p.saves || 0
-              });
-            }
+            batch.update(doc(db, 'posts', p.id), {
+              viewsBaseline: p.views || 0,
+              likesBaseline: p.likes || 0,
+              commentsBaseline: p.comments || 0,
+              sharesBaseline: p.shares || 0,
+              savesBaseline: p.saves || 0
+            });
           });
 
-          // 4. Update competition reset timestamp - Definir como a fronteira exata
-          batch.update(doc(db, 'competitions', cid), { lastDailyReset: cycleBoundary });
+          // 4. Update competition reset timestamp - Marcar o agora como início do novo ciclo
+          const resetTime = Date.now();
+          batch.update(doc(db, 'competitions', cid), { lastDailyReset: resetTime });
 
           await batch.commit();
           if (Object.keys(balanceIncrements).length === 0) {
@@ -2719,8 +1533,8 @@ const App: React.FC = () => {
         fixed inset-y-0 left-0 z-50 w-64 glass border-r border-zinc-800/50 transform transition-transform duration-300 lg:relative lg:translate-x-0
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
-          <div className="flex flex-col h-full p-6">
-            <div className="flex items-center gap-3 mb-12">
+          <div className="flex flex-col h-full p-6 overflow-y-auto">
+            <div className="flex items-center gap-3 mb-8 shrink-0">
               <div className="w-10 h-10 gold-bg rounded-xl flex items-center justify-center">
                 <Zap className="w-6 h-6 text-black" />
               </div>
@@ -2853,6 +1667,8 @@ const App: React.FC = () => {
                       registrations={registrations}
                       onBack={() => setSelectedActiveCompId(null)}
                       setView={setView}
+                      RankingsComponent={Rankings}
+                      PostSubmitComponent={PostSubmit}
                     />
                   )
                 )}
@@ -3266,506 +2082,6 @@ const App: React.FC = () => {
 
 
 
-const CompetitionRegulamento = ({ comp }: { comp: Competition }) => {
-  return (
-    <div className="space-y-6">
-      {comp.description && (
-        <div className="bg-zinc-950 border border-zinc-800 rounded-3xl p-8 space-y-3">
-          <h3 className="text-xs font-black text-amber-500 uppercase tracking-widest flex items-center gap-2"><BookOpen className="w-4 h-4" /> Sobre a Competição</h3>
-          <p className="text-zinc-300 font-bold text-sm leading-relaxed whitespace-pre-line">{comp.description}</p>
-        </div>
-      )}
-      {comp.rules && (
-        <div className="bg-zinc-950 border border-zinc-800 rounded-3xl p-8 space-y-3">
-          <h3 className="text-xs font-black text-amber-500 uppercase tracking-widest flex items-center gap-2"><Shield className="w-4 h-4" /> Regras</h3>
-          <p className="text-zinc-300 font-bold text-sm leading-relaxed whitespace-pre-line">{comp.rules}</p>
-        </div>
-      )}
-      {(comp.hashtags || comp.mentions) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {comp.hashtags && (
-            <div className="bg-zinc-950 border border-zinc-800 rounded-3xl p-6 space-y-3">
-              <h3 className="text-xs font-black text-amber-500 uppercase tracking-widest"># Hashtags Obrigatórias</h3>
-              <div className="flex flex-wrap gap-2">
-                {comp.hashtags.split(/[\s,]+/).filter(Boolean).map((tag, i) => (
-                  <span key={i} className="px-3 py-1.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-lg text-[11px] font-black">{tag.startsWith('#') ? tag : `#${tag}`}</span>
-                ))}
-              </div>
-            </div>
-          )}
-          {comp.mentions && (
-            <div className="bg-zinc-950 border border-zinc-800 rounded-3xl p-6 space-y-3">
-              <h3 className="text-xs font-black text-amber-500 uppercase tracking-widest">@ Menções Obrigatórias</h3>
-              <div className="flex flex-wrap gap-2">
-                {comp.mentions.split(/[\s,]+/).filter(Boolean).map((m, i) => (
-                  <span key={i} className="px-3 py-1.5 bg-zinc-800 text-zinc-300 border border-zinc-700 rounded-lg text-[11px] font-black">{m.startsWith('@') ? m : `@${m}`}</span>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {comp.prizes && comp.prizes.length > 0 && (
-          <div className="bg-zinc-950 border border-zinc-800 rounded-3xl p-6 space-y-4">
-            <h3 className="text-xs font-black text-amber-500 uppercase tracking-widest flex items-center gap-2"><Trophy className="w-4 h-4" /> Premiação Geral</h3>
-            <div className="space-y-2">
-              {comp.prizes.map((prize, i) => (
-                <div key={i} className="flex items-center justify-between py-2 border-b border-zinc-800/50 last:border-0">
-                  <div className="flex items-center gap-3">
-                    <span className={`w-7 h-7 rounded-xl flex items-center justify-center text-[11px] font-black ${i===0?'bg-amber-500/20 text-amber-400':i===1?'bg-zinc-600/20 text-zinc-400':i===2?'bg-orange-700/20 text-orange-500':'bg-zinc-900 text-zinc-500'}`}>{prize.position}º</span>
-                    <span className="text-zinc-300 text-sm font-bold">{prize.label || `${prize.position}º lugar`}</span>
-                  </div>
-                  <span className="text-amber-400 font-black text-sm">R$ {(prize.value||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        {comp.prizesDaily && comp.prizesDaily.length > 0 && (
-          <div className="bg-zinc-950 border border-zinc-800 rounded-3xl p-6 space-y-4">
-            <h3 className="text-xs font-black text-amber-500 uppercase tracking-widest flex items-center gap-2"><Zap className="w-4 h-4" /> Premiação Diária</h3>
-            <div className="space-y-2">
-              {comp.prizesDaily.map((prize, i) => (
-                <div key={i} className="flex items-center justify-between py-2 border-b border-zinc-800/50 last:border-0">
-                  <div className="flex items-center gap-3">
-                    <span className={`w-7 h-7 rounded-xl flex items-center justify-center text-[11px] font-black ${i===0?'bg-amber-500/20 text-amber-400':i===1?'bg-zinc-600/20 text-zinc-400':i===2?'bg-orange-700/20 text-orange-500':'bg-zinc-900 text-zinc-500'}`}>{prize.position}º</span>
-                    <span className="text-zinc-300 text-sm font-bold">{prize.label || `${prize.position}º lugar`}</span>
-                  </div>
-                  <span className="text-amber-400 font-black text-sm">R$ {(prize.value||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        {comp.prizesMonthly && comp.prizesMonthly.length > 0 && (
-          <div className="bg-zinc-950 border border-zinc-800 rounded-3xl p-6 space-y-4">
-            <h3 className="text-xs font-black text-amber-500 uppercase tracking-widest flex items-center gap-2"><TrendingUp className="w-4 h-4" /> Premiação Mensal</h3>
-            <div className="space-y-2">
-              {comp.prizesMonthly.map((prize, i) => (
-                <div key={i} className="flex items-center justify-between py-2 border-b border-zinc-800/50 last:border-0">
-                  <div className="flex items-center gap-3">
-                    <span className={`w-7 h-7 rounded-xl flex items-center justify-center text-[11px] font-black ${i===0?'bg-amber-500/20 text-amber-400':i===1?'bg-zinc-600/20 text-zinc-400':i===2?'bg-orange-700/20 text-orange-500':'bg-zinc-900 text-zinc-500'}`}>{prize.position}º</span>
-                    <span className="text-zinc-300 text-sm font-bold">{prize.label || `${prize.position}º lugar`}</span>
-                  </div>
-                  <span className="text-amber-400 font-black text-sm">R$ {(prize.value||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        {comp.prizesInstagram && comp.prizesInstagram.length > 0 && (
-          <div className="bg-zinc-950 border border-zinc-800 rounded-3xl p-6 space-y-4">
-            <h3 className="text-xs font-black text-amber-500 uppercase tracking-widest flex items-center gap-2"><Camera className="w-4 h-4" /> Premiação Instagram</h3>
-            <div className="space-y-2">
-              {comp.prizesInstagram.map((prize, i) => (
-                <div key={i} className="flex items-center justify-between py-2 border-b border-zinc-800/50 last:border-0">
-                  <div className="flex items-center gap-3">
-                    <span className={`w-7 h-7 rounded-xl flex items-center justify-center text-[11px] font-black ${i===0?'bg-amber-500/20 text-amber-400':i===1?'bg-zinc-600/20 text-zinc-400':i===2?'bg-orange-700/20 text-orange-500':'bg-zinc-900 text-zinc-500'}`}>{prize.position}º</span>
-                    <span className="text-zinc-300 text-sm font-bold">{prize.label || `${prize.position}º lugar`}</span>
-                  </div>
-                  <span className="text-amber-400 font-black text-sm">R$ {(prize.value||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-      {(comp.bonuses || comp.instaBonus || (comp.viewBonus && comp.viewBonus > 0)) && (
-        <div className="bg-zinc-950 border border-zinc-800 rounded-3xl p-6 space-y-3">
-          <h3 className="text-xs font-black text-amber-500 uppercase tracking-widest flex items-center gap-2"><Star className="w-4 h-4" /> Bônus e Multiplicadores</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {(comp.viewBonus && comp.viewBonus > 0) ? (
-              <div className="bg-zinc-900 rounded-2xl p-4 border border-zinc-800">
-                <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">Bônus por View</p>
-                <p className="text-amber-400 font-black text-lg">x{comp.viewBonus}</p>
-              </div>
-            ) : null}
-            {comp.instaBonus && (
-              <div className="bg-zinc-900 rounded-2xl p-4 border border-zinc-800 md:col-span-2">
-                <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">Bônus Instagram</p>
-                <p className="text-zinc-300 font-bold text-sm">{comp.instaBonus}</p>
-              </div>
-            )}
-            {comp.bonuses && (
-              <div className="bg-zinc-900 rounded-2xl p-4 border border-zinc-800 md:col-span-3">
-                <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">Outros Bônus</p>
-                <p className="text-zinc-300 font-bold text-sm whitespace-pre-line">{comp.bonuses}</p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-const CompetitionsView = ({ user, competitions, registrations, onSelectComp }: { 
-  user: User, 
-  competitions: Competition[], 
-  registrations: CompetitionRegistration[],
-  onSelectComp: (id: string) => void
-}) => {
-  const isStaff = user.role === 'admin' || user.role === 'auditor' || user.role === 'administrativo';
-  const [selectedRegulamentoComp, setSelectedRegulamentoComp] = useState<Competition | null>(null);
-  const [acceptedRules, setAcceptedRules] = useState(false);
-
-  const handleRegister = async (compId: string) => {
-    if (!acceptedRules) {
-      alert('Você precisa aceitar as regras para participar!');
-      return;
-    }
-    try {
-      const regId = Math.random().toString(36).substr(2, 9);
-      await setDoc(doc(db, 'competition_registrations', regId), {
-        id: regId,
-        competitionId: compId,
-        userId: user.uid,
-        userName: user.displayName,
-        userEmail: user.email,
-        status: 'pending',
-        acceptedRules: true,
-        timestamp: Date.now()
-      });
-      alert('Inscrição solicitada com sucesso! Aguarde a aprovação da diretoria.');
-      setSelectedRegulamentoComp(null);
-      setAcceptedRules(false);
-    } catch (error) {
-      console.error('Registration error', error);
-      alert('Erro ao solicitar inscrição.');
-    }
-  };
-
-  const now = Date.now();
-
-  const participating = competitions.filter(c => 
-    c.isActive && c.endDate >= now && 
-    registrations.some(r => r.competitionId === c.id && r.userId === user.uid && r.status === 'approved')
-  );
-
-  const available = competitions.filter(c => 
-    c.isActive && c.startDate <= now && c.endDate >= now && 
-    !registrations.some(r => r.competitionId === c.id && r.userId === user.uid)
-  );
-
-  const pendingRequests = competitions.filter(c => 
-    c.isActive && c.endDate >= now && 
-    registrations.some(r => r.competitionId === c.id && r.userId === user.uid && r.status === 'pending')
-  );
-
-  const upcoming = competitions.filter(c =>
-    c.isActive && c.startDate > now &&
-    !registrations.some(r => r.competitionId === c.id && r.userId === user.uid)
-  );
-
-  const CompetitionCard = ({ comp, type }: { comp: Competition, type: 'participating' | 'available' | 'pending' | 'upcoming' }) => (
-    <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl overflow-hidden glass group">
-      {comp.bannerUrl && (
-        <div className="h-32 w-full bg-zinc-800/50 relative overflow-hidden">
-          <img src={comp.bannerUrl} alt={comp.title} className="w-full h-full object-cover opacity-60 group-hover:opacity-80 transition-opacity" />
-          <div className="absolute inset-0 bg-gradient-to-t from-zinc-900/90 to-transparent" />
-        </div>
-      )}
-      <div className={`p-6 ${comp.bannerUrl ? '-mt-12 relative z-10' : ''}`}>
-        <div className="flex items-center gap-3 mb-4">
-          <div className={`w-10 h-10 flex border items-center justify-center rounded-xl bg-zinc-900 ${
-            type === 'participating' ? 'text-emerald-500 border-emerald-500/20' : 
-            type === 'pending' ? 'text-amber-500 border-amber-500/20' :
-            type === 'upcoming' ? 'text-blue-500 border-blue-500/20' :
-            'text-pink-500 border-pink-500/20'
-          }`}>
-            {type === 'participating' ? <CheckCircle2 className="w-5 h-5" /> : 
-             type === 'pending' ? <Clock className="w-5 h-5" /> : 
-             type === 'upcoming' ? <Calendar className="w-5 h-5" /> :
-             <Trophy className="w-5 h-5" />}
-          </div>
-          <div>
-            <h3 className="font-black text-lg text-white leading-tight">{comp.title}</h3>
-            <p className="text-[10px] uppercase font-black tracking-widest text-zinc-500">
-              {new Date(comp.startDate).toLocaleDateString()} - {new Date(comp.endDate).toLocaleDateString()}
-            </p>
-          </div>
-        </div>
-        
-        <p className="text-sm text-zinc-400 font-bold mb-6 line-clamp-2">
-          {comp.description}
-        </p>
-
-        {type === 'available' && (
-          <button
-            onClick={() => {
-              setSelectedRegulamentoComp(comp);
-              setAcceptedRules(false);
-            }}
-            className="w-full py-4 text-sm font-black gold-bg text-black rounded-xl hover:scale-[1.02] transition-transform flex items-center justify-center gap-2"
-          >
-            SOLICITAR INSCRIÇÃO
-          </button>
-        )}
-        {type === 'pending' && (
-          <div className="w-full py-4 text-sm font-black bg-amber-500/10 text-amber-500 rounded-xl flex items-center justify-center gap-2 border border-amber-500/20">
-            AGUARDANDO APROVAÇÃO
-          </div>
-        )}
-        {type === 'participating' && (
-          <div className="space-y-3">
-            <div className="w-full py-4 text-sm font-black bg-emerald-500/10 text-emerald-500 rounded-xl flex items-center justify-center gap-2 border border-emerald-500/20">
-              <CheckCircle2 className="w-4 h-4" /> INSCRIÇÃO APROVADA
-            </div>
-            <button
-              onClick={() => onSelectComp(comp.id)}
-              className="w-full py-4 text-sm font-black gold-bg text-black rounded-xl hover:scale-[1.02] transition-transform flex items-center justify-center gap-2"
-            >
-              ACESSAR COMPETIÇÃO
-            </button>
-          </div>
-        )}
-        {(isStaff && type !== 'participating') && (
-          <button
-            onClick={() => onSelectComp(comp.id)}
-            className="w-full mt-3 py-4 text-[10px] font-black bg-zinc-800 text-zinc-400 rounded-xl hover:text-white transition-colors flex items-center justify-center gap-2 border border-zinc-700/50"
-          >
-            ACESSAR (MODO ADMIN)
-          </button>
-        )}
-        {type === 'upcoming' && (
-          <div className="w-full py-4 text-sm font-black bg-blue-500/10 text-blue-500 rounded-xl flex items-center justify-center gap-2 border border-blue-500/20">
-            <Calendar className="w-4 h-4" /> EM BREVE
-          </div>
-        )}
-        <button
-          onClick={() => setSelectedRegulamentoComp(comp)}
-          className="w-full mt-3 py-3 text-xs font-black bg-zinc-900 border border-zinc-800 text-zinc-400 rounded-xl hover:text-white transition-colors flex items-center justify-center gap-2"
-        >
-          <BookOpen className="w-4 h-4" /> VER INFORMAÇÕES
-        </button>
-      </div>
-    </div>
-  );
-
-  return (
-    <div className="max-w-6xl mx-auto space-y-12">
-      <div className="space-y-2">
-        <h2 className="text-4xl font-black tracking-tighter">Minhas Competições</h2>
-        <p className="text-zinc-400 font-bold">Acompanhe suas inscrições e explore novas competições.</p>
-      </div>
-
-      {participating.length > 0 && (
-        <div className="space-y-6">
-          <div className="flex items-center gap-3 border-b border-zinc-800 pb-3">
-            <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-            <h3 className="text-xl font-black uppercase tracking-widest text-emerald-500">Participando Atualmente</h3>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {participating.map(c => <CompetitionCard key={c.id} comp={c} type="participating" />)}
-          </div>
-        </div>
-      )}
-
-      {pendingRequests.length > 0 && (
-        <div className="space-y-6">
-          <div className="flex items-center gap-3 border-b border-zinc-800 pb-3">
-            <Clock className="w-5 h-5 text-amber-500" />
-            <h3 className="text-xl font-black uppercase tracking-widest text-amber-500">Inscrições Pendentes</h3>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {pendingRequests.map(c => <CompetitionCard key={c.id} comp={c} type="pending" />)}
-          </div>
-        </div>
-      )}
-
-      {available.length > 0 && (
-        <div className="space-y-6">
-          <div className="flex items-center gap-3 border-b border-zinc-800 pb-3">
-            <Trophy className="w-5 h-5 text-pink-500" />
-            <h3 className="text-xl font-black uppercase tracking-widest text-pink-500">Disponíveis para Inscrição</h3>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {available.map(c => <CompetitionCard key={c.id} comp={c} type="available" />)}
-          </div>
-        </div>
-      )}
-
-      {upcoming.length > 0 && (
-        <div className="space-y-6">
-          <div className="flex items-center gap-3 border-b border-zinc-800 pb-3">
-            <Calendar className="w-5 h-5 text-blue-500" />
-            <h3 className="text-xl font-black uppercase tracking-widest text-blue-500">Próximas Competições</h3>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {upcoming.map(c => <CompetitionCard key={c.id} comp={c} type="upcoming" />)}
-          </div>
-        </div>
-      )}
-
-      {participating.length === 0 && available.length === 0 && pendingRequests.length === 0 && upcoming.length === 0 && (
-        <div className="py-24 text-center glass rounded-3xl border border-zinc-800/50 space-y-4">
-          <Trophy className="w-12 h-12 text-zinc-700 mx-auto" />
-          <h3 className="text-xl font-black text-zinc-500 uppercase tracking-widest">Nenhuma competição encontrada</h3>
-          <p className="text-zinc-600 font-bold text-sm">Fique de olho, novas competições serão lançadas em breve.</p>
-        </div>
-      )}
-
-      {selectedRegulamentoComp && (
-        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-end md:justify-center p-4 sm:p-6 pb-20">
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setSelectedRegulamentoComp(null)} />
-          <div className="relative w-full max-w-4xl max-h-[85vh] bg-zinc-950 border border-zinc-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col">
-            <div className="sticky top-0 z-10 flex items-center justify-between p-6 bg-zinc-950/90 backdrop-blur border-b border-zinc-800/50">
-               <h2 className="text-xl font-black flex items-center gap-2 text-white"><BookOpen className="w-5 h-5 text-amber-500" /> INFORMAÇÕES DA COMPETIÇÃO</h2>
-               <button onClick={() => setSelectedRegulamentoComp(null)} className="p-2 bg-zinc-900 rounded-xl hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors">
-                  <X className="w-5 h-5" />
-               </button>
-            </div>
-            <div className="overflow-y-auto p-6 scrollbar-hide">
-               <CompetitionRegulamento comp={selectedRegulamentoComp} />
-               
-               {/* Regras e Aceite */}
-               {!registrations.find(r => r.competitionId === selectedRegulamentoComp.id && r.userId === user.uid) && (
-                 <div className="mt-8 p-8 bg-zinc-900/50 border border-zinc-800 rounded-3xl space-y-6">
-                    <div className="flex flex-col gap-4">
-                      <h3 className="text-sm font-black uppercase text-amber-500 tracking-widest">Termo de Aceite</h3>
-                      <label className="flex items-start gap-4 cursor-pointer group">
-                        <div className="relative flex items-center mt-1">
-                          <input
-                            type="checkbox"
-                            checked={acceptedRules}
-                            onChange={(e) => setAcceptedRules(e.target.checked)}
-                            className="peer h-5 w-5 appearance-none rounded border-2 border-zinc-700 bg-zinc-800 transition-all checked:border-amber-500 checked:bg-amber-500"
-                          />
-                          <Check className="absolute h-3.5 w-3.5 text-black opacity-0 transition-opacity peer-checked:opacity-100 left-0.5" />
-                        </div>
-                        <span className="text-xs font-bold text-zinc-400 group-hover:text-zinc-200 transition-colors">
-                          Eu li e aceito todas as regras e condições estabelecidas para esta competição.
-                        </span>
-                      </label>
-                    </div>
-
-                    <button
-                      onClick={() => handleRegister(selectedRegulamentoComp.id)}
-                      disabled={!acceptedRules}
-                      className={`w-full py-5 font-black rounded-2xl transition-all shadow-xl ${
-                        acceptedRules 
-                          ? 'gold-bg text-black hover:scale-[1.02] shadow-amber-500/20' 
-                          : 'bg-zinc-800 text-zinc-500 cursor-not-allowed opacity-50'
-                      }`}
-                    >
-                      CONFIRMAR E SOLICITAR INSCRIÇÃO
-                    </button>
-                 </div>
-               )}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-const CompetitionDetailView = ({ 
-  comp, 
-  user, 
-  rankings, 
-  posts, 
-  registrations, 
-  onBack,
-  setView
-}: { 
-  comp: Competition, 
-  user: User, 
-  rankings: User[], 
-  posts: Post[], 
-  registrations: CompetitionRegistration[],
-  onBack: () => void,
-  setView: (view: any) => void
-}) => {
-  const [activeTab, setActiveTab] = useState<'RANKING' | 'POST' | 'REGULAMENTO'>('RANKING');
-
-  return (
-    <div className="max-w-6xl mx-auto space-y-8">
-      {/* Header Detail */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-zinc-800/50">
-        <div className="flex items-center gap-4">
-          <button 
-            onClick={onBack}
-            className="p-3 bg-zinc-900 hover:bg-zinc-800 rounded-2xl transition-colors text-zinc-400 hover:text-white"
-          >
-            <ArrowLeft className="w-6 h-6" />
-          </button>
-          <div>
-            <h2 className="text-3xl font-black tracking-tighter">{comp.title}</h2>
-            <p className="text-zinc-500 text-[10px] font-black uppercase tracking-widest mt-1">Explorando competição individual</p>
-          </div>
-        </div>
-
-        <div className="flex p-1 bg-zinc-900 rounded-2xl border border-zinc-800/50 w-full md:w-auto">
-          <button
-            onClick={() => setActiveTab('RANKING')}
-            className={`flex-1 md:flex-none px-8 py-3 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${activeTab === 'RANKING' ? 'bg-zinc-800 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
-          >
-            <Trophy className="w-4 h-4" />
-            RANKING
-          </button>
-          <button
-            onClick={() => setActiveTab('POST')}
-            className={`flex-1 md:flex-none px-6 py-3 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${activeTab === 'POST' ? 'bg-zinc-800 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
-          >
-            <Send className="w-4 h-4" />
-            POSTAR LINK
-          </button>
-          <button
-            onClick={() => setActiveTab('REGULAMENTO')}
-            className={`flex-1 md:flex-none px-6 py-3 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${activeTab === 'REGULAMENTO' ? 'bg-amber-500/20 text-amber-500 shadow-lg' : 'text-zinc-500 hover:text-amber-400'}`}
-          >
-            <BookOpen className="w-4 h-4" />
-            REGULAMENTO
-          </button>
-        </div>
-      </div>
-
-      {/* Tab Content */}
-      <div className="relative">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2 }}
-          >
-            {activeTab === 'RANKING' ? (
-              <div className="space-y-6">
-                <div className="flex justify-between items-center bg-amber-500/5 border border-amber-500/10 p-6 rounded-3xl">
-                  <div className="space-y-1">
-                    <h4 className="text-amber-500 font-black uppercase text-xs tracking-widest">Ação Rápida</h4>
-                    <p className="text-zinc-400 text-sm font-bold">Deseja enviar novos vídeos para esta competição?</p>
-                  </div>
-                  <button
-                    onClick={() => setActiveTab('POST')}
-                    className="px-6 py-3 gold-bg text-black font-black rounded-xl hover:scale-105 transition-all text-xs flex items-center gap-2"
-                  >
-                    <Send className="w-4 h-4" />
-                    PROTOCOLAR LINKS
-                  </button>
-                </div>
-                <Rankings rankings={rankings} competitions={[comp]} lockedCompetitionId={comp.id} />
-              </div>
-            ) : activeTab === 'REGULAMENTO' ? (
-              <CompetitionRegulamento comp={comp} />
-            ) : (
-              <PostSubmit 
-                user={user} 
-                competitions={[comp]} 
-                registrations={registrations} 
-                setView={setView} 
-                lockedCompetitionId={comp.id} 
-              />
-            )}
-          </motion.div>
-        </AnimatePresence>
-      </div>
-    </div>
-  );
-};
 
 const PostSubmit = ({ user, competitions, registrations, setView, lockedCompetitionId }: {
   user: User,
@@ -5624,6 +3940,7 @@ const AdminPanel = ({
   const [loadingFinancials, setLoadingFinancials] = useState(false);
   const [selectedNetworkUserId, setSelectedNetworkUserId] = useState<string>('all');
   const [selectedResyncPostIds, setSelectedResyncPostIds] = useState<string[]>([]);
+  const [selectedSyncPostIds, setSelectedSyncPostIds] = useState<string[]>([]);
   const isSameDay = (timestamp: number, dateStr: string) => {
     if (!dateStr) return true;
     const date = new Date(timestamp);
@@ -5747,31 +4064,15 @@ const AdminPanel = ({
   }, [approvedUsers, selectedMetaComp]);
 
   const postsToday = useMemo(() => {
-    const now = new Date();
-    
-    // Ajuste automático da janela: O ciclo "Diário" sempre aponta para o próximo corte das 20:05.
-    const activeCycleEnd = new Date(now);
-    activeCycleEnd.setHours(20, 5, 59, 999);
-    
-    if (now.getTime() > activeCycleEnd.getTime()) {
-      activeCycleEnd.setDate(activeCycleEnd.getDate() + 1);
-    }
-
-    const activeCycleStart = new Date(activeCycleEnd);
-    activeCycleStart.setDate(activeCycleStart.getDate() - 1);
-    activeCycleStart.setHours(20, 0, 0, 0);
-
-    const startTime = activeCycleStart.getTime();
-    const endTime = activeCycleEnd.getTime();
     const lastReset = selectedMetaComp?.lastDailyReset || 0;
     
     return posts.filter(p => {
       const isApproved = p.status === 'approved' || p.status === 'synced';
       const isWithinComp = !selectedMetaComp || p.competitionId === selectedMetaComp.id;
       
-      const truePostTime = p.timestamp || p.approvedAt || 0;
-      const isAfterReset = truePostTime > lastReset;
-      const isNewDailyPost = !(p as any).forceMonthly && isAfterReset && ((p as any).forceDaily || (truePostTime >= startTime && truePostTime < endTime));
+      const approvedAt = p.approvedAt || p.timestamp || 0;
+      const isAfterReset = approvedAt > lastReset;
+      const isNewDailyPost = !(p as any).forceMonthly && ((p as any).forceDaily || isAfterReset);
 
       return isApproved && isWithinComp && isNewDailyPost;
     }).length;
@@ -6185,6 +4486,7 @@ const AdminPanel = ({
         setSyncingPostId(post.id);
         await syncSinglePostWithApify(keys, post, false);
         await updateDoc(doc(db, 'posts', post.id), { status: 'synced' });
+        await updateUserMetrics(post.userId);
         completed++;
         setSyncProgress(completed);
         setSessionSyncedIds((prev: string[]) => [...prev, post.id]);
@@ -6232,6 +4534,7 @@ const AdminPanel = ({
           setSyncingPostId(post.id);
           await syncSinglePostWithApify([key], post, false);
           await updateDoc(doc(db, 'posts', post.id), { status: 'synced' });
+          await updateUserMetrics(post.userId);
           completed++;
           setSyncProgress(completed);
           setSessionSyncedIds((prev: string[]) => [...prev, post.id]);
@@ -6617,6 +4920,38 @@ const AdminPanel = ({
     } finally {
       setSyncing(false);
       setSyncingPostId(null);
+    }
+  };
+
+  const handleBulkRevertToPending = async () => {
+    if (selectedSyncPostIds.length === 0) return;
+    if (!confirm(`Deseja reverter ${selectedSyncPostIds.length} posts selecionados para a Triagem (Pendentes)?`)) return;
+
+    try {
+      setSyncing(true);
+      const affectedUserIds = new Set<string>();
+      
+      for (const postId of selectedSyncPostIds) {
+        const post = posts.find(p => p.id === postId);
+        if (post) {
+          affectedUserIds.add(post.userId);
+          await updateDoc(doc(db, 'posts', postId), { 
+            status: 'pending', 
+            approvedAt: deleteField() 
+          });
+        }
+      }
+      
+      for (const uid of Array.from(affectedUserIds)) {
+        await updateUserMetrics(uid);
+      }
+      
+      setSelectedSyncPostIds([]);
+      alert('Links revertidos para a Triagem com sucesso!');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'bulk_revert');
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -8097,13 +6432,71 @@ const AdminPanel = ({
                   </button>
                 </div>
 
+                {/* Bulk Actions Header for SINCRONIZACAO */}
+                <div className="bg-zinc-900/50 p-6 rounded-[32px] border border-zinc-800/50 flex flex-wrap items-center justify-between gap-6">
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={() => {
+                        const allCompPendingSync = posts.filter(p => p.status === 'approved' && p.competitionId === syncDetailCompId).map(p => p.id);
+                        if (selectedSyncPostIds.length === allCompPendingSync.length) {
+                          setSelectedSyncPostIds([]);
+                        } else {
+                          setSelectedSyncPostIds(allCompPendingSync);
+                        }
+                      }}
+                      className="px-4 py-2 rounded-xl bg-zinc-800 text-zinc-400 text-[10px] font-black uppercase tracking-widest border border-zinc-700 hover:bg-zinc-700 hover:text-white transition-all"
+                    >
+                      {selectedSyncPostIds.length > 0 && selectedSyncPostIds.length === posts.filter(p => p.status === 'approved' && p.competitionId === syncDetailCompId).length 
+                        ? 'Desmarcar Todos' 
+                        : 'Selecionar Todos'}
+                    </button>
+                    {selectedSyncPostIds.length > 0 && (
+                      <span className="text-amber-500 font-black text-[10px] uppercase tracking-widest">
+                        {selectedSyncPostIds.length} selecionados
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {selectedSyncPostIds.length > 0 && (
+                      <button
+                        onClick={handleBulkRevertToPending}
+                        disabled={syncing}
+                        className="px-6 py-2.5 rounded-xl bg-red-500/10 text-red-500 border border-red-500/20 text-[10px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all disabled:opacity-50 flex items-center gap-2"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        Reverter para Posts (Triagem)
+                      </button>
+                    )}
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 gap-4">
                   {posts.filter(p => p.status === 'approved' && p.competitionId === syncDetailCompId).map(post => (
-                    <div key={post.id} className="p-6 rounded-3xl glass flex flex-col md:flex-row items-center gap-6 group hover:border-amber-500/30 transition-all">
-                      <div className="w-16 h-16 rounded-2xl bg-zinc-900 flex items-center justify-center shrink-0">
-                        {post.platform === 'tiktok' ? <Zap className="w-8 h-8 text-amber-500" /> :
-                          post.platform === 'youtube' ? <TrendingUp className="w-8 h-8 text-red-500" /> :
-                            <Camera className="w-8 h-8 text-pink-500" />}
+                    <div 
+                      key={post.id} 
+                      onClick={() => {
+                        if (selectedSyncPostIds.includes(post.id)) {
+                          setSelectedSyncPostIds(prev => prev.filter(id => id !== post.id));
+                        } else {
+                          setSelectedSyncPostIds(prev => [...prev, post.id]);
+                        }
+                      }}
+                      className={`p-6 rounded-[32px] glass-card border transition-all duration-300 group flex flex-col md:flex-row items-center gap-6 cursor-pointer
+                        ${selectedSyncPostIds.includes(post.id) ? 'border-amber-500/50 bg-amber-500/5 shadow-[0_0_20px_rgba(245,158,11,0.05)]' : 'border-zinc-800/50 hover:border-zinc-700'}
+                      `}
+                    >
+                      <div className="flex items-center gap-4 shrink-0">
+                        <div className={`w-5 h-5 rounded-md border-2 transition-all flex items-center justify-center
+                          ${selectedSyncPostIds.includes(post.id) ? 'bg-amber-500 border-amber-500' : 'border-zinc-700 group-hover:border-zinc-500'}
+                        `}>
+                          {selectedSyncPostIds.includes(post.id) && <Check className="w-3.5 h-3.5 text-black stroke-[4]" />}
+                        </div>
+                        <div className="w-16 h-16 rounded-2xl bg-zinc-900 flex items-center justify-center shrink-0">
+                          {post.platform === 'tiktok' ? <Zap className="w-8 h-8 text-amber-500" /> :
+                            post.platform === 'youtube' ? <TrendingUp className="w-8 h-8 text-red-500" /> :
+                              <Camera className="w-8 h-8 text-pink-500" />}
+                        </div>
                       </div>
                       <div className="flex-1 min-w-0 text-center md:text-left">
                         <p className="text-sm font-black text-zinc-300 uppercase tracking-tight mb-1">{post.userName}</p>
@@ -8114,7 +6507,7 @@ const AdminPanel = ({
                           <span>{new Date(post.timestamp).toLocaleString()}</span>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3 shrink-0">
+                      <div className="flex items-center gap-3 shrink-0" onClick={e => e.stopPropagation()}>
                         <a href={post.url} target="_blank" rel="noreferrer" className="px-5 py-3 rounded-xl bg-zinc-900 text-zinc-400 font-bold text-xs hover:text-zinc-100 transition-colors">
                           Ver Link
                         </a>
@@ -8127,6 +6520,7 @@ const AdminPanel = ({
                             try {
                               await syncSinglePostWithApify(keys, post, false);
                               await updateDoc(doc(db, 'posts', post.id), { status: 'synced' });
+                              await updateUserMetrics(post.userId);
                               alert('Vídeo sincronizado com sucesso!');
                             } catch (e: any) {
                               alert('Erro ao sincronizar: ' + e.message);
@@ -10472,418 +8866,6 @@ const AdminPanel = ({
     </div>
   );
 };
-
-const SettingsView = ({
-  user,
-  profileName,
-  setProfileName,
-  profileTiktok,
-  setProfileTiktok,
-  profileInstagram,
-  setProfileInstagram,
-  profileYoutube,
-  setProfileYoutube,
-  profilePhoto,
-  handleProfilePhotoUpload,
-  handleUpdateProfile,
-  isUpdatingProfile,
-  settingsTab,
-  setSettingsTab
-}: {
-  user: User;
-  profileName: string;
-  setProfileName: (val: string) => void;
-  profileTiktok: string[];
-  setProfileTiktok: (val: string[]) => void;
-  profileInstagram: string[];
-  setProfileInstagram: (val: string[]) => void;
-  profileYoutube: string[];
-  setProfileYoutube: (val: string[]) => void;
-  profilePhoto: string;
-  handleProfilePhotoUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  handleUpdateProfile: () => void;
-  isUpdatingProfile: boolean;
-  settingsTab: 'PROFILE' | 'SOCIAL';
-  setSettingsTab: (val: 'PROFILE' | 'SOCIAL') => void;
-}) => {
-  const addSocial = (platform: 'tiktok' | 'instagram' | 'youtube') => {
-    if (platform === 'tiktok') setProfileTiktok([...profileTiktok, '@']);
-    if (platform === 'instagram') setProfileInstagram([...profileInstagram, '@']);
-    if (platform === 'youtube') setProfileYoutube([...profileYoutube, '@']);
-  };
-
-  const removeSocial = (platform: 'tiktok' | 'instagram' | 'youtube', index: number) => {
-    if (platform === 'tiktok') setProfileTiktok(profileTiktok.filter((_, i) => i !== index));
-    if (platform === 'instagram') setProfileInstagram(profileInstagram.filter((_, i) => i !== index));
-    if (platform === 'youtube') setProfileYoutube(profileYoutube.filter((_, i) => i !== index));
-  };
-
-  const updateSocial = (platform: 'tiktok' | 'instagram' | 'youtube', index: number, val: string) => {
-    const newVal = '@' + val.replace('@', '');
-    if (platform === 'tiktok') {
-      const list = [...profileTiktok];
-      list[index] = newVal;
-      setProfileTiktok(list);
-    }
-    if (platform === 'instagram') {
-      const list = [...profileInstagram];
-      list[index] = newVal;
-      setProfileInstagram(list);
-    }
-    if (platform === 'youtube') {
-      const list = [...profileYoutube];
-      list[index] = newVal;
-      setProfileYoutube(list);
-    }
-  };
-
-  return (
-    <div className="max-w-2xl mx-auto space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div className="space-y-1">
-          <h2 className="text-3xl font-black tracking-tight gold-gradient uppercase">Configurações</h2>
-          <p className="text-zinc-500 font-bold text-[10px] uppercase tracking-widest">Gerencie seu perfil e redes sociais</p>
-        </div>
-        <button
-          onClick={handleUpdateProfile}
-          disabled={isUpdatingProfile}
-          className="px-10 py-5 gold-bg text-black font-black rounded-2xl hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-3 shadow-xl shadow-amber-500/10"
-        >
-          {isUpdatingProfile ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
-          SALVAR ALTERAÇÕES
-        </button>
-      </div>
-
-      <div className="flex p-1.5 bg-zinc-900 border border-zinc-800 rounded-2xl w-full">
-        <button
-          onClick={() => setSettingsTab('PROFILE')}
-          className={`flex-1 py-3.5 rounded-xl font-black text-xs tracking-widest transition-all ${settingsTab === 'PROFILE' ? 'bg-amber-500 text-black shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
-        >
-          MEU PERFIL
-        </button>
-        <button
-          onClick={() => setSettingsTab('SOCIAL')}
-          className={`flex-1 py-3.5 rounded-xl font-black text-xs tracking-widest transition-all ${settingsTab === 'SOCIAL' ? 'bg-amber-500 text-black shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
-        >
-          REDES SOCIAIS
-        </button>
-      </div>
-
-      <div className="space-y-6">
-        {settingsTab === 'PROFILE' ? (
-          <div className="p-8 rounded-[40px] glass border border-zinc-800 space-y-8 relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-8 opacity-5">
-              <UserIcon className="w-40 h-40" />
-            </div>
-            <div className="flex flex-col md:flex-row items-center gap-8 relative z-10">
-              <div className="relative group">
-                <div className="w-32 h-32 rounded-[40px] border-4 border-zinc-900 shadow-2xl overflow-hidden relative">
-                  <img
-                    src={profilePhoto || user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}`}
-                    className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500"
-                    alt=""
-                  />
-                  <label
-                    htmlFor="profile-photo-upload"
-                    className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                  >
-                    <Camera className="w-8 h-8 text-amber-500" />
-                    <input
-                      type="file"
-                      id="profile-photo-upload"
-                      className="hidden"
-                      accept="image/*"
-                      onChange={handleProfilePhotoUpload}
-                    />
-                  </label>
-                </div>
-              </div>
-              <div className="flex-1 space-y-4 w-full">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-2">
-                    <UserIcon className="w-3 h-3" /> Seu Nome de Exibição
-                  </label>
-                  <input
-                    type="text"
-                    value={profileName}
-                    onChange={(e) => setProfileName(e.target.value)}
-                    className="w-full bg-black border border-zinc-800 rounded-2xl py-5 px-6 text-sm font-bold focus:border-amber-500 outline-none transition-all shadow-inner"
-                    placeholder="Seu nome no Hub"
-                  />
-                </div>
-                <div className="p-5 rounded-2xl bg-zinc-900/50 border border-zinc-800/50">
-                  <p className="text-[10px] text-zinc-500 uppercase font-black tracking-widest mb-1">E-mail de Login</p>
-                  <p className="font-bold text-zinc-300">{user.email}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 pt-8 border-t border-zinc-800 relative z-10">
-              <div className="p-6 rounded-3xl bg-zinc-900/50 border border-zinc-800/50 group hover:border-amber-500/30 transition-all">
-                <p className="text-[10px] text-zinc-500 uppercase font-black tracking-widest mb-1 flex items-center gap-2">
-                  <Crown className="w-3 h-3 text-amber-500" /> Cargo Atual
-                </p>
-                <p className="font-black text-amber-500 uppercase text-xs">{user.role}</p>
-              </div>
-              <div className="p-6 rounded-3xl bg-zinc-900/50 border border-zinc-800/50">
-                <p className="text-[10px] text-zinc-500 uppercase font-black tracking-widest mb-1">Identificador #ID</p>
-                <p className="font-bold text-zinc-300 text-xs font-mono">{user.uid.substr(0, 12).toUpperCase()}</p>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="p-10 rounded-[40px] glass border border-zinc-800 space-y-12 relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-8 opacity-5">
-              <Share2 className="w-40 h-40" />
-            </div>
-            
-            <div className="space-y-4 relative z-10">
-              <div className="flex items-center gap-3 text-amber-500">
-                <Zap className="w-5 h-5 shadow-amber-500/20" />
-                <h3 className="text-xl font-black uppercase tracking-tight">Vincular Várias Contas</h3>
-              </div>
-              <p className="text-xs text-zinc-500 font-bold leading-relaxed">Você pode cadastrar múltiplos perfis (@) para cada rede social. Isso permite que você envie vídeos de diferentes contas suas.</p>
-            </div>
-
-            <div className="space-y-12 relative z-10">
-              {/* TikTok Section */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between px-1">
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-                    <Zap className="w-3.5 h-3.5 text-amber-500" /> Contas TikTok
-                  </label>
-                  <button 
-                    onClick={() => addSocial('tiktok')}
-                    className="text-[10px] font-black text-amber-500 hover:text-amber-400 uppercase tracking-widest flex items-center gap-1 transition-colors"
-                  >
-                    + Adicionar Perfil
-                  </button>
-                </div>
-                <div className="space-y-3">
-                  {profileTiktok.map((val, idx) => (
-                    <div key={idx} className="relative group animate-in slide-in-from-left-2 duration-300">
-                      <span className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600 font-black text-sm">@</span>
-                      <input
-                        type="text"
-                        value={val.replace('@', '')}
-                        onChange={(e) => updateSocial('tiktok', idx, e.target.value)}
-                        placeholder="seu_usuario"
-                        className="w-full bg-black border border-zinc-800 rounded-2xl py-5 pl-12 pr-14 text-sm font-black focus:border-amber-500 outline-none transition-all"
-                      />
-                      <button 
-                        onClick={() => removeSocial('tiktok', idx)}
-                        className="absolute right-5 top-1/2 -translate-y-1/2 p-2 text-zinc-700 hover:text-red-500 transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                  {profileTiktok.length === 0 && (
-                    <div onClick={() => addSocial('tiktok')} className="py-8 border-2 border-dashed border-zinc-800 rounded-3xl flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-amber-500/30 transition-all group">
-                      <Zap className="w-5 h-5 text-zinc-800 group-hover:text-amber-500/50" />
-                      <p className="text-[10px] font-black text-zinc-700 group-hover:text-amber-500/50 uppercase tracking-widest">Nenhuma conta TikTok vinculada</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Instagram Section */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between px-1">
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-                    <Camera className="w-3.5 h-3.5 text-pink-500" /> Contas Instagram
-                  </label>
-                  <button 
-                    onClick={() => addSocial('instagram')}
-                    className="text-[10px] font-black text-pink-500 hover:text-pink-400 uppercase tracking-widest flex items-center gap-1 transition-colors"
-                  >
-                    + Adicionar Perfil
-                  </button>
-                </div>
-                <div className="space-y-3">
-                  {profileInstagram.map((val, idx) => (
-                    <div key={idx} className="relative group animate-in slide-in-from-left-2 duration-300">
-                      <span className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600 font-black text-sm">@</span>
-                      <input
-                        type="text"
-                        value={val.replace('@', '')}
-                        onChange={(e) => updateSocial('instagram', idx, e.target.value)}
-                        placeholder="seu_perfil"
-                        className="w-full bg-black border border-zinc-800 rounded-2xl py-5 pl-12 pr-14 text-sm font-black focus:border-pink-500 outline-none transition-all"
-                      />
-                      <button 
-                        onClick={() => removeSocial('instagram', idx)}
-                        className="absolute right-5 top-1/2 -translate-y-1/2 p-2 text-zinc-700 hover:text-red-500 transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                  {profileInstagram.length === 0 && (
-                    <div onClick={() => addSocial('instagram')} className="py-8 border-2 border-dashed border-zinc-800 rounded-3xl flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-pink-500/30 transition-all group">
-                      <Camera className="w-5 h-5 text-zinc-800 group-hover:text-pink-500/50" />
-                      <p className="text-[10px] font-black text-zinc-700 group-hover:text-pink-500/50 uppercase tracking-widest">Nenhuma conta Instagram vinculada</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* YouTube Section */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between px-1">
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-                    <TrendingUp className="w-3.5 h-3.5 text-red-500" /> Canais YouTube
-                  </label>
-                  <button 
-                    onClick={() => addSocial('youtube')}
-                    className="text-[10px] font-black text-red-500 hover:text-red-400 uppercase tracking-widest flex items-center gap-1 transition-colors"
-                  >
-                    + Adicionar Canal
-                  </button>
-                </div>
-                <div className="space-y-3">
-                  {profileYoutube.map((val, idx) => (
-                    <div key={idx} className="relative group animate-in slide-in-from-left-2 duration-300">
-                      <span className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600 font-black text-sm">@</span>
-                      <input
-                        type="text"
-                        value={val.replace('@', '')}
-                        onChange={(e) => updateSocial('youtube', idx, e.target.value)}
-                        placeholder="seu_canal"
-                        className="w-full bg-black border border-zinc-800 rounded-2xl py-5 pl-12 pr-14 text-sm font-black focus:border-red-500 outline-none transition-all"
-                      />
-                      <button 
-                        onClick={() => removeSocial('youtube', idx)}
-                        className="absolute right-5 top-1/2 -translate-y-1/2 p-2 text-zinc-700 hover:text-red-500 transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                  {profileYoutube.length === 0 && (
-                    <div onClick={() => addSocial('youtube')} className="py-8 border-2 border-dashed border-zinc-800 rounded-3xl flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-red-500/30 transition-all group">
-                      <TrendingUp className="w-5 h-5 text-zinc-800 group-hover:text-red-500/50" />
-                      <p className="text-[10px] font-black text-zinc-700 group-hover:text-red-500/50 uppercase tracking-widest">Nenhum canal YouTube vinculado</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="p-6 rounded-3xl bg-amber-500/5 border border-amber-500/10 flex items-start gap-4">
-              <ShieldCheck className="w-5 h-5 text-amber-500 shrink-0" />
-              <p className="text-[10px] text-amber-500/70 font-bold leading-relaxed uppercase tracking-wide">
-                Importante: Você pode adicionar múltiplos perfis, mas lembre-se que cada vídeo postado deve originar-se de um desses perfis cadastrados para ser validado.
-              </p>
-            </div>
-          </div>
-        )}
-
-        <div className="p-8 rounded-3xl bg-zinc-950/50 border border-zinc-900 flex items-start gap-5">
-          <div className="w-10 h-10 rounded-2xl bg-zinc-900 flex items-center justify-center shrink-0">
-            <AlertCircle className="w-5 h-5 text-zinc-600" />
-          </div>
-          <p className="text-xs text-zinc-500 font-medium leading-relaxed">
-            Mantenha suas contas vinculadas atualizadas. O MetaRayx Hub realiza verificações periódicas para garantir a integridade dos dados das competições.
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const SuggestionsView = ({
-  suggestionMsg,
-  setSuggestionMsg,
-  handleSendSuggestion,
-  suggestions
-}: {
-  suggestionMsg: string;
-  setSuggestionMsg: (v: string) => void;
-  handleSendSuggestion: () => void;
-  suggestions: Suggestion[];
-}) => (
-  <div className="max-w-4xl mx-auto space-y-12 p-4 pb-20">
-    <div className="space-y-4 text-center">
-      <h2 className="text-4xl md:text-5xl font-black tracking-tighter uppercase gold-gradient">Mural de Sugestões</h2>
-      <p className="text-zinc-500 font-bold text-xs uppercase tracking-widest max-w-lg mx-auto">Colabore com a evolução do MetaRayx. Vote, sugira e acompanhe o que estamos construindo.</p>
-    </div>
-
-    <div className="p-8 rounded-[40px] glass border border-zinc-800 space-y-8 shadow-2xl relative overflow-hidden">
-      <div className="absolute top-0 right-0 p-8 opacity-5">
-        <MessageSquare className="w-32 h-32" />
-      </div>
-      <div className="space-y-4 relative z-10">
-        <div className="flex items-center gap-3 text-amber-500">
-          <Zap className="w-5 h-5" />
-          <span className="text-xs font-black uppercase tracking-widest">O que podemos melhorar?</span>
-        </div>
-        <textarea
-          value={suggestionMsg}
-          onChange={(e) => setSuggestionMsg(e.target.value)}
-          placeholder="Descreva sua ideia ou funcionalidade..."
-          className="w-full bg-black border border-zinc-800 rounded-3xl py-6 px-8 text-sm font-bold focus:border-amber-500 outline-none transition-all h-32 resize-none shadow-inner"
-        />
-      </div>
-
-      <button
-        onClick={handleSendSuggestion}
-        disabled={!suggestionMsg.trim()}
-        className="w-full py-5 gold-bg text-black font-black rounded-2xl hover:scale-[1.01] transition-all shadow-xl shadow-amber-500/10 disabled:opacity-50 flex items-center justify-center gap-3 relative z-10"
-      >
-        <Send className="w-5 h-5" />
-        ENVIAR MINHA SUGESTÃO
-      </button>
-    </div>
-
-    <div className="space-y-6">
-      <div className="flex items-center gap-3 px-2">
-        <div className="w-1.5 h-6 gold-bg rounded-full" />
-        <h3 className="font-black uppercase tracking-widest text-sm text-zinc-400">Ideias da Comunidade</h3>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {suggestions.map(s => (
-          <motion.div
-            key={s.id}
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="p-6 rounded-[32px] bg-zinc-900/50 border border-zinc-800/50 flex flex-col justify-between gap-4 group hover:border-zinc-700 transition-all"
-          >
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest ${s.status === 'pendente' ? 'bg-zinc-800 text-zinc-500' :
-                    s.status === 'analise' ? 'bg-cyan-500/10 text-cyan-500' :
-                      s.status === 'desenvolvimento' ? 'bg-amber-500/10 text-amber-500' :
-                        'bg-emerald-500/10 text-emerald-500'
-                  }`}>
-                  {s.status === 'pendente' ? 'EM ESPERA' :
-                    s.status === 'analise' ? 'EM ANÁLISE' :
-                      s.status === 'desenvolvimento' ? 'DESENVOLVENDO' : 'CONCLUÍDO'}
-                </span>
-                <span className="text-[9px] text-zinc-700 font-bold uppercase">{new Date(s.timestamp).toLocaleDateString()}</span>
-              </div>
-              <p className="text-zinc-300 text-sm font-bold leading-relaxed">{s.message}</p>
-            </div>
-
-            <div className="flex items-center gap-2 pt-2 border-t border-zinc-800/50">
-              <div className="w-6 h-6 rounded-lg bg-zinc-800 flex items-center justify-center">
-                <UserIcon className="w-3 h-3 text-zinc-500" />
-              </div>
-              <span className="text-[10px] font-black text-zinc-600 uppercase">Enviado por @{s.userName?.toLowerCase().split(' ')[0]}</span>
-            </div>
-          </motion.div>
-        ))}
-        {suggestions.length === 0 && (
-          <div className="col-span-full py-20 text-center space-y-4">
-            <MessageSquare className="w-12 h-12 text-zinc-800 mx-auto opacity-20" />
-            <p className="text-zinc-600 font-bold uppercase text-[10px] tracking-widest">Inaugure o mural com sua ideia!</p>
-          </div>
-        )}
-      </div>
-    </div>
-  </div>
-);
 
 const ConfirmModal = ({
   isOpen,

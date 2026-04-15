@@ -86,23 +86,6 @@ export const updateUserMetrics = async (userId: string, skipDaily: boolean = fal
   
   const now = new Date();
   
-  // Ajuste automático da janela: O ciclo "Diário" sempre aponta para o próximo corte das 20:05.
-  // Isso garante que após as 20:05, o sistema já comece a contabilizar o novo dia visualmente.
-  const activeCycleEnd = new Date(now);
-  activeCycleEnd.setHours(20, 5, 59, 999);
-  
-  // Se já passamos das 20:05 de hoje, a janela atual é a que termina AMANHÃ às 20:05.
-  if (now.getTime() > activeCycleEnd.getTime()) {
-    activeCycleEnd.setDate(activeCycleEnd.getDate() + 1);
-  }
-
-  const activeCycleStart = new Date(activeCycleEnd);
-  activeCycleStart.setDate(activeCycleStart.getDate() - 1);
-  activeCycleStart.setHours(20, 0, 0, 0);
-
-  const target20hMs = activeCycleStart.getTime();
-  const end20hMs = activeCycleEnd.getTime();
-
   const globalTotals = {
     views: 0, likes: 0, comments: 0, shares: 0, saves: 0, posts: 0, instaPosts: 0,
     dailyViews: skipDaily ? (userData.dailyViews || 0) : 0, 
@@ -140,31 +123,17 @@ export const updateUserMetrics = async (userId: string, skipDaily: boolean = fal
     const data = doc.data() as Post;
     const cid = data.competitionId || 'no_competition';
 
-    // O horário real em que o post foi feito na plataforma (ou fallback de aprovação)
-    const truePostTime = data.timestamp || data.approvedAt || 0;
-    
-    // Calcula as bordas dinâmicas: Se o Admin já encerrou (zerou) o dia depois das 20:05,
-    // o ciclo já virou para amanhã para esta competição específica.
+    // A base para o diário é a data em que o administrador aprovou o vídeo.
+    // Se foi aprovado após o último reset, ele conta para o ciclo atual.
     const lastDailyReset = activeComps[cid]?.lastDailyReset || 0;
-    let postTarget20hMs = target20hMs;
-    let postEnd20hMs = end20hMs;
-
-    if (lastDailyReset >= end20hMs) {
-      const nextStart = new Date(activeCycleEnd);
-      nextStart.setHours(20, 0, 0, 0);
-      const nextEnd = new Date(nextStart);
-      nextEnd.setDate(nextEnd.getDate() + 1);
-      nextEnd.setHours(20, 5, 59, 999);
-      postTarget20hMs = nextStart.getTime();
-      postEnd20hMs = nextEnd.getTime();
-    }
-
-    // Um post conta para os quantitativos diários estritamente se foi publicado dentro da janela
-    // do horário das 20h. E a janela ativa permanece até a meia-noite visualmente, a menos que o admin feche-a primeiro.
-    // TRAVA DE SEGURANÇA: Se o horário do post for anterior ao último Reset Diário desta competição, 
-    // ele NUNCA entra no diário (evita "ressurreição" pós-pagamento).
-    const isAfterReset = truePostTime > lastDailyReset;
-    const isNewDailyPost = !data.forceMonthly && isAfterReset && (data.forceDaily || (truePostTime >= postTarget20hMs && truePostTime < postEnd20hMs));
+    
+    // Fallback robusto para approvedAt: 
+    // Se o vídeo já foi sincronizado (synced), usamos o timestamp original se o approvedAt faltar.
+    // Se ele ainda está na fila de sincronização (approved), damos o benefício da dúvida de que é para o ciclo atual.
+    const approvedAt = data.approvedAt || (data.status === 'approved' ? Date.now() : (data.timestamp || 0));
+    
+    const isAfterReset = approvedAt > lastDailyReset;
+    const isNewDailyPost = !data.forceMonthly && (data.forceDaily || isAfterReset);
     
     // Engagement Gain logic:
     const viewsGain = Math.max(0, (data.views || 0) - (data.viewsBaseline || 0));
