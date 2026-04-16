@@ -7,6 +7,7 @@ import {
   ExternalLink 
 } from 'lucide-react';
 import { Post, User } from '../../types';
+import { PostTagRow } from './AdminUI';
 
 interface RemovidosTabProps {
   posts: Post[];
@@ -34,8 +35,8 @@ export const RemovidosTab: React.FC<RemovidosTabProps> = ({
 
       <div className="bg-black border border-zinc-800 rounded-[32px] overflow-hidden p-6 md:p-8">
         <div className="overflow-x-auto">
-          <div className="min-w-[800px]">
-            <ListHeader columns={['PLATAFORMA', 'LINK', 'USUÁRIO', 'STATUS', 'AÇÕES']} gridClass="grid-cols-[100px_minmax(0,2fr)_minmax(0,1fr)_120px_100px]" />
+          <div className="min-w-[900px]">
+            <ListHeader columns={['TARJAS', 'PLATAFORMA', 'LINK', 'USUÁRIO', 'STATUS', 'AÇÕES']} gridClass="grid-cols-[80px_100px_minmax(0,2fr)_minmax(0,1fr)_120px_100px]" />
             <div className="mt-4 space-y-2 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
               {removedPosts.length === 0 ? (
                 <div className="py-20 text-center border border-dashed border-zinc-800 rounded-2xl text-zinc-600 font-black uppercase text-xs tracking-widest">
@@ -43,7 +44,10 @@ export const RemovidosTab: React.FC<RemovidosTabProps> = ({
                 </div>
               ) : (
                 removedPosts.sort((a, b) => b.timestamp - a.timestamp).map(post => (
-                  <div key={post.id} className="grid grid-cols-[100px_minmax(0,2fr)_minmax(0,1fr)_120px_100px] gap-4 p-5 rounded-2xl bg-zinc-900/50 hover:bg-zinc-800/80 transition-colors items-center text-xs border border-zinc-800/30">
+                  <div key={post.id} className="grid grid-cols-[80px_100px_minmax(0,2fr)_minmax(0,1fr)_120px_100px] gap-4 p-5 rounded-2xl bg-zinc-900/50 hover:bg-zinc-800/80 transition-colors items-center text-xs border border-zinc-800/30">
+                    <div className="flex justify-center">
+                      <PostTagRow postId={post.id} />
+                    </div>
                     <div className="flex justify-center">
                       {post.platform === 'tiktok' ? <Zap className="w-6 h-6 text-amber-500" /> :
                        post.platform === 'youtube' ? <TrendingUp className="w-6 h-6 text-red-500" /> :

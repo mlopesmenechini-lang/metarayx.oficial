@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Post, Competition, User, Transaction } from '../../types';
-import { ListHeader, StatCard } from './AdminUI';
+import { ListHeader, StatCard, PostTagRow } from './AdminUI';
 
 interface FinanceiroTabProps {
   competitions: Competition[];
@@ -165,10 +165,13 @@ export const FinanceiroTab: React.FC<FinanceiroTabProps> = ({
             </div>
 
             <div className="min-h-[400px]">
-              <ListHeader columns={['REDES', 'LINK DO VÍDEO', 'STATUS', 'MÉTRICAS', 'CONTROLE']} gridClass="grid-cols-[80px_1fr_120px_150px_200px]" />
+              <ListHeader columns={['TARJAS', 'REDES', 'LINK DO VÍDEO', 'STATUS', 'MÉTRICAS', 'VAL.' ]} gridClass="grid-cols-[80px_80px_1fr_120px_150px_100px]" />
               <div className="max-h-[600px] overflow-y-auto custom-scrollbar">
                 {posts.filter(p => p.userId === auditUserId).map(post => (
-                  <div key={post.id} className="grid grid-cols-[80px_1fr_120px_150px_200px] gap-4 items-center py-4 px-8 hover:bg-white/[0.02] transition-all border-b border-zinc-900/50 last:border-0">
+                  <div key={post.id} className="grid grid-cols-[80px_80px_1fr_120px_150px_100px] gap-4 items-center py-4 px-8 hover:bg-white/[0.02] transition-all border-b border-zinc-900/50 last:border-0">
+                    <div className="flex justify-center">
+                      <PostTagRow postId={post.id} />
+                    </div>
                     <div className="flex justify-center">
                       <div className={`p-2.5 rounded-xl bg-zinc-900/50 border border-zinc-800/50 ${
                         post.platform === 'tiktok' ? 'text-amber-500' :

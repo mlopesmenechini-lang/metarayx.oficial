@@ -29,6 +29,7 @@ import { Dashboard } from './components/Dashboard';
 import { CompetitionRegulamento, CompetitionsView, CompetitionDetailView } from './components/CompetitionViews';
 import { SettingsView } from './components/SettingsView';
 import { SuggestionsView } from './components/SuggestionsView';
+import { HistoryView } from './components/HistoryView';
 
 const sanitizeString = (text: string) => {
   if (typeof text !== 'string') return text;
@@ -1669,12 +1670,17 @@ const App: React.FC = () => {
                       setView={setView}
                       RankingsComponent={Rankings}
                       PostSubmitComponent={PostSubmit}
+                      onDelete={handleDeletePost}
+                      onRemove={setRemovalModal}
+                      isAdmin={isAdmin}
+                      allCompetitions={competitions}
                     />
                   )
                 )}
                 {view === 'HISTORY' && (
                   <HistoryView 
                     posts={posts.filter(p => isAdmin || p.userId === user.uid)} 
+                    competitions={competitions}
                     onDelete={handleDeletePost} 
                     onRemove={setRemovalModal}
                     isAdmin={isAdmin} 
@@ -2469,262 +2475,8 @@ const PostSubmit = ({ user, competitions, registrations, setView, lockedCompetit
   );
 };
 
-const HistoryView = ({ posts, onDelete, onRemove, isAdmin }: { 
-  posts: Post[], 
-  onDelete: (id: string) => void, 
-  onRemove: (state: { isOpen: boolean; postId: string; reason: string; consent: boolean }) => void,
-  isAdmin: boolean 
-}) => {
-  const [selectedPlatform, setSelectedPlatform] = useState<'tiktok' | 'youtube' | 'instagram' | null>(null);
-  const [filterDate, setFilterDate] = useState('');
+// HistoryView agora Ã© um componente modular importado de ./components/HistoryView
 
-  const filteredPosts = posts.filter(post => {
-    // Não mostrar posts deletados para o usuário (soft delete)
-    if (post.status === 'deleted') return false;
-    const matchesPlatform = selectedPlatform ? post.platform === selectedPlatform : true;
-    const matchesDate = !filterDate ? true : new Date(post.timestamp).setHours(0,0,0,0) >= new Date(filterDate).setHours(0,0,0,0);
-    return matchesPlatform && matchesDate;
-  });
-
-  const getPlatformCount = (p: 'tiktok' | 'youtube' | 'instagram') => posts.filter(post => post.platform === p).length;
-
-  return (
-    <div className="space-y-8">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h2 className="text-3xl font-black tracking-tight flex items-center gap-3">
-          {selectedPlatform && (
-            <button 
-              onClick={() => setSelectedPlatform(null)}
-              className="p-2.5 rounded-2xl bg-zinc-900 border border-zinc-800 text-zinc-200 hover:text-white transition-all hover:scale-105 active:scale-95 shadow-lg"
-              title="Voltar ao Hub"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-          )}
-          {selectedPlatform ? (
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-              <span className="capitalize flex items-center gap-2">
-                {selectedPlatform === 'tiktok' ? <Zap className="w-6 h-6 text-amber-500" /> :
-                 selectedPlatform === 'youtube' ? <TrendingUp className="w-6 h-6 text-red-500" /> :
-                 <Camera className="w-6 h-6 text-pink-500" />}
-                {selectedPlatform} Protocols
-              </span>
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-900 border border-zinc-800">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.5)]" />
-                <span className="text-[11px] font-black uppercase text-zinc-100 tracking-widest">{filteredPosts.length} postados</span>
-              </div>
-            </div>
-          ) : (
-            "Meus Protocolos"
-          )}
-        </h2>
-        
-        {selectedPlatform && (
-          <div className="flex items-center gap-3 animate-in fade-in slide-in-from-right-4 duration-500">
-            <div className="relative group">
-              <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-600 group-hover:text-amber-500/50 transition-colors" />
-              <input 
-                type="date"
-                value={filterDate}
-                onChange={(e) => setFilterDate(e.target.value)}
-                className="bg-zinc-900 border border-zinc-800 rounded-2xl pl-11 pr-4 py-2.5 text-xs font-black text-white focus:outline-none focus:border-amber-500/50 transition-all focus:ring-4 focus:ring-amber-500/5 w-full sm:w-auto uppercase tracking-widest shadow-inner"
-              />
-            </div>
-            {filterDate && (
-              <button 
-                onClick={() => setFilterDate('')}
-                className="p-2.5 rounded-2xl bg-zinc-900/50 border border-zinc-800 text-zinc-500 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest hover:border-zinc-700"
-              >
-                Limpar
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      <AnimatePresence mode="wait">
-        {!selectedPlatform ? (
-          <motion.div 
-            key="hub"
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-            className="grid grid-cols-1 md:grid-cols-3 gap-8 pt-4"
-          >
-            {[
-              { id: 'tiktok', name: 'TikTok', icon: Zap, color: 'text-amber-500', bg: 'bg-amber-500/10', border: 'border-amber-500/10', hover: 'hover:border-amber-500/30' },
-              { id: 'instagram', name: 'Instagram', icon: Camera, color: 'text-pink-500', bg: 'bg-pink-500/10', border: 'border-pink-500/10', hover: 'hover:border-pink-500/30' },
-              { id: 'youtube', name: 'YouTube', icon: TrendingUp, color: 'text-red-500', bg: 'bg-red-500/10', border: 'border-red-500/10', hover: 'hover:border-red-500/30' }
-            ].map((p, idx) => (
-              <motion.button
-                key={p.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: idx * 0.1 }}
-                onClick={() => setSelectedPlatform(p.id as any)}
-                className={`group relative p-10 rounded-[3rem] glass overflow-hidden transition-all duration-500 border-2 ${p.border} ${p.hover} flex flex-col items-center text-center gap-8 hover:shadow-[0_20px_50px_rgba(0,0,0,0.3)]`}
-              >
-                <div className={`p-8 rounded-[2rem] ${p.bg} transition-all duration-700 group-hover:scale-110 group-hover:rotate-12 group-hover:shadow-[0_0_30px_rgba(0,0,0,0.2)]`}>
-                  <p.icon className={`w-14 h-14 ${p.color}`} />
-                </div>
-                <div>
-                  <h3 className={`text-3xl font-black uppercase tracking-tighter mb-2 ${p.color}`}>{p.name}</h3>
-                  <div className="flex items-center gap-2 justify-center">
-                    <span className="w-1.5 h-1.5 rounded-full bg-zinc-700" />
-                    <p className="text-zinc-200 text-xs font-black uppercase tracking-[0.2em]">{getPlatformCount(p.id as any)} Protocolos</p>
-                    <span className="w-1.5 h-1.5 rounded-full bg-zinc-700" />
-                  </div>
-                </div>
-                <div className="mt-2 px-8 py-3 rounded-2xl bg-white text-black text-[10px] font-black uppercase tracking-[0.2em] transform translate-y-12 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-500 shadow-xl">
-                  ACESSAR REDE
-                </div>
-                <div className={`absolute -bottom-12 -right-12 w-32 h-32 rounded-full ${p.bg} blur-3xl opacity-0 group-hover:opacity-50 transition-opacity duration-700`} />
-              </motion.button>
-            ))}
-          </motion.div>
-        ) : (
-          <motion.div 
-            key="list"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.4, ease: "easeOut" }}
-            className="space-y-8"
-          >
-            {filteredPosts.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredPosts.map(post => {
-                  const platformLabel = post.platform === 'tiktok' ? 'TikTok' : post.platform === 'youtube' ? 'YouTube' : 'Instagram';
-                  const platformColor = post.platform === 'tiktok' ? 'text-amber-500' : post.platform === 'youtube' ? 'text-red-500' : 'text-pink-500';
-                  const platformBg = post.platform === 'tiktok' ? 'bg-amber-500/10 border-amber-500/20' : post.platform === 'youtube' ? 'bg-red-500/10 border-red-500/20' : 'bg-pink-500/10 border-pink-500/20';
-                  const platformIcon = post.platform === 'tiktok' ? <Zap className="w-5 h-5" /> : post.platform === 'youtube' ? <TrendingUp className="w-5 h-5" /> : <Camera className="w-5 h-5" />;
-                  const buttonHover = post.platform === 'tiktok' ? 'hover:bg-amber-500 hover:text-black hover:border-amber-500 shadow-amber-500/20' : post.platform === 'youtube' ? 'hover:bg-red-500 hover:text-white hover:border-red-500 shadow-red-500/20' : 'hover:bg-pink-500 hover:text-white hover:border-pink-500 shadow-pink-500/20';
-
-                  return (
-                    <div key={post.id} className="p-7 rounded-[2.5rem] glass border border-zinc-800/50 space-y-5 group hover:border-zinc-700 transition-all hover:shadow-[0_20px_40px_rgba(0,0,0,0.2)]">
-                      <div className={`flex items-center gap-3 px-4 py-2.5 rounded-2xl border ${platformBg}`}>
-                        <span className={platformColor}>{platformIcon}</span>
-                        <span className={`text-sm font-black uppercase tracking-widest ${platformColor}`}>{platformLabel}</span>
-                        {post.accountHandle && post.accountHandle !== 'ADMIN_MANUAL' && (
-                          <div className="flex items-center gap-2">
-                             <span className={`text-xs font-black opacity-40 ${platformColor}`}>|</span>
-                             <span className={`text-[11px] font-black ${platformColor} tracking-widest uppercase truncate max-w-[100px]`}>{post.accountHandle}</span>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex items-center justify-between">
-                        <div className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-[0.15em] border ${
-                          post.status === 'approved' || post.status === 'synced' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/10' :
-                          post.status === 'rejected' || post.status === 'banned' ? 'bg-red-500/10 text-red-500 border-red-500/10' :
-                          'bg-amber-500/10 text-amber-500 border-amber-500/10'
-                        }`}>
-                          {post.status === 'approved' || post.status === 'synced' ? 'Aprovado' : post.status === 'rejected' || post.status === 'banned' ? 'Recusado' : 'Em Triagem'}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] text-zinc-100 font-black uppercase tracking-widest">{new Date(post.timestamp).toLocaleDateString()}</span>
-                          {isAdmin && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                console.log('Admin Delete Clicked for post:', post.id);
-                                onDelete(post.id);
-                              }}
-                              className="p-2 rounded-xl bg-red-500/5 text-red-500/40 hover:bg-red-500 hover:text-black transition-all"
-                              title="Excluir vídeo"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                          {(post.status === 'approved' || post.status === 'synced' || post.status === 'pending') && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                console.log('User Removal Clicked for post:', post.id);
-                                onRemove({ isOpen: true, postId: post.id, reason: '', consent: false });
-                              }}
-                              className="px-3 py-1.5 rounded-xl bg-red-600 text-white text-[9px] font-black uppercase tracking-widest hover:bg-white hover:text-red-600 transition-all flex items-center gap-1.5 shadow-lg"
-                              title="Solicitar remoção"
-                            >
-                              Remover
-                            </button>
-                          )}
-                          {post.status === 'removal_requested' && (
-                            <div className="px-3 py-1.5 rounded-xl bg-amber-500/10 text-amber-500 text-[9px] font-black uppercase tracking-widest border border-amber-500/20">
-                              Pendente
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {(post.status === 'rejected' || post.status === 'banned') && post.rejectionReason && (
-                        <div className="flex items-start gap-3 px-5 py-4 rounded-3xl bg-red-500/5 border border-red-500/10">
-                          <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-                          <div className="space-y-1 min-w-0">
-                            <p className="text-[8px] font-black text-red-400 uppercase tracking-[0.2em] opacity-50">Motivo da Remoção</p>
-                            <p className="text-[11px] font-bold text-red-200/80 leading-relaxed">{post.rejectionReason}</p>
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="flex items-center gap-3 bg-zinc-900 border border-zinc-800/50 p-1.5 rounded-2xl">
-                        <p className="text-[11px] font-bold truncate text-zinc-100 flex-1 min-w-0 pl-3 uppercase tracking-tighter">{post.url}</p>
-                        <a
-                          href={post.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className={`shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-400 text-[9px] font-black uppercase tracking-widest transition-all hover:scale-105 active:scale-95 ${buttonHover}`}
-                          title="Abrir link"
-                        >
-                          <ExternalLink className="w-4 h-4" />
-                          Abrir
-                        </a>
-                      </div>
-
-                      <div className="grid grid-cols-2 divide-x divide-zinc-800/50 pt-3">
-                        <div className="flex flex-col items-center py-2">
-                          <span className="text-zinc-200 text-[9px] font-black uppercase tracking-[0.2em] mb-1">Visualizações</span>
-                          <div className="flex items-center gap-2">
-                            <Eye className={`w-3.5 h-3.5 ${platformColor} opacity-80`} />
-                            <span className="text-[14px] font-black tabular-nums text-white">{(post.views || 0).toLocaleString()}</span>
-                          </div>
-                        </div>
-                        <div className="flex flex-col items-center py-2">
-                          <span className="text-zinc-200 text-[9px] font-black uppercase tracking-[0.2em] mb-1">Curtidas</span>
-                          <div className="flex items-center gap-2">
-                            <Heart className={`w-3.5 h-3.5 ${platformColor} opacity-80`} />
-                            <span className="text-[14px] font-black tabular-nums text-white">{(post.likes || 0).toLocaleString()}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="py-32 text-center glass rounded-[3rem] border-dashed border-zinc-800 flex flex-col items-center">
-                <div className="w-20 h-20 rounded-full bg-zinc-900 flex items-center justify-center mb-6">
-                  <AlertCircle className="w-8 h-8 text-zinc-700" />
-                </div>
-                <h3 className="text-2xl font-black text-zinc-100 uppercase tracking-tighter">Nenhum protocolo encontrado</h3>
-                <p className="text-zinc-300 font-bold mt-2 text-sm max-w-xs mx-auto px-4">Não encontramos vídeos na rede {selectedPlatform} com os filtros selecionados.</p>
-                {filterDate && (
-                  <button 
-                    onClick={() => setFilterDate('')}
-                    className="mt-8 px-10 py-4 bg-white text-black rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:scale-105 active:scale-95 transition-all shadow-xl shadow-white/5"
-                  >
-                    Resetar Filtro de Data
-                  </button>
-                )}
-              </div>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-};
 
 const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { rankings: User[], competitions: Competition[], lockedCompetitionId?: string, userRole?: UserRole }) => {
   const rankingRef = useRef<HTMLDivElement>(null);

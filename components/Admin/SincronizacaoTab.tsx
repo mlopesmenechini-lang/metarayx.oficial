@@ -11,6 +11,7 @@ import {
   ChevronRight 
 } from 'lucide-react';
 import { Post, Competition, Settings } from '../../types';
+import { PostTagRow } from './AdminUI';
 
 interface SincronizacaoTabProps {
   posts: Post[];
@@ -27,7 +28,6 @@ interface SincronizacaoTabProps {
   handleSyncApprovedParallel: () => void;
   handleSyncApprovedSequentially: () => void;
   formatLastSyncDate: (date?: string) => string;
-  // We need to pass the actual sync function or keep it in App.tsx and pass a handler
   onSingleSync: (post: Post) => Promise<void>;
 }
 
@@ -109,23 +109,28 @@ export const SincronizacaoTab: React.FC<SincronizacaoTabProps> = ({
             {posts.filter(p => p.status === 'approved' && p.competitionId === syncDetailCompId).map(post => (
               <div 
                 key={post.id} 
-                onClick={() => {
-                  if (selectedSyncPostIds.includes(post.id)) {
-                    setSelectedSyncPostIds(prev => prev.filter(id => id !== post.id));
-                  } else {
-                    setSelectedSyncPostIds(prev => [...prev, post.id]);
-                  }
-                }}
-                className={`p-6 rounded-[32px] glass-card border transition-all duration-300 group flex flex-col md:flex-row items-center gap-6 cursor-pointer
+                className={`p-6 rounded-[32px] glass-card border transition-all duration-300 group flex flex-col md:flex-row items-center gap-6
                   ${selectedSyncPostIds.includes(post.id) ? 'border-amber-500/50 bg-amber-500/5 shadow-[0_0_20px_rgba(245,158,11,0.05)]' : 'border-zinc-800/50 hover:border-zinc-700'}
                 `}
               >
                 <div className="flex items-center gap-4 shrink-0">
-                  <div className={`w-5 h-5 rounded-md border-2 transition-all flex items-center justify-center
+                  <div 
+                    onClick={() => {
+                      if (selectedSyncPostIds.includes(post.id)) {
+                        setSelectedSyncPostIds(prev => prev.filter(id => id !== post.id));
+                      } else {
+                        setSelectedSyncPostIds(prev => [...prev, post.id]);
+                      }
+                    }}
+                    className={`w-5 h-5 rounded-md border-2 transition-all flex items-center justify-center cursor-pointer
                     ${selectedSyncPostIds.includes(post.id) ? 'bg-amber-500 border-amber-500' : 'border-zinc-700 group-hover:border-zinc-500'}
                   `}>
                     {selectedSyncPostIds.includes(post.id) && <Check className="w-3.5 h-3.5 text-black stroke-[4]" />}
                   </div>
+                  
+                  {/* ── TARJAS ── */}
+                  <PostTagRow postId={post.id} />
+
                   <div className="w-16 h-16 rounded-2xl bg-zinc-900 flex items-center justify-center shrink-0">
                     {post.platform === 'tiktok' ? <Zap className="w-8 h-8 text-amber-500" /> :
                       post.platform === 'youtube' ? <TrendingUp className="w-8 h-8 text-red-500" /> :
@@ -141,7 +146,7 @@ export const SincronizacaoTab: React.FC<SincronizacaoTabProps> = ({
                     <span>{new Date(post.timestamp).toLocaleString()}</span>
                   </div>
                 </div>
-                <div className="flex items-center gap-3 shrink-0" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center gap-3 shrink-0">
                   <a href={post.url} target="_blank" rel="noreferrer" className="px-5 py-3 rounded-xl bg-zinc-900 text-zinc-400 font-bold text-xs hover:text-zinc-100 transition-colors">
                     Ver Link
                   </a>

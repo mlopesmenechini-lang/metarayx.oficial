@@ -11,6 +11,7 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { Post, Competition, PostStatus } from '../../types';
+import { PostTagRow } from './AdminUI';
 
 interface TriagemTabProps {
   posts: Post[];
@@ -49,11 +50,18 @@ export const TriagemTab: React.FC<TriagemTabProps> = ({
           <div className="grid grid-cols-1 gap-4">
             {posts.filter(p => p.status === 'pending' && p.competitionId === syncDetailCompId).map(post => (
               <div key={post.id} className="p-6 rounded-3xl glass border border-zinc-800 flex flex-col md:flex-row items-center gap-6 group hover:border-amber-500/30 transition-all">
+                
+                {/* ── TARJAS ── */}
+                <PostTagRow postId={post.id} />
+
+                {/* ── ÍCONE PLATAFORMA ── */}
                 <div className="w-16 h-16 rounded-2xl bg-zinc-900 flex items-center justify-center shrink-0">
                   {post.platform === 'tiktok' ? <Zap className="w-8 h-8 text-amber-500" /> :
                     post.platform === 'youtube' ? <TrendingUp className="w-8 h-8 text-red-500" /> :
                       <Camera className="w-8 h-8 text-pink-500" />}
                 </div>
+
+                {/* ── INFOS ── */}
                 <div className="flex-1 min-w-0 text-center md:text-left">
                   <p className="text-sm font-black text-zinc-300 uppercase tracking-tight mb-1">{post.userName}</p>
                   <p className="font-bold truncate text-zinc-500 mb-2 text-xs">{post.url}</p>
@@ -63,6 +71,8 @@ export const TriagemTab: React.FC<TriagemTabProps> = ({
                     <span>{new Date(post.timestamp).toLocaleString()}</span>
                   </div>
                 </div>
+
+                {/* ── AÇÕES ── */}
                 <div className="flex items-center gap-3 shrink-0">
                   <a href={post.url} target="_blank" rel="noreferrer" className="px-5 py-3 rounded-xl bg-zinc-900 text-zinc-400 font-bold text-xs hover:text-zinc-100 transition-colors">
                     Ver Link

@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Post, Announcement, Suggestion, CompetitionRegistration } from '../../types';
-import { ListHeader } from './AdminUI';
+import { ListHeader, PostTagRow } from './AdminUI';
 
 interface RegistrosTabProps {
   pendingRegistrations: CompetitionRegistration[];
@@ -243,6 +243,7 @@ export const SolicitacoesRemocaoTab: React.FC<SolicitacoesRemocaoTabProps> = ({ 
         {requests.map(post => (
           <div key={post.id} className="p-6 bg-zinc-900 border border-zinc-800 rounded-3xl flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-4">
+               <PostTagRow postId={post.id} />
                {post.platform === 'tiktok' ? <Zap className="w-8 h-8 text-amber-500" /> : post.platform === 'youtube' ? <TrendingUp className="w-8 h-8 text-red-500" /> : <Camera className="w-8 h-8 text-pink-500" />}
                <div>
                  <p className="text-xs font-black text-white truncate max-w-md">{post.url}</p>

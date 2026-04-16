@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Post, Competition, Settings, User } from '../../types';
+import { PostTagRow } from './AdminUI';
 
 interface RessincronizacaoTabProps {
   posts: Post[];
@@ -215,6 +216,14 @@ export const RessincronizacaoTab: React.FC<RessincronizacaoTabProps> = ({
               return (
                 <div 
                   key={post.id} 
+                  className={`p-6 rounded-[32px] glass-card border transition-all duration-500 group flex flex-col md:flex-row items-center gap-8
+                    ${post.status === 'banned' ? 'border-red-500/10 opacity-60' : 'border-zinc-800/50 hover:border-amber-500/30'}
+                    ${isDimmed ? 'opacity-30 grayscale blur-[1px]' : 'opacity-100 grayscale-0'}
+                    ${isSyncedInSession ? 'border-emerald-500/30 bg-emerald-500/[0.02]' : ''}
+                    ${selectedResyncPostIds.includes(post.id) ? 'border-amber-500/50 bg-amber-500/5 ring-1 ring-amber-500/20' : ''}
+                  `}
+                >
+                <div 
                   onClick={() => {
                     if (selectedResyncPostIds.includes(post.id)) {
                       setSelectedResyncPostIds(prev => prev.filter(id => id !== post.id));
@@ -222,18 +231,15 @@ export const RessincronizacaoTab: React.FC<RessincronizacaoTabProps> = ({
                       setSelectedResyncPostIds(prev => [...prev, post.id]);
                     }
                   }}
-                  className={`p-6 rounded-[32px] glass-card border transition-all duration-500 group flex flex-col md:flex-row items-center gap-8 cursor-pointer
-                    ${post.status === 'banned' ? 'border-red-500/10 opacity-60' : 'border-zinc-800/50 hover:border-amber-500/30'}
-                    ${isDimmed ? 'opacity-30 grayscale blur-[1px]' : 'opacity-100 grayscale-0'}
-                    ${isSyncedInSession ? 'border-emerald-500/30 bg-emerald-500/[0.02]' : ''}
-                    ${selectedResyncPostIds.includes(post.id) ? 'border-amber-500/50 bg-amber-500/5 ring-1 ring-amber-500/20' : ''}
-                  `}
-                >
-                <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all shrink-0 ${
+                  className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all shrink-0 cursor-pointer ${
                   selectedResyncPostIds.includes(post.id) ? 'bg-amber-500 border-amber-500 text-black' : 'border-zinc-700 bg-zinc-900 group-hover:border-zinc-500'
                 }`}>
                   {selectedResyncPostIds.includes(post.id) && <Check className="w-4 h-4" strokeWidth={4} />}
                 </div>
+
+                {/* ── TARJAS ── */}
+                <PostTagRow postId={post.id} />
+
                 <div className={`w-20 h-20 rounded-3xl flex items-center justify-center shrink-0 transition-all duration-500 group-hover:scale-110 relative ${
                   post.platform === 'tiktok' ? 'bg-amber-500/10 text-amber-500 shadow-lg shadow-amber-500/5' :
                   post.platform === 'youtube' ? 'bg-red-500/10 text-red-500 shadow-lg shadow-red-500/5' :

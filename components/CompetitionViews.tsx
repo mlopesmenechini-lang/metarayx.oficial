@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   BookOpen, Star, Zap, TrendingUp, Camera, Trophy, 
-  CheckCircle2, Clock, Calendar, X, Check, Send, ArrowLeft
+  CheckCircle2, Clock, Calendar, X, Check, Send, ArrowLeft, History
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { HistoryView } from './HistoryView';
 import { db } from '../firebase';
 import { doc, setDoc } from 'firebase/firestore';
 import { Competition, User, Post, CompetitionRegistration } from '../types';
@@ -371,12 +372,17 @@ interface CompetitionDetailViewProps {
   setView: (view: any) => void;
   RankingsComponent: React.ComponentType<any>;
   PostSubmitComponent: React.ComponentType<any>;
+  onDelete: (id: string) => void;
+  onRemove: (state: { isOpen: boolean; postId: string; reason: string; consent: boolean }) => void;
+  isAdmin: boolean;
+  allCompetitions: Competition[];
 }
 
 export const CompetitionDetailView: React.FC<CompetitionDetailViewProps> = ({
-  comp, user, rankings, posts, registrations, onBack, setView, RankingsComponent: Rankings, PostSubmitComponent: PostSubmit
+  comp, user, rankings, posts, registrations, onBack, setView, RankingsComponent: Rankings, PostSubmitComponent: PostSubmit,
+  onDelete, onRemove, isAdmin, allCompetitions
 }) => {
-  const [activeTab, setActiveTab] = useState<'RANKING' | 'POST' | 'REGULAMENTO'>('RANKING');
+  const [activeTab, setActiveTab] = useState<'RANKING' | 'POST' | 'REGULAMENTO' | 'PROTOCOLOS'>('RANKING');
 
   return (
     <div className="max-w-6xl mx-auto space-y-8">
@@ -404,6 +410,10 @@ export const CompetitionDetailView: React.FC<CompetitionDetailViewProps> = ({
             className={`flex-1 md:flex-none px-6 py-3 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${activeTab === 'REGULAMENTO' ? 'bg-amber-500/20 text-amber-500 shadow-lg' : 'text-zinc-500 hover:text-amber-400'}`}>
             <BookOpen className="w-4 h-4" /> REGULAMENTO
           </button>
+          <button onClick={() => setActiveTab('PROTOCOLOS')}
+            className={`flex-1 md:flex-none px-6 py-3 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${activeTab === 'PROTOCOLOS' ? 'bg-zinc-800 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}>
+            <History className="w-4 h-4" /> MEUS LINKS
+          </button>
         </div>
       </div>
 
@@ -425,6 +435,15 @@ export const CompetitionDetailView: React.FC<CompetitionDetailViewProps> = ({
               </div>
             ) : activeTab === 'REGULAMENTO' ? (
               <CompetitionRegulamento comp={comp} />
+            ) : activeTab === 'PROTOCOLOS' ? (
+              <HistoryView 
+                posts={posts} 
+                competitions={allCompetitions} 
+                onDelete={onDelete} 
+                onRemove={onRemove} 
+                isAdmin={isAdmin} 
+                fixedCompetitionId={comp.id} 
+              />
             ) : (
               <PostSubmit user={user} competitions={[comp]} registrations={registrations} setView={setView} lockedCompetitionId={comp.id} />
             )}
