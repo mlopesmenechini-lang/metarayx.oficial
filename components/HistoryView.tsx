@@ -45,8 +45,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
     }).length;
   };
 
-  const getCompTitle = (id: string) => {
-    if (id === 'all') return 'Todas as Competições';
+  const getCompTitle = (id?: string) => {
+    if (!id || id === 'all') return 'Geral / Antiga';
     return competitions.find(c => c.id === id)?.title || 'Competição Desconhecida';
   };
 
