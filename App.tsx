@@ -2463,11 +2463,18 @@ const PostSubmit = ({ user, competitions, registrations, setView, lockedCompetit
         </button>
       </form>
 
-      <div className="p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800 flex items-start gap-4">
-        <AlertCircle className="w-5 h-5 text-zinc-500 shrink-0" />
-        <p className="text-xs text-zinc-500 leading-relaxed">
-          Certifique-se de que o link é público e está correto. Links inválidos ou privados serão rejeitados automaticamente pela triagem. O prazo de aprovação é de até 24h.
-        </p>
+      <div className="p-8 rounded-3xl bg-amber-500/10 border border-amber-500/20 flex items-start gap-5 shadow-[0_0_40px_rgba(245,158,11,0.05)] relative overflow-hidden group mb-4">
+        <div className="absolute inset-0 bg-gradient-to-br from-amber-500/5 to-transparent pointer-events-none" />
+        <AlertCircle className="w-8 h-8 text-amber-500 shrink-0 transform group-hover:rotate-12 transition-transform duration-500" />
+        <div className="space-y-3 relative z-10">
+          <h3 className="text-lg font-black text-amber-500 uppercase tracking-widest leading-none">
+            AVISO CRÍTICO: REGRAS DE POSTAGEM!
+          </h3>
+          <p className="text-[13px] font-bold text-zinc-100 leading-relaxed uppercase tracking-tight max-w-2xl">
+            COLOQUE AS <span className="text-amber-500 underline decoration-2 underline-offset-4">HASHTAGS E MARCAÇÕES</span> CORRETAMENTE PARA ESTA COMPETIÇÃO. 
+            VÍDEOS SEM AS OBRIGATORIEDADES OU PRIVADOS SERÃO <span className="text-red-500">REJEITADOS</span>.
+          </p>
+        </div>
       </div>
       </>
       )}
