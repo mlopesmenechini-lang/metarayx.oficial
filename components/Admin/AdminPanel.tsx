@@ -362,6 +362,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           />
         )}
         
+        {tab === 'RESSINCRONIZACAO' && (
           <RessincronizacaoTab 
             posts={posts} competitions={competitions} settings={settings} syncDetailCompId={syncDetailCompId} setSyncDetailCompId={setSyncDetailCompId}
             selectedResyncPostIds={selectedResyncPostIds} setSelectedResyncPostIds={setSelectedResyncPostIds} handleSyncCompetitionSequentially={handleSyncCompetitionSequentially}
