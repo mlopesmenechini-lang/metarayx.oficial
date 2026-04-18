@@ -19,6 +19,9 @@ interface TriagemTabProps {
   syncDetailCompId: string | null;
   setSyncDetailCompId: (id: string | null) => void;
   handlePostStatus: (postId: string, status: PostStatus) => void;
+  handleMovePostToCompetition: (postId: string, newCompId: string) => Promise<void>;
+  pendingMoves: Record<string, string>;
+  setPendingMoves: React.Dispatch<React.SetStateAction<Record<string, string>>>;
 }
 
 export const TriagemTab: React.FC<TriagemTabProps> = ({
@@ -27,6 +30,9 @@ export const TriagemTab: React.FC<TriagemTabProps> = ({
   syncDetailCompId,
   setSyncDetailCompId,
   handlePostStatus,
+  handleMovePostToCompetition,
+  pendingMoves,
+  setPendingMoves
 }) => {
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -73,24 +79,62 @@ export const TriagemTab: React.FC<TriagemTabProps> = ({
                 </div>
 
                 {/* ── AÇÕES ── */}
-                <div className="flex items-center gap-3 shrink-0">
-                  <a href={post.url} target="_blank" rel="noreferrer" className="px-5 py-3 rounded-xl bg-zinc-900 text-zinc-400 font-bold text-xs hover:text-zinc-100 transition-colors">
-                    Ver Link
-                  </a>
-                  <button
-                    onClick={() => handlePostStatus(post.id, 'approved')}
-                    className="p-3 rounded-xl bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-black transition-all"
-                    title="Aprovar Link"
-                  >
-                    <CheckCircle2 className="w-6 h-6" />
-                  </button>
-                  <button
-                    onClick={() => handlePostStatus(post.id, 'rejected')}
-                    className="p-3 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-black transition-all"
-                    title="Rejeitar Link"
-                  >
-                    <XCircle className="w-6 h-6" />
-                  </button>
+                <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0">
+                  <div className="flex flex-col gap-1 px-4 py-3 bg-zinc-900/50 rounded-2xl border border-zinc-800/50">
+                    <label className="text-[9px] font-black text-zinc-500 uppercase tracking-widest px-1">Remanejar Vídeo</label>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={pendingMoves[post.id] || post.competitionId}
+                        onChange={(e) => {
+                          setPendingMoves(prev => ({...prev, [post.id]: e.target.value}));
+                        }}
+                        className="bg-black border border-zinc-800 rounded-xl py-2 px-3 text-[10px] font-bold text-zinc-300 focus:border-amber-500 outline-none w-[160px]"
+                      >
+                        {competitions.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.title}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={async () => {
+                          const newCompId = pendingMoves[post.id];
+                          const newCompName = competitions.find(c => c.id === newCompId)?.title;
+                          if (newCompId && newCompId !== post.competitionId) {
+                            if (window.confirm(`Tem certeza que deseja mover este link para a competição "${newCompName}"?`)) {
+                              await handleMovePostToCompetition(post.id, newCompId);
+                              setPendingMoves(prev => { const n = {...prev}; delete n[post.id]; return n; });
+                            }
+                          }
+                        }}
+                        disabled={!pendingMoves[post.id] || pendingMoves[post.id] === post.competitionId}
+                        className="p-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-black transition-all disabled:opacity-50 disabled:grayscale"
+                        title="Confirmar mudança de competição"
+                      >
+                        <CheckCircle2 className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-3 mt-4 sm:mt-0">
+                    <a href={post.url} target="_blank" rel="noreferrer" className="px-5 py-3 rounded-xl bg-zinc-900 text-zinc-400 font-bold text-xs hover:text-zinc-100 transition-colors">
+                      Ver Link
+                    </a>
+                    <button
+                      onClick={() => handlePostStatus(post.id, 'approved')}
+                      className="p-3 rounded-xl bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-black transition-all"
+                      title="Aprovar Link"
+                    >
+                      <CheckCircle2 className="w-6 h-6" />
+                    </button>
+                    <button
+                      onClick={() => handlePostStatus(post.id, 'rejected')}
+                      className="p-3 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-black transition-all"
+                      title="Rejeitar Link"
+                    >
+                      <XCircle className="w-6 h-6" />
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -99,9 +143,12 @@ export const TriagemTab: React.FC<TriagemTabProps> = ({
       ) : (
         <div className="space-y-6">
           <div className="space-y-2">
-            <h3 className="text-2xl font-black uppercase gold-gradient">Triagem por Competição</h3>
-            <p className="text-zinc-500 font-bold text-xs uppercase tracking-widest">Links pendentes aguardando revisão oficial.</p>
-          </div>
+                <h3 className="text-2xl font-black uppercase gold-gradient">
+                Triagem por Competição
+              </h3>
+              <p className="text-zinc-500 font-bold text-xs uppercase tracking-widest">Links pendentes aguardando revisão oficial.</p>
+            </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {competitions.map(comp => {
               const compPendingPosts = posts.filter(p => p.competitionId === comp.id && p.status === 'pending');

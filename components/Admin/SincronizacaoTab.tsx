@@ -22,6 +22,7 @@ interface SincronizacaoTabProps {
   selectedSyncPostIds: string[];
   setSelectedSyncPostIds: (ids: string[] | ((prev: string[]) => string[])) => void;
   handleBulkRevertToPending: () => void;
+  handleBulkSyncSelectedApproved: () => void;
   syncing: boolean;
   syncingPostId: string | null;
   setSyncingPostId: (id: string | null) => void;
@@ -29,6 +30,9 @@ interface SincronizacaoTabProps {
   handleSyncApprovedSequentially: () => void;
   formatLastSyncDate: (date?: string) => string;
   onSingleSync: (post: Post) => Promise<void>;
+  handleMovePostToCompetition: (postId: string, newCompId: string) => Promise<void>;
+  pendingMoves: Record<string, string>;
+  setPendingMoves: React.Dispatch<React.SetStateAction<Record<string, string>>>;
 }
 
 export const SincronizacaoTab: React.FC<SincronizacaoTabProps> = ({
@@ -40,6 +44,7 @@ export const SincronizacaoTab: React.FC<SincronizacaoTabProps> = ({
   selectedSyncPostIds,
   setSelectedSyncPostIds,
   handleBulkRevertToPending,
+  handleBulkSyncSelectedApproved,
   syncing,
   syncingPostId,
   setSyncingPostId,
@@ -47,6 +52,9 @@ export const SincronizacaoTab: React.FC<SincronizacaoTabProps> = ({
   handleSyncApprovedSequentially,
   formatLastSyncDate,
   onSingleSync,
+  handleMovePostToCompetition,
+  pendingMoves,
+  setPendingMoves
 }) => {
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -102,6 +110,16 @@ export const SincronizacaoTab: React.FC<SincronizacaoTabProps> = ({
                   Reverter para Posts (Triagem)
                 </button>
               )}
+              {selectedSyncPostIds.length > 0 && (
+                <button
+                  onClick={handleBulkSyncSelectedApproved}
+                  disabled={syncing}
+                  className="px-6 py-2.5 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20 text-[10px] font-black uppercase tracking-widest hover:bg-amber-500 hover:text-black transition-all disabled:opacity-50 flex items-center gap-2"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
+                  Sincronizar Selecionados
+                </button>
+              )}
             </div>
           </div>
 
@@ -146,18 +164,55 @@ export const SincronizacaoTab: React.FC<SincronizacaoTabProps> = ({
                     <span>{new Date(post.timestamp).toLocaleString()}</span>
                   </div>
                 </div>
-                <div className="flex items-center gap-3 shrink-0">
-                  <a href={post.url} target="_blank" rel="noreferrer" className="px-5 py-3 rounded-xl bg-zinc-900 text-zinc-400 font-bold text-xs hover:text-zinc-100 transition-colors">
-                    Ver Link
-                  </a>
-                  <button
-                    onClick={() => onSingleSync(post)}
-                    disabled={syncingPostId === post.id}
-                    className="flex items-center gap-2 px-6 py-3 gold-bg text-black font-black rounded-xl hover:scale-[1.02] transition-all disabled:opacity-50"
-                  >
-                    {syncingPostId === post.id ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                    SINCRONIZAR
-                  </button>
+                <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0">
+                  <div className="flex flex-col gap-1 px-4 py-3 bg-zinc-900/50 rounded-2xl border border-zinc-800/50">
+                    <label className="text-[9px] font-black text-zinc-500 uppercase tracking-widest px-1">Remanejar Vídeo</label>
+                    <div className="flex items-center gap-2">
+                    <select
+                      value={pendingMoves[post.id] || post.competitionId}
+                      onChange={(e) => {
+                        setPendingMoves(prev => ({...prev, [post.id]: e.target.value}));
+                      }}
+                      className="bg-black border border-zinc-800 rounded-xl py-2 px-3 text-[10px] font-bold text-zinc-300 focus:border-amber-500 outline-none w-[160px]"
+                    >
+                      {competitions.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.title}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={async () => {
+                        const newCompId = pendingMoves[post.id];
+                        const newCompName = competitions.find(c => c.id === newCompId)?.title;
+                        if (newCompId && newCompId !== post.competitionId) {
+                          if (window.confirm(`Tem certeza que deseja mover este link para a competição "${newCompName}"?`)) {
+                            await handleMovePostToCompetition(post.id, newCompId);
+                            setPendingMoves(prev => { const n = {...prev}; delete n[post.id]; return n; });
+                          }
+                        }
+                      }}
+                      disabled={!pendingMoves[post.id] || pendingMoves[post.id] === post.competitionId}
+                      className="p-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-black transition-all disabled:opacity-50 disabled:grayscale"
+                      title="Confirmar mudança de competição"
+                    >
+                      <Check className="w-5 h-5" strokeWidth={3} />
+                    </button>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 mt-4 sm:mt-0">
+                    <a href={post.url} target="_blank" rel="noreferrer" className="px-5 py-3 rounded-xl bg-zinc-900 text-zinc-400 font-bold text-xs hover:text-zinc-100 transition-colors">
+                      Ver Link
+                    </a>
+                    <button
+                      onClick={() => onSingleSync(post)}
+                      disabled={syncingPostId === post.id}
+                      className="flex items-center gap-2 px-6 py-3 gold-bg text-black font-black rounded-xl hover:scale-[1.02] transition-all disabled:opacity-50"
+                    >
+                      {syncingPostId === post.id ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                      SINCRONIZAR
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}

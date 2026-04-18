@@ -48,11 +48,13 @@ interface AdminPanelProps {
   
   // Handlers - triagem
   handlePostStatus: (postId: string, status: any) => void;
+  handleMovePostToCompetition: (postId: string, newCompId: string) => Promise<void>;
   
   // Handlers - sincronização
   selectedSyncPostIds: string[];
   setSelectedSyncPostIds: any;
   handleBulkRevertToPending: () => void;
+  handleBulkSyncSelectedApproved: () => void;
   syncing: boolean;
   syncingPostId: string | null;
   setSyncingPostId: (id: string | null) => void;
@@ -130,8 +132,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   userRole, tab, setTab, posts, competitions, approvedUsers, pendingUsers, archivedUsers,
   suggestions, pendingRegistrations, settings, transactions,
   auditUserId, setAuditUserId, selectedCompId, setSelectedCompId, syncDetailCompId, setSyncDetailCompId,
-  handlePostStatus, 
-  selectedSyncPostIds, setSelectedSyncPostIds, handleBulkRevertToPending, syncing, syncingPostId, setSyncingPostId,
+  handlePostStatus, handleMovePostToCompetition,
+  selectedSyncPostIds, setSelectedSyncPostIds, handleBulkRevertToPending, handleBulkSyncSelectedApproved, syncing, syncingPostId, setSyncingPostId,
   handleSyncApprovedParallel, handleSyncApprovedSequentially, formatLastSyncDate, onSingleSync,
   selectedResyncPostIds, setSelectedResyncPostIds, handleSyncCompetitionSequentially, handleSyncCompetitionParallel,
   handleSyncAllSequentially, handleSyncAllParallel, handleBulkForceMonthly, handleBulkForceDaily,
@@ -345,6 +347,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             syncDetailCompId={syncDetailCompId} 
             setSyncDetailCompId={setSyncDetailCompId} 
             handlePostStatus={handlePostStatus} 
+            handleMovePostToCompetition={handleMovePostToCompetition}
           />
         )}
         
@@ -352,12 +355,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           <SincronizacaoTab 
             posts={posts} competitions={competitions} settings={settings} syncDetailCompId={syncDetailCompId} setSyncDetailCompId={setSyncDetailCompId}
             selectedSyncPostIds={selectedSyncPostIds} setSelectedSyncPostIds={setSelectedSyncPostIds} handleBulkRevertToPending={handleBulkRevertToPending}
+            handleBulkSyncSelectedApproved={handleBulkSyncSelectedApproved}
             syncing={syncing} syncingPostId={syncingPostId} setSyncingPostId={setSyncingPostId} handleSyncApprovedParallel={handleSyncApprovedParallel}
             handleSyncApprovedSequentially={handleSyncApprovedSequentially} formatLastSyncDate={formatLastSyncDate} onSingleSync={onSingleSync}
+            handleMovePostToCompetition={handleMovePostToCompetition}
           />
         )}
         
-        {tab === 'RESSINCRONIZACAO' && (
           <RessincronizacaoTab 
             posts={posts} competitions={competitions} settings={settings} syncDetailCompId={syncDetailCompId} setSyncDetailCompId={setSyncDetailCompId}
             selectedResyncPostIds={selectedResyncPostIds} setSelectedResyncPostIds={setSelectedResyncPostIds} handleSyncCompetitionSequentially={handleSyncCompetitionSequentially}
@@ -367,6 +371,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             sessionSyncedIds={sessionSyncedIds} setSessionSyncedIds={setSessionSyncedIds} syncingPostId={syncingPostId} setSyncingPostId={setSyncingPostId}
             apifyKey={apifyKey} setApifyKey={setApifyKey} handleSaveApiKey={handleSaveApiKey} handleDeleteApiKey={handleDeleteApiKey}
             onForceMonthly={onForceMonthly} onForceDaily={onForceDaily} onResetToSync={onResetToSync} onSingleSync={onSingleSync}
+            handleMovePostToCompetition={handleMovePostToCompetition}
+            pendingMoves={pendingMoves}
+            setPendingMoves={setPendingMoves}
             setRejectionReason={() => {}} setRejectionModal={() => {}}
           />
         )}

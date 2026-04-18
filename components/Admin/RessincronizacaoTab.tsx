@@ -60,6 +60,9 @@ interface RessincronizacaoTabProps {
   onSingleSync: (post: Post) => Promise<void>;
   setRejectionReason: (val: string) => void;
   setRejectionModal: (val: { isOpen: boolean; postId: string; status: any }) => void;
+  handleMovePostToCompetition: (postId: string, newCompId: string) => Promise<void>;
+  pendingMoves: Record<string, string>;
+  setPendingMoves: React.Dispatch<React.SetStateAction<Record<string, string>>>;
 }
 
 export const RessincronizacaoTab: React.FC<RessincronizacaoTabProps> = ({
@@ -95,7 +98,10 @@ export const RessincronizacaoTab: React.FC<RessincronizacaoTabProps> = ({
   onResetToSync,
   onSingleSync,
   setRejectionReason,
-  setRejectionModal
+  setRejectionModal,
+  handleMovePostToCompetition,
+  pendingMoves,
+  setPendingMoves
 }) => {
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -306,6 +312,42 @@ export const RessincronizacaoTab: React.FC<RessincronizacaoTabProps> = ({
                 </div>
 
                 <div className="flex flex-col md:flex-row items-center gap-3 shrink-0 p-2 bg-zinc-900/50 rounded-[28px] border border-white/5" onClick={e => e.stopPropagation()}>
+                  <div className="flex flex-col gap-1 mr-2 bg-black/40 p-2 rounded-2xl border border-zinc-800/50">
+                    <label className="text-[9px] font-black text-zinc-600 uppercase tracking-widest px-1 text-center">Mover para:</label>
+                    <div className="flex items-center gap-2">
+                    <select
+                      value={pendingMoves[post.id] || post.competitionId}
+                      onChange={(e) => {
+                        setPendingMoves(prev => ({...prev, [post.id]: e.target.value}));
+                      }}
+                      className="bg-black/50 border border-zinc-800 rounded-xl py-2 px-3 text-[10px] font-bold text-zinc-300 focus:border-amber-500 outline-none w-[120px]"
+                    >
+                      {competitions.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.title}
+                        </option>
+                      ))}
+                    </select>
+                      <button
+                        onClick={async () => {
+                          const newCompId = pendingMoves[post.id];
+                          const newCompName = competitions.find(c => c.id === newCompId)?.title;
+                          if (newCompId && newCompId !== post.competitionId) {
+                            if (window.confirm(`Tem certeza que deseja mover este link para a competição "${newCompName}"?`)) {
+                              await handleMovePostToCompetition(post.id, newCompId);
+                              setPendingMoves(prev => { const n = {...prev}; delete n[post.id]; return n; });
+                            }
+                          }
+                        }}
+                        disabled={!pendingMoves[post.id] || pendingMoves[post.id] === post.competitionId}
+                        className="p-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-black transition-all disabled:opacity-50 disabled:grayscale"
+                        title="Confirmar mudança de competição"
+                      >
+                        <CheckCircle2 className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </div>
+
                   <a href={post.url} target="_blank" rel="noreferrer" className="w-12 h-12 rounded-2xl bg-zinc-800 text-zinc-400 flex items-center justify-center hover:bg-amber-500 hover:text-black transition-all shadow-lg" title="Ver Link Original">
                     <ExternalLink className="w-5 h-5" />
                   </a>
