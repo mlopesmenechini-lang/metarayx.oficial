@@ -148,6 +148,9 @@ const App: React.FC = () => {
   const [compToDelete, setCompToDelete] = useState<string | null>(null);
   const [pendingMoves, setPendingMoves] = useState<Record<string, string>>({});
   const [editingCompId, setEditingCompId] = useState<string | null>(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [protocolCount, setProtocolCount] = useState(1);
+  const [confirmCallback, setConfirmCallback] = useState<(() => void) | null>(null);
   const [showBalances, setShowBalances] = useState(true);
   const [profileName, setProfileName] = useState('');
   const [profileTiktok, setProfileTiktok] = useState<string[]>([]);
@@ -1700,6 +1703,10 @@ const App: React.FC = () => {
                       onRemove={setRemovalModal}
                       isAdmin={isAdmin}
                       allCompetitions={competitions}
+                      setShowConfirmModal={setShowConfirmModal}
+                      setProtocolCount={setProtocolCount}
+                      setConfirmCallback={setConfirmCallback}
+                      setGlobalSelectedCompId={setSelectedActiveCompId}
                     />
                   )
                 )}
@@ -1834,6 +1841,10 @@ const App: React.FC = () => {
                     setRejectionModal={setRejectionModal}
                     pendingMoves={pendingMoves}
                     setPendingMoves={setPendingMoves}
+                    setShowConfirmModal={setShowConfirmModal}
+                    setProtocolCount={setProtocolCount}
+                    setConfirmCallback={setConfirmCallback}
+                    setGlobalSelectedCompId={setSelectedActiveCompId}
                   />
                 )}
                 {view === 'SETTINGS' && user && (
@@ -2103,6 +2114,75 @@ const App: React.FC = () => {
           </div>
         )}
       </AnimatePresence>
+      {/* Final Verification Modal (Premium) */}
+      <AnimatePresence>
+        {showConfirmModal && (
+          <div className="fixed inset-0 z-[300] flex items-center justify-center p-6">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowConfirmModal(false)}
+              className="absolute inset-0 bg-black/95 backdrop-blur-xl"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 30 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 30 }}
+              className="relative w-full max-w-lg glass p-10 rounded-[45px] border border-zinc-800 shadow-[0_40px_100px_rgba(0,0,0,0.8)] overflow-hidden"
+            >
+              {/* Decorative elements */}
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-amber-500/50 to-transparent" />
+              <div className="absolute -top-24 -right-24 w-48 h-48 bg-amber-500/5 blur-[80px] rounded-full" />
+              
+              <div className="relative space-y-8 text-center">
+                <div className="mx-auto w-24 h-24 bg-gradient-to-tr from-amber-500 to-yellow-300 rounded-[2.5rem] flex items-center justify-center shadow-2xl shadow-amber-500/20 rotate-6 hover:rotate-0 transition-transform duration-500">
+                  <ShieldCheck className="w-12 h-12 text-black" />
+                </div>
+
+                <div className="space-y-4">
+                  <h3 className="text-4xl font-black tracking-tighter text-white uppercase italic">
+                    Verificação Final
+                  </h3>
+                  <div className="h-1 w-16 bg-amber-500 mx-auto rounded-full" />
+                </div>
+                
+                <p className="text-zinc-400 font-bold text-sm leading-relaxed px-2">
+                  Você confirma que {protocolCount > 1 ? `estes ${protocolCount} links pertencem` : 'este link pertence'} <span className="text-white underline decoration-amber-500/50 underline-offset-4">de fato</span> à competição:
+                  <span className="text-white text-xl block mt-3 font-black tracking-tighter bg-zinc-900 py-3 rounded-2xl border border-zinc-800 shadow-inner">
+                    {competitions.find(c => c.id === selectedActiveCompId)?.title || "a esta competição"}
+                  </span>
+                </p>
+                
+                <p className="text-[9px] text-zinc-600 font-black uppercase tracking-widest">
+                  Certifique-se antes de continuar. Envios incorretos não serão validados.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-3 pt-8">
+                <button
+                  onClick={() => {
+                    if (confirmCallback) {
+                      confirmCallback();
+                      setConfirmCallback(null);
+                    }
+                  }}
+                  className="w-full py-5 gold-bg text-black font-black rounded-2xl hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3 shadow-[0_10px_30px_rgba(245,158,11,0.2)]"
+                >
+                  <CheckCircle2 className="w-6 h-6" />
+                  CONFIRMAR E PROTOCOLAR
+                </button>
+                <button
+                  onClick={() => setShowConfirmModal(false)}
+                  className="w-full py-5 bg-zinc-900/50 text-zinc-500 font-black rounded-2xl hover:text-white hover:bg-zinc-800 transition-all uppercase text-[10px] tracking-widest"
+                >
+                  AINDA NÃO, VOU REVISAR
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </ErrorBoundary>
   );
 };
@@ -2118,12 +2198,16 @@ const App: React.FC = () => {
 
 
 
-const PostSubmit = ({ user, competitions, registrations, setView, lockedCompetitionId }: {
+const PostSubmit = ({ user, competitions, registrations, setView, lockedCompetitionId, setShowConfirmModal, setProtocolCount, setConfirmCallback, setAppSelectedCompId }: {
   user: User,
   competitions: Competition[],
   registrations: CompetitionRegistration[],
   setView: (view: 'DASHBOARD' | 'RANKINGS' | 'POST' | 'HISTORY' | 'ADMIN' | 'SETTINGS' | 'WALLET' | 'SUGGESTIONS' | 'COMPETITIONS') => void,
-  lockedCompetitionId?: string
+  lockedCompetitionId?: string,
+  setShowConfirmModal: (v: boolean) => void,
+  setProtocolCount: (v: number) => void,
+  setConfirmCallback: (v: any) => void,
+  setAppSelectedCompId: (v: string | null) => void
 }) => {
   const [url, setUrl] = useState('');
   const [platform, setPlatform] = useState<Platform>('tiktok');
@@ -2131,7 +2215,6 @@ const PostSubmit = ({ user, competitions, registrations, setView, lockedCompetit
   const [success, setSuccess] = useState(false);
   const [selectedCompId, setSelectedCompId] = useState<string>(lockedCompetitionId || '');
   const [selectedAccountHandle, setSelectedAccountHandle] = useState('');
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   useEffect(() => {
     if (lockedCompetitionId) {
@@ -2171,8 +2254,9 @@ const PostSubmit = ({ user, competitions, registrations, setView, lockedCompetit
   useEffect(() => {
     if (approvedCompetitions.length === 1 && !selectedCompId) {
       setSelectedCompId(approvedCompetitions[0].id);
+      setAppSelectedCompId(approvedCompetitions[0].id);
     }
-  }, [approvedCompetitions, selectedCompId]);
+  }, [approvedCompetitions, selectedCompId, setAppSelectedCompId]);
 
   // Auto-select account handle if only one is available for the platform
   useEffect(() => {
@@ -2196,6 +2280,12 @@ const PostSubmit = ({ user, competitions, registrations, setView, lockedCompetit
       return;
     }
 
+    const rawUrls = url.split(/[\n,]+/).map(u => u.trim()).filter(u => u.length > 5);
+    if (rawUrls.length === 0) return;
+
+    setProtocolCount(rawUrls.length);
+    setAppSelectedCompId(selectedCompId);
+    setConfirmCallback(() => handlePerformSubmit);
     setShowConfirmModal(true);
   };
 
@@ -2522,64 +2612,6 @@ const PostSubmit = ({ user, competitions, registrations, setView, lockedCompetit
       </>
       )}
 
-      {/* ── MODAL DE CONFIRMAÇÃO DE PROTOCOLO ── */}
-      <AnimatePresence>
-        {showConfirmModal && (
-          <div className="fixed inset-0 z-[300] flex items-center justify-center p-6">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowConfirmModal(false)}
-              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative w-full max-w-md glass p-10 rounded-[40px] border border-amber-500/20 space-y-8 shadow-[0_0_50px_rgba(245,158,11,0.1)]"
-            >
-              <div className="w-20 h-20 bg-amber-500/10 rounded-3xl flex items-center justify-center mx-auto mb-2">
-                <Trophy className="w-10 h-10 text-amber-500" />
-              </div>
-              
-              <div className="space-y-4 text-center">
-                <div className="space-y-1">
-                  <h3 className="text-2xl font-black tracking-tight text-white uppercase italic">Verificação Final</h3>
-                  <p className="text-[10px] font-black text-amber-500 uppercase tracking-[0.2em]">Segurança do Protocolo</p>
-                </div>
-                
-                <p className="text-zinc-400 font-bold text-sm leading-relaxed px-2">
-                  Você confirma que este link pertence <span className="text-white underline decoration-amber-500/50 underline-offset-4">de fato</span> à competição:
-                  <span className="text-white text-xl block mt-3 font-black tracking-tighter bg-zinc-900 py-3 rounded-2xl border border-zinc-800 shadow-inner">
-                    {approvedCompetitions.find(c => c.id === selectedCompId)?.title || "a esta competição"}
-                  </span>
-                </p>
-                
-                <p className="text-[9px] text-zinc-600 font-black uppercase tracking-widest">
-                  Certifique-se antes de continuar. Envios incorretos não serão validados.
-                </p>
-              </div>
-
-              <div className="flex flex-col gap-3 pt-2">
-                <button
-                  onClick={handlePerformSubmit}
-                  className="w-full py-5 gold-bg text-black font-black rounded-2xl hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3 shadow-[0_10px_30px_rgba(245,158,11,0.2)]"
-                >
-                  <CheckCircle2 className="w-6 h-6" />
-                  CONFIRMAR E PROTOCOLAR
-                </button>
-                <button
-                  onClick={() => setShowConfirmModal(false)}
-                  className="w-full py-4 bg-zinc-900 text-zinc-500 font-black rounded-2xl hover:text-zinc-200 transition-all uppercase text-xs tracking-widest"
-                >
-                  CANCELAR E VOLTAR
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </div>
   );
 };
@@ -3661,7 +3693,11 @@ const AdminPanel = ({
   setApifyKeySync,
   handleMovePostToCompetition,
   pendingMoves,
-  setPendingMoves
+  setPendingMoves,
+  setShowConfirmModal,
+  setProtocolCount,
+  setConfirmCallback,
+  setGlobalSelectedCompId: setAppSelectedCompId
 }: {
   userRole: UserRole;
   posts: Post[];
@@ -3782,6 +3818,10 @@ const AdminPanel = ({
   setApifyKeySync: (v: string) => void;
   pendingMoves: Record<string, string>;
   setPendingMoves: (v: any) => void;
+  setShowConfirmModal: (v: boolean) => void;
+  setProtocolCount: (v: number) => void;
+  setConfirmCallback: (v: any) => void;
+  setGlobalSelectedCompId: (v: string | null) => void;
 }) => {
   const [tab, setTab] = useState<AdminTab>('VISAO_GERAL');
   const [selectedSyncCompId, setSelectedSyncCompId] = useState<string>('ALL');
@@ -4154,6 +4194,15 @@ const AdminPanel = ({
     const targetUser = approvedUsers.find(u => u.uid === auditUserId);
     if (!targetUser) return;
 
+    // Trigger confirmation modal for admin too
+    setAppSelectedCompId(adminManualCompId); // Use the renamed prop to set App state
+    setProtocolCount(1);
+    setConfirmCallback(() => () => performAdminSubmit(targetUser.uid, targetUser.displayName));
+    setShowConfirmModal(true);
+  };
+
+  const performAdminSubmit = async (targetUid: string, targetDisplayName: string) => {
+    setShowConfirmModal(false);
     setAdminSubmitting(true);
     try {
       const norm = normalizeUrl(adminManualUrl);
@@ -4170,8 +4219,8 @@ const AdminPanel = ({
       const postId = Math.random().toString(36).substr(2, 9);
       const newPost: Post = {
         id: postId,
-        userId: targetUser.uid,
-        userName: targetUser.displayName,
+        userId: targetUid,
+        userName: targetDisplayName,
         url: adminManualUrl,
         normalizedUrl: norm,
         platform: adminManualPlatform,
@@ -4187,9 +4236,9 @@ const AdminPanel = ({
       };
 
       await setDoc(doc(db, 'posts', postId), newPost);
-      await updateUserMetrics(targetUser.uid);
+      await updateUserMetrics(targetUid);
 
-      alert('âœ… Link adicionado com sucesso ao perfil de ' + targetUser.displayName);
+      alert('✅ Link adicionado com sucesso ao perfil de ' + targetDisplayName);
       setAdminManualUrl('');
     } catch (error: any) {
       alert('âŒ Erro ao adicionar link: ' + error.message);

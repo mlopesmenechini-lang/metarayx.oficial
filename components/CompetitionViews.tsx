@@ -376,11 +376,16 @@ interface CompetitionDetailViewProps {
   onRemove: (state: { isOpen: boolean; postId: string; reason: string; consent: boolean }) => void;
   isAdmin: boolean;
   allCompetitions: Competition[];
+  setShowConfirmModal: (v: boolean) => void;
+  setProtocolCount: (v: number) => void;
+  setConfirmCallback: (v: any) => void;
+  setGlobalSelectedCompId: (v: string | null) => void;
 }
 
 export const CompetitionDetailView: React.FC<CompetitionDetailViewProps> = ({
   comp, user, rankings, posts, registrations, onBack, setView, RankingsComponent: Rankings, PostSubmitComponent: PostSubmit,
-  onDelete, onRemove, isAdmin, allCompetitions
+  onDelete, onRemove, isAdmin, allCompetitions,
+  setShowConfirmModal, setProtocolCount, setConfirmCallback, setGlobalSelectedCompId
 }) => {
   const [activeTab, setActiveTab] = useState<'RANKING' | 'POST' | 'REGULAMENTO' | 'PROTOCOLOS'>('RANKING');
 
@@ -445,7 +450,17 @@ export const CompetitionDetailView: React.FC<CompetitionDetailViewProps> = ({
                 fixedCompetitionId={comp.id} 
               />
             ) : (
-              <PostSubmit user={user} competitions={[comp]} registrations={registrations} setView={setView} lockedCompetitionId={comp.id} />
+              <PostSubmit 
+                user={user} 
+                competitions={[comp]} 
+                registrations={registrations} 
+                setView={setView} 
+                lockedCompetitionId={comp.id}
+                setShowConfirmModal={setShowConfirmModal}
+                setProtocolCount={setProtocolCount}
+                setConfirmCallback={setConfirmCallback}
+                setAppSelectedCompId={setGlobalSelectedCompId}
+              />
             )}
           </motion.div>
         </AnimatePresence>

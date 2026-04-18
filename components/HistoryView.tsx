@@ -161,28 +161,28 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
           </div>
         )}
 
-        {/* Account Handle Selector (Dropdown) */}
+        {/* Account Handle Selector (Dropdown) - More prominent */}
         {availableHandles.length > 0 && (
-          <div className="flex flex-col gap-2 mt-2 w-full max-w-xs">
+          <div className="flex flex-col gap-3">
             <div className="flex items-center gap-2 text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">
-              <TrendingUp className="w-3.5 h-3.5" /> Filtrar por Perfil / Conta
+              <TrendingUp className="w-3.5 h-3.5" /> Filtrar por Perfil / @ Conta
             </div>
-            <div className="relative group">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-600 transition-colors group-hover:text-amber-500" />
+            <div className="relative group max-w-xl">
+              <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-600 transition-colors group-hover:text-amber-500" />
               <select
                 value={selectedHandle}
                 onChange={(e) => setSelectedHandle(e.target.value)}
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl pl-11 pr-4 py-3 text-xs font-black text-white focus:outline-none focus:border-amber-500/50 transition-all focus:ring-4 focus:ring-amber-500/5 uppercase tracking-widest shadow-inner appearance-none cursor-pointer"
+                className="w-full bg-zinc-900/80 backdrop-blur-md border border-zinc-800 rounded-[2rem] pl-14 pr-12 py-4 text-sm font-black text-white focus:outline-none focus:border-amber-500/50 transition-all focus:ring-4 focus:ring-amber-500/5 uppercase tracking-widest shadow-xl appearance-none cursor-pointer"
               >
-                <option value="all">Todas as Contas</option>
+                <option value="all">Todos os Perfis (@)</option>
                 {availableHandles.map(handle => (
-                  <option key={handle} value={handle}>
+                  <option key={handle} value={handle} className="bg-zinc-900 border-none">
                     @{handle.replace(/^@/, '')}
                   </option>
                 ))}
               </select>
-              <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-600">
-                <Filter className="w-4 h-4" />
+              <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-600">
+                <ChevronLeft className="w-5 h-5 -rotate-90" />
               </div>
             </div>
           </div>
