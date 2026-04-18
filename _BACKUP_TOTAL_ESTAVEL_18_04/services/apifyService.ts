@@ -76,15 +76,25 @@ export const updateUserMetrics = async (userId: string, skipDaily: boolean = fal
   const userPostsSnapshot = await getDocs(userPostsQuery);
   
   // Fetch active competitions to get their lastDailyReset
-  const compsSnapshot = await getDocs(query(collection(db, 'competitions'), where('isActive', '==', true)));
+  // Buscamos TODAS as competições (não apenas as ativas) para garantir que posts de competições 
+  // finalizadas ou arquivadas também respeitem o carimbo de lastDailyReset nas métricas diárias.
+  const compsSnapshot = await getDocs(collection(db, 'competitions'));
   const activeComps = compsSnapshot.docs.reduce((acc, d) => {
     acc[d.id] = d.data();
     return acc;
   }, {} as Record<string, any>);
   
+  const now = new Date();
+  
   const globalTotals = {
     views: 0, likes: 0, comments: 0, shares: 0, saves: 0, posts: 0, instaPosts: 0,
-    dailyViews: 0, dailyLikes: 0, dailyComments: 0, dailyShares: 0, dailySaves: 0, dailyPosts: 0, dailyInstaPosts: 0
+    dailyViews: skipDaily ? (userData.dailyViews || 0) : 0, 
+    dailyLikes: skipDaily ? (userData.dailyLikes || 0) : 0, 
+    dailyComments: skipDaily ? (userData.dailyComments || 0) : 0, 
+    dailyShares: skipDaily ? (userData.dailyShares || 0) : 0, 
+    dailySaves: skipDaily ? (userData.dailySaves || 0) : 0, 
+    dailyPosts: skipDaily ? (userData.dailyPosts || 0) : 0, 
+    dailyInstaPosts: skipDaily ? (userData.dailyInstaPosts || 0) : 0
   };
 
   const competitionStats: Record<string, any> = {};
@@ -112,23 +122,25 @@ export const updateUserMetrics = async (userId: string, skipDaily: boolean = fal
   userPostsSnapshot.docs.forEach((doc) => {
     const data = doc.data() as Post;
     const cid = data.competitionId || 'no_competition';
-    const compConfig = activeComps[cid];
-    const lastReset = compConfig?.lastDailyReset || 0;
 
-    const postTime = (data.approvedAt || data.timestamp || 0);
-    const isNewDailyPost = lastReset === 0 || postTime > lastReset;
+    // A base para o diário é a data em que o administrador aprovou o vídeo.
+    // Se foi aprovado após o último reset, ele conta para o ciclo atual.
+    const lastDailyReset = activeComps[cid]?.lastDailyReset || 0;
+    
+    // Fallback robusto para approvedAt: 
+    // Se o vídeo já foi sincronizado (synced), usamos o timestamp original se o approvedAt faltar.
+    // Se ele ainda está na fila de sincronização (approved), damos o benefício da dúvida de que é para o ciclo atual.
+    const approvedAt = data.approvedAt || (data.status === 'approved' ? Date.now() : (data.timestamp || 0));
+    
+    const isAfterReset = approvedAt > lastDailyReset;
+    const isNewDailyPost = !data.forceMonthly && (data.forceDaily || isAfterReset);
     
     // Engagement Gain logic:
-    // 1. If it's a new post today (approved after last reset), gain = current - baseline (usually 0).
-    // 2. If it's an old post (approved before reset) AND has no baseline yet (first sync today), 
-    //    we assume gain is 0 to prevent total views from flooding the daily ranking.
-    const isInitialOldSync = !isNewDailyPost && (data.viewsBaseline || 0) === 0;
-
-    const viewsGain = isInitialOldSync ? 0 : Math.max(0, (data.views || 0) - (data.viewsBaseline || 0));
-    const likesGain = isInitialOldSync ? 0 : Math.max(0, (data.likes || 0) - (data.likesBaseline || 0));
-    const commentsGain = isInitialOldSync ? 0 : Math.max(0, (data.comments || 0) - (data.commentsBaseline || 0));
-    const sharesGain = isInitialOldSync ? 0 : Math.max(0, (data.shares || 0) - (data.sharesBaseline || 0));
-    const savesGain = isInitialOldSync ? 0 : Math.max(0, (data.saves || 0) - (data.savesBaseline || 0));
+    const viewsGain = Math.max(0, (data.views || 0) - (data.viewsBaseline || 0));
+    const likesGain = Math.max(0, (data.likes || 0) - (data.likesBaseline || 0));
+    const commentsGain = Math.max(0, (data.comments || 0) - (data.commentsBaseline || 0));
+    const sharesGain = Math.max(0, (data.shares || 0) - (data.sharesBaseline || 0));
+    const savesGain = Math.max(0, (data.saves || 0) - (data.savesBaseline || 0));
     
     const isInsta = data.platform === 'instagram';
 
@@ -149,15 +161,18 @@ export const updateUserMetrics = async (userId: string, skipDaily: boolean = fal
     competitionStats[cid].posts += 1;
     if (isInsta) competitionStats[cid].instaPosts += 1;
 
-    // Update Competition Daily Stats (Gains) - ONLY if not skipped
-    if (!skipDaily) {
-      competitionStats[cid].dailyViews += viewsGain;
-      competitionStats[cid].dailyLikes += likesGain;
-      competitionStats[cid].dailyComments += commentsGain;
-      competitionStats[cid].dailyShares += sharesGain;
-      competitionStats[cid].dailySaves += savesGain;
-      
+    // Update Competition Daily Stats (Gains) - ONLY if not skipped AND not forced to monthly
+    // forceMonthly=true remove o post COMPLETAMENTE do diário: sem gains, sem contagem
+    if (!skipDaily && !data.forceMonthly) {
+      // O usuário pediu explicitamente: "sómente as views reais de quem foi aprovado hoje nao quero nenhum resquicio"
+      // Então NENHUM ganho de engajamento de posts antigos deve entrar no Ranking Diário.
+      // O post SÓ pontua no diário se pertencer ao ciclo atual (isNewDailyPost).
       if (isNewDailyPost) {
+        competitionStats[cid].dailyViews += viewsGain;
+        competitionStats[cid].dailyLikes += likesGain;
+        competitionStats[cid].dailyComments += commentsGain;
+        competitionStats[cid].dailyShares += sharesGain;
+        competitionStats[cid].dailySaves += savesGain;
         competitionStats[cid].dailyPosts += 1;
         if (isInsta) competitionStats[cid].dailyInstaPosts += 1;
       }
@@ -172,26 +187,16 @@ export const updateUserMetrics = async (userId: string, skipDaily: boolean = fal
     globalTotals.posts += 1;
     if (isInsta) globalTotals.instaPosts += 1;
 
-    if (!skipDaily) {
-      globalTotals.dailyViews += viewsGain;
-      globalTotals.dailyLikes += likesGain;
-      globalTotals.dailyComments += commentsGain;
-      globalTotals.dailyShares += sharesGain;
-      globalTotals.dailySaves += savesGain;
-      
+    if (!skipDaily && !data.forceMonthly) {
       if (isNewDailyPost) {
+        globalTotals.dailyViews += viewsGain;
+        globalTotals.dailyLikes += likesGain;
+        globalTotals.dailyComments += commentsGain;
+        globalTotals.dailyShares += sharesGain;
+        globalTotals.dailySaves += savesGain;
         globalTotals.dailyPosts += 1;
         if (isInsta) globalTotals.dailyInstaPosts += 1;
       }
-    } else {
-      // If skipping, preserve global daily totals from current user data
-      globalTotals.dailyViews = userData.dailyViews || 0;
-      globalTotals.dailyLikes = userData.dailyLikes || 0;
-      globalTotals.dailyComments = userData.dailyComments || 0;
-      globalTotals.dailyShares = userData.dailyShares || 0;
-      globalTotals.dailySaves = userData.dailySaves || 0;
-      globalTotals.dailyPosts = userData.dailyPosts || 0;
-      globalTotals.dailyInstaPosts = userData.dailyInstaPosts || 0;
     }
   });
 
@@ -297,26 +302,6 @@ export const syncSinglePostWithApify = async (apiKeys: string | string[], post: 
       saves: newSaves,
     };
 
-    // Logical fix: If it's an OLD post being synced for the first time TODAY, 
-    // we set the baseline to current views so it starts at 0 in the daily ranking.
-    if (!post.viewsBaseline && post.competitionId) {
-      const compSnap = await getDoc(doc(db, 'competitions', post.competitionId));
-      if (compSnap.exists()) {
-        const compData = compSnap.data();
-        const lastReset = compData.lastDailyReset || 0;
-        const postTime = post.approvedAt || post.timestamp || 0;
-        
-        // If approved BEFORE last reset and has no baseline, set it now
-        if (lastReset > 0 && postTime <= lastReset) {
-          updateData.viewsBaseline = newViews;
-          updateData.likesBaseline = newLikes;
-          updateData.commentsBaseline = newComments;
-          updateData.sharesBaseline = newShares;
-          updateData.savesBaseline = newSaves;
-        }
-      }
-    }
-
     await updateDoc(doc(db, 'posts', post.id), updateData);
   }
 
@@ -389,20 +374,6 @@ export const syncViewsWithApify = async (apiKeys: string | string[]) => {
           saves: newSaves,
         };
 
-        if (!post.viewsBaseline && post.competitionId) {
-          const comp = activeComps[post.competitionId];
-          if (comp) {
-            const lastReset = comp.lastDailyReset || 0;
-            const postTime = post.approvedAt || post.timestamp || 0;
-            if (lastReset > 0 && postTime <= lastReset) {
-              updateData.viewsBaseline = newViews;
-              updateData.likesBaseline = newLikes;
-              updateData.commentsBaseline = newComments;
-              updateData.sharesBaseline = newShares;
-              updateData.savesBaseline = newSaves;
-            }
-          }
-        }
         await updateDoc(doc(db, 'posts', post.id), updateData);
       }
     }

@@ -46,20 +46,13 @@ interface AdminPanelProps {
   syncDetailCompId: string | null;
   setSyncDetailCompId: (id: string | null) => void;
   
-  // Handle filter states
-  selectedAdminHandle: string;
-  setSelectedAdminHandle: (handle: string) => void;
-  adminHandles: string[];
-
   // Handlers - triagem
   handlePostStatus: (postId: string, status: any) => void;
-  handleMovePostToCompetition: (postId: string, newCompId: string) => Promise<void>;
   
   // Handlers - sincronização
   selectedSyncPostIds: string[];
   setSelectedSyncPostIds: any;
   handleBulkRevertToPending: () => void;
-  handleBulkSyncSelectedApproved: () => void;
   syncing: boolean;
   syncingPostId: string | null;
   setSyncingPostId: (id: string | null) => void;
@@ -113,8 +106,6 @@ interface AdminPanelProps {
   handleRepairMetrics: () => void;
   handleRankingResetOnly: () => void;
   handleSystemCleanup: () => void;
-  pendingMoves: Record<string, string>;
-  setPendingMoves: (val: any) => void;
   repairing: boolean;
   selectedResetCompId: string;
   setSelectedResetCompId: (id: string) => void;
@@ -131,7 +122,7 @@ interface AdminPanelProps {
   handleCreateUser: () => void;
   creatingUser: boolean;
 
-  // Legacy/Other tabs
+  // Legacy/Other tabs (can be extracted later or passed as children)
   children?: React.ReactNode;
 }
 
@@ -139,9 +130,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   userRole, tab, setTab, posts, competitions, approvedUsers, pendingUsers, archivedUsers,
   suggestions, pendingRegistrations, settings, transactions,
   auditUserId, setAuditUserId, selectedCompId, setSelectedCompId, syncDetailCompId, setSyncDetailCompId,
-  selectedAdminHandle, setSelectedAdminHandle, adminHandles,
-  handlePostStatus, handleMovePostToCompetition,
-  selectedSyncPostIds, setSelectedSyncPostIds, handleBulkRevertToPending, handleBulkSyncSelectedApproved, syncing, syncingPostId, setSyncingPostId,
+  handlePostStatus, 
+  selectedSyncPostIds, setSelectedSyncPostIds, handleBulkRevertToPending, syncing, syncingPostId, setSyncingPostId,
   handleSyncApprovedParallel, handleSyncApprovedSequentially, formatLastSyncDate, onSingleSync,
   selectedResyncPostIds, setSelectedResyncPostIds, handleSyncCompetitionSequentially, handleSyncCompetitionParallel,
   handleSyncAllSequentially, handleSyncAllParallel, handleBulkForceMonthly, handleBulkForceDaily,
@@ -150,7 +140,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   financeTab, setFinanceTab, financeCompId, setFinanceCompId, financeDateFilter, setFinanceDateFilter,
   handleMarkPaid, handleToggleManualPostValidation, validatedPostsLocal, setValidatedPostsLocal, onUpdatePixKey,
   handleExportExcel, handleDeleteUserPost, handleResetDailyRanking, handleResetRankingSimple,
-  handleRepairMetrics, handleRankingResetOnly, handleSystemCleanup, pendingMoves, setPendingMoves, repairing, selectedResetCompId, setSelectedResetCompId,
+  handleRepairMetrics, handleRankingResetOnly, handleSystemCleanup, repairing, selectedResetCompId, setSelectedResetCompId,
   newUserRole, setNewUserRole, newUserName, setNewUserName, newUserEmail, setNewUserEmail, newUserPass, setNewUserPass,
   handleCreateUser, creatingUser,
   children
@@ -236,6 +226,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       </div>
 
       <div className="flex flex-wrap p-1 bg-zinc-900 rounded-2xl w-fit gap-1">
+        {/* USANDO OS BOTÕES DE TAB ORIGINAIS PARA MANTER O LOOK */}
         <button
           onClick={() => { setTab('VISAO_GERAL'); setAuditUserId(null); setSelectedCompId(null); setSyncDetailCompId(null); }}
           className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'VISAO_GERAL' ? 'gold-bg text-black' : 'text-zinc-500 hover:text-zinc-300'}`}
@@ -354,12 +345,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             syncDetailCompId={syncDetailCompId} 
             setSyncDetailCompId={setSyncDetailCompId} 
             handlePostStatus={handlePostStatus} 
-            handleMovePostToCompetition={handleMovePostToCompetition}
-            pendingMoves={pendingMoves}
-            setPendingMoves={setPendingMoves}
-            selectedAdminHandle={selectedAdminHandle}
-            setSelectedAdminHandle={setSelectedAdminHandle}
-            adminHandles={adminHandles}
           />
         )}
         
@@ -367,15 +352,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           <SincronizacaoTab 
             posts={posts} competitions={competitions} settings={settings} syncDetailCompId={syncDetailCompId} setSyncDetailCompId={setSyncDetailCompId}
             selectedSyncPostIds={selectedSyncPostIds} setSelectedSyncPostIds={setSelectedSyncPostIds} handleBulkRevertToPending={handleBulkRevertToPending}
-            handleBulkSyncSelectedApproved={handleBulkSyncSelectedApproved}
             syncing={syncing} syncingPostId={syncingPostId} setSyncingPostId={setSyncingPostId} handleSyncApprovedParallel={handleSyncApprovedParallel}
             handleSyncApprovedSequentially={handleSyncApprovedSequentially} formatLastSyncDate={formatLastSyncDate} onSingleSync={onSingleSync}
-            handleMovePostToCompetition={handleMovePostToCompetition}
-            pendingMoves={pendingMoves}
-            setPendingMoves={setPendingMoves}
-            selectedAdminHandle={selectedAdminHandle}
-            setSelectedAdminHandle={setSelectedAdminHandle}
-            adminHandles={adminHandles}
           />
         )}
         
@@ -389,13 +367,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             sessionSyncedIds={sessionSyncedIds} setSessionSyncedIds={setSessionSyncedIds} syncingPostId={syncingPostId} setSyncingPostId={setSyncingPostId}
             apifyKey={apifyKey} setApifyKey={setApifyKey} handleSaveApiKey={handleSaveApiKey} handleDeleteApiKey={handleDeleteApiKey}
             onForceMonthly={onForceMonthly} onForceDaily={onForceDaily} onResetToSync={onResetToSync} onSingleSync={onSingleSync}
-            handleMovePostToCompetition={handleMovePostToCompetition}
-            pendingMoves={pendingMoves}
-            setPendingMoves={setPendingMoves}
-            setRejectionModal={() => {}}
-            selectedAdminHandle={selectedAdminHandle}
-            setSelectedAdminHandle={setSelectedAdminHandle}
-            adminHandles={adminHandles}
+            setRejectionReason={() => {}} setRejectionModal={() => {}}
           />
         )}
 
@@ -403,7 +375,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           <UsersTab 
             type="PENDING" users={pendingUsers} userRole={userRole}
             handleUserApproval={() => {}} handleArchiveUser={() => {}} handleDeleteUser={() => {}}
-            PendingUserRow={() => null} ApprovedUserRow={() => null}
+            PendingUserRow={() => null} ApprovedUserRow={() => null} // These will be passed from App.tsx
           />
         )}
 
@@ -411,7 +383,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           <UsersTab 
             type="APPROVED" users={approvedUsers} userRole={userRole}
             handleUpdateUserRole={() => {}} handleArchiveUser={() => {}} handleDeleteUser={() => {}}
-            PendingUserRow={() => null} ApprovedUserRow={() => null}
+            PendingUserRow={() => null} ApprovedUserRow={() => null} // These will be passed from App.tsx
           />
         )}
 

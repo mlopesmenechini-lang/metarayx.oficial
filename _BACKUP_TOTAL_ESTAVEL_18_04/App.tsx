@@ -4,22 +4,32 @@ import * as XLSX from 'xlsx';
 import {
   auth, db, googleProvider, signInWithPopup, signOut,
   onSnapshot, collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, query, where, orderBy, limit,
-  OperationType, handleFirestoreError, createUserWithEmailAndPassword, signInWithEmailAndPassword, addDoc, serverTimestamp, onAuthStateChanged, writeBatch
+  OperationType, handleFirestoreError, createUserWithEmailAndPassword, signInWithEmailAndPassword, addDoc, serverTimestamp, onAuthStateChanged, writeBatch, deleteField
 } from './firebase';
 
-import { User, Post, Season, Announcement, Platform, PostStatus, Competition, CompetitionRegistration, UserRole, Transaction, Suggestion } from './types';
+import { User, Post, Season, Announcement, Platform, PostStatus, Competition, CompetitionRegistration, UserRole, Transaction, Suggestion, Settings } from './types';
 import {
-  LayoutDashboard, Trophy, Send, History, Settings, LogOut,
+  LayoutDashboard, Trophy, Send, History, Settings as SettingsIcon, LogOut,
   ShieldCheck, AlertCircle, CheckCircle2, XCircle, Clock,
   TrendingUp, Users, Zap, Calendar, MessageSquare, Menu, X, ChevronLeft, ExternalLink,
   Mail, Lock, User as UserIcon, Eye, EyeOff, Loader2, RefreshCw, Crown, Trash2, Plus,
   Heart, Share2, Bookmark, Bell, Check, Camera, BarChart3, ArrowLeft, ArrowRight, BookOpen, Shield, Star, ChevronRight, Target,
-  Award, UserX, Sparkles, CreditCard, Coins, DollarSign, Info, Archive, Download
+  Award, UserX, Sparkles, CreditCard, Coins, DollarSign, Info, Archive, Download, RotateCcw, Pencil, PlusCircle, MinusCircle, Key
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { syncViewsWithApify, syncSinglePostWithApify, updateUserMetrics, repairAllUserMetrics } from './services/apifyService';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth as getSecondaryAuth, createUserWithEmailAndPassword as createSecondaryUser, signOut as signSecondaryOut } from 'firebase/auth';
+
+// Componentes Extraídos
+import { InfoTooltip, ErrorBoundary, NavItem } from './components/Shared';
+import { AuthScreen } from './components/AuthScreen';
+import { WalletView } from './components/WalletView';
+import { Dashboard } from './components/Dashboard';
+import { CompetitionRegulamento, CompetitionsView, CompetitionDetailView } from './components/CompetitionViews';
+import { SettingsView } from './components/SettingsView';
+import { SuggestionsView } from './components/SuggestionsView';
+import { HistoryView } from './components/HistoryView';
 
 const sanitizeString = (text: string) => {
   if (typeof text !== 'string') return text;
@@ -52,1183 +62,9 @@ const sanitizeObject = (obj: any): any => {
 };
 import fbConfig from './firebase-applet-config.json';
 
-const InfoTooltip = ({ text }: { text: string }) => {
-  return (
-    <div className="group relative inline-block ml-1.5 align-middle">
-      <Info className="w-3.5 h-3.5 text-zinc-500 hover:text-amber-500 transition-colors cursor-help" />
-      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-48 opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-300 z-[100]">
-        <div className="bg-zinc-900 border border-zinc-800 text-[10px] font-bold text-zinc-300 p-3 rounded-2xl shadow-2xl backdrop-blur-xl leading-relaxed">
-          {text}
-          <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-zinc-800" />
-        </div>
-      </div>
-    </div>
-  );
-};
 
-// Error Boundary Component
-class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, errorMsg: string }> {
-  constructor(props: { children: React.ReactNode }) {
-    super(props);
-    this.state = { hasError: false, errorMsg: '' };
-  }
 
-  static getDerivedStateFromError(error: any) {
-    return { hasError: true, errorMsg: error?.message || 'Unknown error' };
-  }
 
-  componentDidCatch(error: any, errorInfo: any) {
-    console.error("ErrorBoundary caught an error", error, errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="h-screen w-screen flex flex-col items-center justify-center bg-black text-center p-6">
-          <div className="w-20 h-20 bg-red-500/20 text-red-500 rounded-3xl flex items-center justify-center mb-6">
-            <AlertCircle className="w-10 h-10" />
-          </div>
-          <h1 className="text-2xl font-black mb-2">OPS! ALGO DEU ERRADO</h1>
-          <p className="text-zinc-400 max-w-xs mb-8 text-sm">
-            {this.state.errorMsg}
-          </p>
-          <button
-            onClick={() => window.location.reload()}
-            className="px-8 py-3 gold-bg text-black font-black rounded-xl hover:scale-105 transition-all"
-          >
-            RECARREGAR HUB
-          </button>
-        </div>
-      );
-    }
-
-    return this.props.children;
-  }
-}
-
-const WalletView = ({ user, competitions, showBalances }: { user: User, competitions: Competition[], showBalances: boolean }) => {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'day' | 'week' | 'month'>('all');
-  const [selectedCompId, setSelectedCompId] = useState<string>(() => {
-    const active = competitions?.find(c => c.isActive);
-    return active ? active.id : '';
-  });
-  const [pixKey, setPixKey] = useState(user.pixKey || '');
-  const [isSavingPix, setIsSavingPix] = useState(false);
-
-  const handleSavePix = async () => {
-    if (!pixKey.trim()) return;
-    setIsSavingPix(true);
-    try {
-      await updateDoc(doc(db, 'users', user.uid), { pixKey });
-      alert('✅ Chave PIX salva com sucesso!');
-    } catch (error) {
-      console.error('Erro ao salvar PIX:', error);
-      alert('Erro ao salvar chave PIX.');
-    } finally {
-      setIsSavingPix(false);
-    }
-  };
-
-  useEffect(() => {
-    const fetchTransactions = async () => {
-      try {
-        const q = query(collection(db, 'transactions'), where('userId', '==', user.uid));
-        const snap = await getDocs(q);
-        const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
-        data.sort((a, b) => b.timestamp - a.timestamp);
-        setTransactions(data);
-      } catch (e) {
-        console.error("Erro fetch extrato", e);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchTransactions();
-  }, [user.uid]);
-
-  // Transações filtradas pela competição selecionada
-  const compFiltered = useMemo(() => {
-    if (!selectedCompId) return transactions;
-    return transactions.filter(t => t.competitionId === selectedCompId);
-  }, [transactions, selectedCompId]);
-
-  // Aplica filtro de período sobre transações já filtradas
-  const filtered = useMemo(() => {
-    const now = Date.now();
-    const dayMs = 24 * 60 * 60 * 1000;
-    return compFiltered.filter(t => {
-      if (filter === 'all') return true;
-      if (filter === 'day') return now - t.timestamp <= dayMs;
-      if (filter === 'week') return now - t.timestamp <= 7 * dayMs;
-      if (filter === 'month') return now - t.timestamp <= 30 * dayMs;
-      return true;
-    });
-  }, [compFiltered, filter]);
-
-  // Total pago (repasses já realizados) para a competição filtrada
-  const totalPago = useMemo(() => {
-    if (selectedCompId) {
-      return user?.competitionStats?.[selectedCompId]?.paidTotal || 0;
-    }
-    return user?.lifetimeEarnings || 0;
-  }, [user, selectedCompId]);
-
-  // Ganhos creditados ainda não pagos
-  const totalPendente = useMemo(() => {
-    if (selectedCompId) {
-      return user?.competitionStats?.[selectedCompId]?.balance || 0;
-    }
-    return user?.balance || 0;
-  }, [user, selectedCompId]);
-
-  const selectedComp = competitions?.find(c => c.id === selectedCompId);
-
-  return (
-    <div className="space-y-8 max-w-4xl mx-auto p-4 md:p-6 lg:p-10">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
-        <div className="space-y-2">
-          <h2 className="text-3xl font-black tracking-tight uppercase gold-gradient">Portal Financeiro</h2>
-          <p className="text-zinc-500 font-bold text-xs uppercase tracking-widest">Acompanhe seus rendimentos e recebimentos</p>
-        </div>
-        <div className="flex flex-col gap-1.5 min-w-[240px]">
-          <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Filtrar por Competição:</span>
-          <select
-            value={selectedCompId}
-            onChange={(e) => setSelectedCompId(e.target.value)}
-            className="bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-xs font-bold focus:border-amber-500 outline-none transition-all text-white"
-          >
-            <option value="">Geral (Total Hub)</option>
-            {competitions?.map(c => (
-              <option key={c.id} value={c.id}>{c.title}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      <div className="bg-zinc-950 border border-zinc-800 rounded-[32px] p-8 space-y-6 shadow-2xl">
-        <div className="space-y-4">
-          <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest px-1">Resumo de Saldos</h3>
-          <div className="flex flex-col divide-y divide-zinc-800/50">
-            {/* Lifetime Item */}
-            <div className="flex items-center justify-between py-6 group hover:bg-white/5 transition-all px-2 -mx-2 rounded-2xl">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 group-hover:text-emerald-500 transition-colors">
-                  <Trophy className="w-6 h-6" />
-                </div>
-                <div>
-                  <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">{selectedCompId ? `Total Recebido (${selectedComp?.title})` : 'Total Recebido em Premiações (Hub)'}</p>
-                  <p className="text-xl font-black text-white">R$ {showBalances ? (selectedCompId ? totalPago : (user.lifetimeEarnings || 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '***'}</p>
-                </div>
-              </div>
-              <div className="hidden md:block px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-500 text-[8px] font-black uppercase tracking-widest">HISTÓRICO</div>
-            </div>
-
-            {/* Pending Balance Item */}
-            <div className="flex items-center justify-between py-6 group hover:bg-white/5 transition-all px-2 -mx-2 rounded-2xl">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 group-hover:text-amber-500 transition-colors">
-                  <Zap className="w-6 h-6" />
-                </div>
-                <div>
-                  <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">Ganhos em Análise</p>
-                  <p className="text-xl font-black text-amber-500">R$ {showBalances ? totalPendente.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '***'}</p>
-                </div>
-              </div>
-              <div className="hidden md:block px-3 py-1 rounded-full bg-amber-500/10 text-amber-500 text-[8px] font-black uppercase tracking-widest">PENDENTE</div>
-            </div>
-          </div>
-        </div>
-
-        {/* PIX Section */}
-        <div className="pt-6 border-t border-zinc-900">
-          <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest px-1 mb-4">Dados para Pagamento</h3>
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1 relative">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <Mail className="w-4 h-4 text-zinc-500" />
-              </div>
-              <input
-                type="text"
-                value={pixKey}
-                onChange={(e) => setPixKey(e.target.value)}
-                placeholder="Sua Chave PIX (E-mail, CPF, Celular...)"
-                className="w-full bg-black border border-zinc-800 rounded-2xl py-4 pl-12 pr-4 text-sm font-bold focus:border-amber-500 outline-none transition-all placeholder:text-zinc-700"
-              />
-            </div>
-            <button
-              onClick={handleSavePix}
-              disabled={isSavingPix || !pixKey}
-              className="px-8 py-4 gold-bg text-black font-black rounded-2xl hover:scale-[1.02] transition-all disabled:opacity-50 disabled:scale-100 flex items-center justify-center gap-2 min-w-[140px]"
-            >
-              {isSavingPix ? <Loader2 className="w-5 h-5 animate-spin" /> : 'SALVAR CHAVE'}
-            </button>
-          </div>
-          <p className="mt-3 px-1 text-[10px] font-bold text-zinc-600 uppercase tracking-widest">Atenção: Verifique os dados antes de salvar para evitar erros nos repasses.</p>
-        </div>
-      </div>
-
-      <div className="bg-zinc-950 border border-zinc-800 rounded-3xl p-6 overflow-hidden mt-8">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-          <div>
-            <h3 className="font-black uppercase text-xl text-white">Extrato de Pagamentos</h3>
-            <p className="text-[10px] font-bold text-zinc-500 tracking-widest uppercase">Histórico das transferências enviadas pela Diretoria</p>
-          </div>
-
-          <div className="flex p-1 bg-zinc-900 rounded-xl border border-zinc-800">
-            <button onClick={() => setFilter('all')} className={`px-4 py-2 rounded-lg font-bold text-xs transition-all ${filter === 'all' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}>TUDO</button>
-            <button onClick={() => setFilter('day')} className={`px-4 py-2 rounded-lg font-bold text-xs transition-all ${filter === 'day' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}>HOJE</button>
-            <button onClick={() => setFilter('week')} className={`px-4 py-2 rounded-lg font-bold text-xs transition-all ${filter === 'week' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}>SEMANA</button>
-            <button onClick={() => setFilter('month')} className={`px-4 py-2 rounded-lg font-bold text-xs transition-all ${filter === 'month' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}>MÊS</button>
-          </div>
-        </div>
-
-        {loading ? (
-          <div className="py-20 flex justify-center">
-            <RefreshCw className="w-8 h-8 text-zinc-600 animate-spin" />
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {filtered.map(t => (
-              <div key={t.id} className="flex flex-col md:flex-row md:justify-between items-start md:items-center gap-4 md:gap-0 p-5 bg-black border border-zinc-800 rounded-2xl relative overflow-hidden hover:border-zinc-700 hover:bg-white/[0.02] transition-all group">
-                <div className="flex flex-col gap-1.5 z-10 w-full md:w-auto">
-                  <div className="flex items-center justify-between md:justify-start gap-3">
-                    {t.status === 'credit' ? (
-                      <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 text-[10px] font-black uppercase tracking-widest inline-block border border-amber-500/20">PRÊMIO CONTABILIZADO</span>
-                    ) : (
-                      <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 text-[10px] font-black uppercase tracking-widest inline-block border border-emerald-500/20">REPASSE RECEBIDO</span>
-                    )}
-                    <span className="text-[10px] font-bold text-zinc-600 font-mono tracking-widest uppercase">ID: {t.id}</span>
-                  </div>
-                  <h4 className="font-black text-sm uppercase tracking-tight text-zinc-200">
-                    {t.description || (t.status === 'credit' ? 'Premiação por desempenho' : 'Pagamento via PIX')}
-                  </h4>
-                  <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-                    {new Date(t.timestamp).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })} às {new Date(t.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                  </p>
-                </div>
-                <div className="flex flex-col items-end z-10 w-full md:w-auto border-t md:border-t-0 border-zinc-900 pt-4 md:pt-0">
-                  <span className={`text-2xl font-black tabular-nums ${t.status === 'credit' ? 'text-amber-500' : 'text-emerald-500'}`}>
-                    R$ {showBalances ? t.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '***'}
-                  </span>
-                  <span className="text-[9px] font-black text-zinc-600 uppercase tracking-widest">Valor do {t.status === 'credit' ? 'Crédito' : 'Repasse'}</span>
-                </div>
-              </div>
-            ))}
-            {filtered.length === 0 && (
-              <div className="py-20 flex flex-col items-center gap-4 border-2 border-dashed border-zinc-800 rounded-2xl">
-                <XCircle className="w-12 h-12 text-zinc-800" />
-                <p className="text-zinc-500 font-bold uppercase tracking-widest text-xs">Nenhum pagamento encontrado.</p>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-const AuthScreen = ({ onLoginSuccess }: { onLoginSuccess: (u: User) => void }) => {
-  const [isLogin, setIsLogin] = useState(true);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  const handleGoogleLogin = async () => {
-    try {
-      setLoading(true);
-      await signInWithPopup(auth, googleProvider);
-    } catch (err: any) {
-      if (err.code === 'auth/network-request-failed') {
-        setError('Erro de conexão ou Provedor Google não habilitado no Firebase Console.');
-      } else {
-        setError(err.message);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleEmailAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-    try {
-      if (isLogin) {
-        await signInWithEmailAndPassword(auth, email, password);
-      } else {
-        const cred = await createUserWithEmailAndPassword(auth, email, password);
-        const isAdminEmail = email === 'matheusmenechini18@gmail.com' || email === 'hypedosmemes@gmail.com';
-        const newUser: User = {
-          uid: cred.user.uid,
-          displayName: name || 'Anon',
-          email: email,
-          role: isAdminEmail ? 'admin' : 'user',
-          isApproved: isAdminEmail,
-          balance: 0,
-          totalViews: 0,
-          totalLikes: 0,
-          totalComments: 0,
-          totalShares: 0,
-          totalSaves: 0,
-          totalPosts: 0,
-          dailyViews: 0,
-          dailyLikes: 0,
-          dailyComments: 0,
-          dailyShares: 0,
-          dailySaves: 0,
-          dailyPosts: 0
-        };
-        await setDoc(doc(db, 'users', cred.user.uid), newUser);
-        onLoginSuccess(newUser);
-      }
-    } catch (err: any) {
-      if (err.code === 'auth/network-request-failed') {
-        setError('Erro de conexão ou Provedor E-mail/Senha não habilitado no Firebase Console.');
-      } else {
-        setError(err.message);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="h-screen w-screen flex flex-col items-center justify-center bg-black px-4 overflow-y-auto py-10">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md space-y-8"
-      >
-        <div className="text-center space-y-4">
-          <div className="flex justify-center">
-            <div className="w-20 h-20 gold-bg rounded-3xl flex items-center justify-center shadow-2xl">
-              <Zap className="w-10 h-10 text-black" />
-            </div>
-          </div>
-          <div className="space-y-1">
-            <h1 className="text-4xl font-black gold-gradient tracking-tighter uppercase">MetaRayx Hub</h1>
-            <p className="text-zinc-500 font-bold text-sm uppercase tracking-widest">Hub de Criadores</p>
-          </div>
-        </div>
-
-        <div className="glass p-8 rounded-[32px] border border-zinc-800/50 space-y-6">
-          <div className="flex p-1 bg-zinc-900 rounded-2xl">
-            <button
-              onClick={() => setIsLogin(true)}
-              className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${isLogin ? 'bg-zinc-800 text-white shadow-lg' : 'text-zinc-500'}`}
-            >
-              LOGIN
-            </button>
-            <button
-              onClick={() => setIsLogin(false)}
-              className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${!isLogin ? 'bg-zinc-800 text-white shadow-lg' : 'text-zinc-500'}`}
-            >
-              CADASTRO
-            </button>
-          </div>
-
-          <form onSubmit={handleEmailAuth} className="space-y-4">
-            {!isLogin && (
-              <div className="space-y-1">
-                <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest ml-1">Nome Completo</label>
-                <div className="relative">
-                  <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                  <input
-                    required
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    type="text"
-                    placeholder="Seu nome"
-                    className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-sm font-bold focus:border-amber-500 outline-none transition-all"
-                  />
-                </div>
-              </div>
-            )}
-            <div className="space-y-1">
-              <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest ml-1">E-mail</label>
-              <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                <input
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  type="email"
-                  placeholder="seu@email.com"
-                  className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-sm font-bold focus:border-amber-500 outline-none transition-all"
-                />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest ml-1">Senha</label>
-              <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                <input
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  type="password"
-                  placeholder="********"
-                  className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-sm font-bold focus:border-amber-500 outline-none transition-all"
-                />
-              </div>
-            </div>
-
-            {error && (
-              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-[10px] font-bold uppercase text-center">
-                {error}
-              </div>
-            )}
-
-            <button
-              disabled={loading}
-              className="w-full py-4 gold-bg text-black font-black rounded-2xl hover:scale-[1.02] transition-all shadow-xl flex items-center justify-center gap-2"
-            >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : isLogin ? 'ENTRAR NO HUB' : 'CRIAR CONTA'}
-            </button>
-          </form>
-
-          <div className="relative flex items-center gap-4">
-            <div className="flex-1 h-px bg-zinc-800" />
-            <span className="text-[10px] text-zinc-500 font-black">OU</span>
-            <div className="flex-1 h-px bg-zinc-800" />
-          </div>
-
-          <button
-            onClick={handleGoogleLogin}
-            className="w-full py-4 bg-white text-black font-black rounded-2xl hover:scale-[1.02] transition-all flex items-center justify-center gap-3"
-          >
-            <img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="" />
-            CONTINUAR COM GOOGLE
-          </button>
-        </div>
-        <p className="text-center text-[10px] text-zinc-600 font-black tracking-widest uppercase">Acesso Restrito a Membros Autorizados</p>
-      </motion.div>
-    </div>
-  );
-};
-
-const NavItem = ({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) => (
-  <button
-    onClick={onClick}
-    className={`
-      w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold text-sm
-      ${active ? 'gold-bg text-black shadow-lg shadow-amber-500/20' : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900'}
-    `}
-  >
-    {React.cloneElement(icon as React.ReactElement<any>, { className: 'w-5 h-5' })}
-    {label}
-  </button>
-);
-
-const Dashboard = ({ user, announcements, rankings, competitions, registrations, posts, showBalances }: {
-  user: User,
-  announcements: Announcement[],
-  rankings: User[],
-  competitions: Competition[],
-  registrations: CompetitionRegistration[],
-  posts: Post[],
-  showBalances: boolean
-}) => {
-  const [selectedComp, setSelectedComp] = useState<Competition | null>(null);
-  const [acceptedRules, setAcceptedRules] = useState(false);
-
-  const handleRegister = async (compId: string) => {
-    if (!acceptedRules) {
-      alert('Você precisa aceitar as regras para participar!');
-      return;
-    }
-    try {
-      const existingReg = registrations.find(r => r.competitionId === compId && r.userId === user.uid);
-      if (existingReg && existingReg.status === 'rejected') {
-        const regRef = doc(db, 'competition_registrations', existingReg.id);
-        await updateDoc(regRef, {
-          status: 'pending',
-          timestamp: Date.now()
-        });
-        alert('Nova solicitação enviada! Aguarde a aprovação da diretoria.');
-      } else {
-        const newReg: Omit<CompetitionRegistration, 'id'> = {
-          competitionId: compId,
-          userId: user.uid,
-          userName: user.displayName,
-          userEmail: user.email,
-          status: 'pending',
-          acceptedRules: true,
-          timestamp: Date.now()
-        };
-        await addDoc(collection(db, 'competition_registrations'), newReg);
-        alert('Solicitação de inscrição enviada! Aguarde a aprovação da diretoria.');
-      }
-      setSelectedComp(null);
-      setAcceptedRules(false);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'competition_registrations');
-    }
-  };
-
-  const sortedMonthly = useMemo(() => {
-    return [...rankings].sort((a, b) => (b.totalViews || 0) - (a.totalViews || 0)).slice(0, 3);
-  }, [rankings]);
-
-  // Agregação por plataforma com base nos posts do usuário
-  const platformStats = useMemo(() => {
-    const platforms = ['tiktok', 'youtube', 'instagram'] as const;
-    return platforms.map(platform => {
-      const platformPosts = posts.filter(p => p.platform === platform);
-      const views = platformPosts.reduce((acc, p) => acc + (p.views || 0), 0);
-      const likes = platformPosts.reduce((acc, p) => acc + (p.likes || 0), 0);
-      const comments = platformPosts.reduce((acc, p) => acc + (p.comments || 0), 0);
-      const count = platformPosts.length;
-      return { platform, views, likes, comments, count };
-    });
-  }, [posts]);
-
-  const maxViews = Math.max(...platformStats.map(p => p.views), 1);
-
-  return (
-    <div className="space-y-12 shrink-0">
-      {/* 🚀 Cockpit Pessoal */}
-      <div className="space-y-6">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-          <div>
-            <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tight">
-              Bem-vindo(a), <span className="gold-gradient">{user.displayName.split(' ')[0]}</span>!
-            </h1>
-            <p className="text-zinc-400 font-bold mt-1 text-sm md:text-base">Métricas da sua performance geral no HUB.</p>
-          </div>
-          <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs font-black text-emerald-500 w-fit">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            CONTA ATIVA
-          </div>
-        </div>
-        
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="glass shadow-2xl shadow-amber-500/5 hover:border-amber-500/50 transition-all border border-amber-500/20 p-6 rounded-[32px] relative group flex flex-col justify-between min-h-[140px]">
-            <div className="absolute inset-0 overflow-hidden rounded-[32px] pointer-events-none">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-amber-500/20 transition-all" />
-              <TrendingUp className="absolute -bottom-4 -right-4 w-24 h-24 text-amber-500/10 group-hover:scale-110 transition-transform duration-500" />
-            </div>
-            <h3 className="text-[10px] font-black text-amber-500 uppercase tracking-widest relative z-10 flex items-center">
-              LUCRO ACUMULADO <InfoTooltip text="Total de ganhos que você já acumulou na plataforma até hoje." />
-            </h3>
-            <p className="text-2xl md:text-3xl font-black text-white relative z-10">R$ {showBalances ? (user.lifetimeEarnings || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '***'}</p>
-          </div>
-
-          <div className="glass border border-cyan-500/20 hover:border-cyan-500/50 transition-all p-6 rounded-[32px] relative group flex flex-col justify-between min-h-[140px]">
-            <div className="absolute inset-0 overflow-hidden rounded-[32px] pointer-events-none">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/10 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-cyan-500/20 transition-all" />
-              <Eye className="absolute -bottom-4 -right-4 w-24 h-24 text-cyan-500/10 group-hover:scale-110 transition-transform duration-500" />
-            </div>
-            <h3 className="text-[10px] font-black text-cyan-500 uppercase tracking-widest relative z-10 flex items-center">
-              TOTAL DE VIEWS <InfoTooltip text="Soma das visualizações de todos os seus vídeos aprovados e sincronizados." />
-            </h3>
-            <p className="text-2xl md:text-3xl font-black text-white relative z-10">{(user.totalViews || 0).toLocaleString()}</p>
-          </div>
-
-          <div className="glass border border-pink-500/20 hover:border-pink-500/50 transition-all p-6 rounded-[32px] relative group flex flex-col justify-between min-h-[140px]">
-            <div className="absolute inset-0 overflow-hidden rounded-[32px] pointer-events-none">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-pink-500/10 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-pink-500/20 transition-all" />
-              <Heart className="absolute -bottom-4 -right-4 w-24 h-24 text-pink-500/10 group-hover:scale-110 transition-transform duration-500" />
-            </div>
-            <h3 className="text-[10px] font-black text-pink-500 uppercase tracking-widest relative z-10 flex items-center">
-              TOTAL DE LIKES <InfoTooltip text="Soma das curtidas de todos os seus vídeos aprovados e sincronizados." />
-            </h3>
-            <p className="text-2xl md:text-3xl font-black text-white relative z-10">{(user.totalLikes || 0).toLocaleString()}</p>
-          </div>
-
-          <div className="glass border border-zinc-700/50 hover:border-zinc-500 transition-all p-6 rounded-[32px] relative group flex flex-col justify-between min-h-[140px]">
-            <div className="absolute inset-0 overflow-hidden rounded-[32px] pointer-events-none">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-white/10 transition-all" />
-              <Camera className="absolute -bottom-4 -right-4 w-24 h-24 text-white/5 group-hover:scale-110 transition-transform duration-500" />
-            </div>
-            <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest relative z-10 flex items-center">
-              VÍDEOS SINCRONIZADOS <InfoTooltip text="Quantidade de vídeos seus que já foram validados e processados pelo sistema." />
-            </h3>
-            <p className="text-2xl md:text-3xl font-black text-white relative z-10">{(user.totalPosts || 0).toLocaleString()}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* 🎯 Foco Central: Competições */}
-      {competitions.length > 0 && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-black tracking-tight uppercase flex items-center gap-3">
-              <Target className="w-6 h-6 text-amber-500" /> Foco Atual
-            </h2>
-            <div className="flex items-center gap-2 text-[10px] font-black text-amber-500 bg-amber-500/10 px-3 py-1.5 rounded-full border border-amber-500/20 shadow-lg">
-              <Zap className="w-3 h-3" /> COMPETIÇÕES
-            </div>
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {competitions.map(comp => {
-              const compStatus = comp.status || (comp.isActive ? 'active' : 'inactive');
-              const isLocked = compStatus === 'upcoming' || compStatus === 'inactive';
-
-              return (
-                <motion.div
-                  key={comp.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className={`group relative h-64 rounded-[40px] overflow-hidden border ${isLocked ? 'border-zinc-900 shadow-none cursor-not-allowed opacity-80' : 'border-zinc-800 shadow-2xl cursor-pointer'}`}
-                  onClick={() => {
-                    if (!isLocked) {
-                      setSelectedComp(comp);
-                    }
-                  }}
-                >
-                  <img src={comp.bannerUrl} className={`absolute inset-0 w-full h-full object-cover transition-transform duration-700 ${!isLocked && 'group-hover:scale-110'} ${compStatus === 'inactive' ? 'grayscale opacity-80' : ''}`} alt="" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
-
-                  {isLocked && (
-                    <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
-                       <Lock className={`w-16 h-16 ${compStatus === 'upcoming' ? 'text-amber-500' : 'text-zinc-600'}`} />
-                    </div>
-                  )}
-
-                  <div className="absolute inset-0 p-8 flex flex-col justify-end space-y-4">
-                    <div className="space-y-1 relative z-10">
-                      <h3 className="text-3xl font-black tracking-tighter uppercase leading-none">{comp.title}</h3>
-                      <p className="text-zinc-300 text-xs font-bold line-clamp-2 max-w-md">{comp.description}</p>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-3 relative z-10">
-                      {comp.prizes.slice(0, 3).map((prize, idx) => (
-                        <div key={idx} className={`flex items-center gap-2 backdrop-blur-md px-4 py-2 rounded-2xl border ${isLocked ? 'bg-black/50 border-white/5 opacity-50' : 'bg-white/10 border-white/10'}`}>
-                          <Trophy className={`w-4 h-4 ${idx === 0 ? 'text-amber-400' : idx === 1 ? 'text-zinc-300' : 'text-amber-700'}`} />
-                          <div className="flex flex-col">
-                            <span className="text-[8px] font-black text-zinc-400 uppercase leading-none">{prize.label}</span>
-                            <span className="text-xs font-black text-white">R$ {prize.value.toLocaleString()}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="absolute top-6 right-6 z-10">
-                    {(() => {
-                      if (compStatus === 'upcoming') {
-                        return (
-                          <div className="bg-amber-500 text-black px-4 py-1.5 rounded-full text-[10px] font-black shadow-xl uppercase tracking-widest">
-                            EM BREVE
-                          </div>
-                        );
-                      }
-                      if (compStatus === 'inactive') {
-                        return (
-                          <div className="bg-zinc-800 text-zinc-400 px-4 py-1.5 rounded-full text-[10px] font-black shadow-xl uppercase tracking-widest">
-                            FINALIZADA
-                          </div>
-                        );
-                      }
-
-                      const reg = registrations.find(r => r.competitionId === comp.id && r.userId === user.uid);
-                      if (!reg) {
-                        return (
-                          <div className="bg-amber-500 text-black px-6 py-2 rounded-full text-xs font-black shadow-xl hover:scale-105 transition-all">
-                            VER DETALHES
-                          </div>
-                        );
-                      }
-                      return (
-                        <div className={`px-4 py-1.5 rounded-full text-[10px] font-black shadow-xl ${reg.status === 'approved' ? 'bg-emerald-500 text-black' :
-                            reg.status === 'rejected' ? 'bg-red-500 text-white' :
-                              'bg-amber-500/20 text-amber-500 border border-amber-500/30'
-                          }`}>
-                          {reg.status === 'approved' ? 'PARTICIPANDO' :
-                            reg.status === 'rejected' ? 'RECUSADO' : 'AGUARDANDO APROVAÇÃO'}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                </motion.div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* 🏅 Competições e Pódio */}
-      <div className="grid grid-cols-1 gap-6 items-start pb-10">
-        
-        {/* Elite do Mês */}
-        <div className="glass border border-zinc-800 rounded-[40px] p-8">
-          {sortedMonthly.length > 0 ? (
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-xl bg-amber-500/20 text-amber-500">
-                    <Trophy className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-black tracking-tight uppercase">Elite do Mês</h2>
-                    <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Global</p>
-                  </div>
-                </div>
-                <div className="hidden md:flex items-center gap-2 px-4 py-1.5 rounded-full bg-zinc-900 border border-zinc-800 text-[10px] font-black text-zinc-400">
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  TEMPO REAL
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4 items-end pt-10 pb-4">
-                {/* 2nd Place */}
-                {sortedMonthly[1] && (
-                  <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="flex flex-col items-center space-y-4">
-                    <div className="relative">
-                      <div className="absolute -top-4 -right-2 w-8 h-8 rounded-full bg-zinc-400 flex items-center justify-center border-2 border-black z-10">
-                        <span className="text-[10px] font-black text-black">2º</span>
-                      </div>
-                      <img src={sortedMonthly[1].photoURL || `https://ui-avatars.com/api/?name=${sortedMonthly[1].displayName}`} className="w-16 h-16 md:w-20 md:h-20 rounded-[32px] border-4 border-zinc-400/30 object-cover shadow-2xl" alt="" referrerPolicy="no-referrer" />
-                    </div>
-                    <div className="text-center">
-                      <p className="text-xs md:text-sm font-black truncate max-w-[90px]">@{sortedMonthly[1].displayName}</p>
-                      <div className="flex flex-col items-center mt-1">
-                        <span className="text-[8px] text-zinc-500 uppercase font-black tracking-widest leading-none">Views</span>
-                        <span className="text-xs md:text-sm font-black text-cyan-400">{(sortedMonthly[1].totalViews || 0).toLocaleString()}</span>
-                      </div>
-                    </div>
-                    <div className="w-full h-24 md:h-28 bg-gradient-to-t from-zinc-800/50 to-zinc-800/20 rounded-t-3xl border-x border-t border-zinc-800 flex flex-col items-center justify-start pt-4">
-                      <div className="w-6 h-6 rounded-full bg-zinc-400/10 flex items-center justify-center"><Trophy className="w-3 h-3 text-zinc-400" /></div>
-                    </div>
-                  </motion.div>
-                )}
-
-                {/* 1st Place */}
-                {sortedMonthly[0] && (
-                  <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center space-y-4">
-                    <div className="relative">
-                      <motion.div animate={{ y: [0, -5, 0] }} transition={{ duration: 2, repeat: Infinity }} className="absolute -top-6 left-1/2 -translate-x-1/2 z-10">
-                        <Crown className="w-8 h-8 text-amber-500 drop-shadow-[0_0_15px_rgba(245,158,11,0.5)]" />
-                      </motion.div>
-                      <div className="absolute -top-4 -right-2 w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center border-2 border-black z-10 shadow-[0_0_20px_rgba(245,158,11,0.3)]">
-                        <span className="text-xs font-black text-black">1º</span>
-                      </div>
-                      <img src={sortedMonthly[0].photoURL || `https://ui-avatars.com/api/?name=${sortedMonthly[0].displayName}`} className="w-20 h-20 md:w-28 md:h-28 rounded-[40px] border-4 border-amber-500 object-cover shadow-[0_0_40px_rgba(245,158,11,0.2)]" alt="" referrerPolicy="no-referrer" />
-                    </div>
-                    <div className="text-center">
-                      <p className="text-sm md:text-base font-black gold-gradient truncate max-w-[110px]">@{sortedMonthly[0].displayName}</p>
-                      <div className="flex flex-col items-center mt-1">
-                        <span className="text-[8px] text-zinc-500 uppercase font-black tracking-widest leading-none">Views</span>
-                        <span className="text-sm md:text-lg font-black text-cyan-400">{(sortedMonthly[0].totalViews || 0).toLocaleString()}</span>
-                      </div>
-                    </div>
-                    <div className="w-full h-32 md:h-36 bg-gradient-to-t from-amber-500/20 to-amber-500/5 rounded-t-[40px] border-x border-t border-amber-500/30 flex flex-col items-center justify-start pt-4 relative overflow-hidden">
-                      <div className="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center relative z-10"><Trophy className="w-4 h-4 text-amber-500" /></div>
-                    </div>
-                  </motion.div>
-                )}
-
-                {/* 3rd Place */}
-                {sortedMonthly[2] && (
-                  <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="flex flex-col items-center space-y-4">
-                    <div className="relative">
-                      <div className="absolute -top-4 -right-2 w-8 h-8 rounded-full bg-amber-800 flex items-center justify-center border-2 border-black z-10">
-                        <span className="text-[10px] font-black text-white">3º</span>
-                      </div>
-                      <img src={sortedMonthly[2].photoURL || `https://ui-avatars.com/api/?name=${sortedMonthly[2].displayName}`} className="w-16 h-16 md:w-20 md:h-20 rounded-[32px] border-4 border-amber-800/30 object-cover shadow-2xl" alt="" referrerPolicy="no-referrer" />
-                    </div>
-                    <div className="text-center">
-                      <p className="text-xs md:text-sm font-black truncate max-w-[90px]">@{sortedMonthly[2].displayName}</p>
-                      <div className="flex flex-col items-center mt-1">
-                        <span className="text-[8px] text-zinc-500 uppercase font-black tracking-widest leading-none">Views</span>
-                        <span className="text-xs md:text-sm font-black text-cyan-400">{(sortedMonthly[2].totalViews || 0).toLocaleString()}</span>
-                      </div>
-                    </div>
-                    <div className="w-full h-20 md:h-24 bg-gradient-to-t from-amber-900/40 to-amber-900/10 rounded-t-3xl border-x border-t border-amber-900/30 flex flex-col items-center justify-start pt-4">
-                      <div className="w-6 h-6 rounded-full bg-amber-900/20 flex items-center justify-center"><Trophy className="w-3 h-3 text-amber-800" /></div>
-                    </div>
-                  </motion.div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="py-20 flex flex-col items-center justify-center text-center opacity-50">
-              <Trophy className="w-12 h-12 text-zinc-700 mb-4" />
-              <p className="text-zinc-500 font-black uppercase tracking-widest text-xs">Ranking em apuração</p>
-            </div>
-          )}
-        </div>
-
-
-      </div>
-
-      {/* Competition Details Modal */}
-      <AnimatePresence>
-        {selectedComp && (
-          <div className="fixed inset-0 z-[120] flex items-center justify-center p-6">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setSelectedComp(null)}
-              className="absolute inset-0 bg-black/90 backdrop-blur-xl"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative w-full max-w-2xl glass rounded-[40px] border border-zinc-800 overflow-hidden flex flex-col max-h-[90vh]"
-            >
-              <div className="h-48 shrink-0 relative">
-                <img src={selectedComp.bannerUrl} className="w-full h-full object-cover" alt="" />
-                <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 to-transparent" />
-                <button
-                  onClick={() => setSelectedComp(null)}
-                  className="absolute top-6 right-6 p-2 rounded-full bg-black/50 text-white hover:bg-black transition-all"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-                <div className="absolute bottom-6 left-8">
-                  <h3 className="text-3xl font-black uppercase tracking-tighter">{selectedComp.title}</h3>
-                </div>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
-                    <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">Hashtags</p>
-                    <p className="text-xs font-bold text-amber-500">{selectedComp.hashtags || 'Nenhuma'}</p>
-                  </div>
-                  <div className="p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
-                    <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">Marcações</p>
-                    <p className="text-xs font-bold text-amber-500">{selectedComp.mentions || 'Nenhuma'}</p>
-                  </div>
-                  <div className="p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
-                    <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">Bônus</p>
-                    <p className="text-xs font-bold text-emerald-500">{selectedComp.bonuses || 'Nenhum'}</p>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">Regras da Competição</h4>
-                  <div className="p-6 rounded-3xl bg-zinc-900/30 border border-zinc-800/50 text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap font-medium">
-                    {selectedComp.rules || selectedComp.description}
-                  </div>
-                </div>
-
-                <div className="space-y-6">
-                  {selectedComp.prizesMonthly && selectedComp.prizesMonthly.length > 0 && (
-                    <div className="space-y-4">
-                      <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">Premiação Mensal (Tempo de Competição)</h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {selectedComp.prizesMonthly.map((prize, idx) => (
-                          <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-[10px] font-black text-zinc-500">
-                                {prize.position}º
-                              </div>
-                              <span className="text-xs font-bold">{prize.label}</span>
-                            </div>
-                            <span className="text-sm font-black text-amber-500">R$ {prize.value.toLocaleString()}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {selectedComp.prizesDaily && selectedComp.prizesDaily.length > 0 && (
-                    <div className="space-y-4">
-                      <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">Premiação Diária</h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {selectedComp.prizesDaily.map((prize, idx) => (
-                          <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-[10px] font-black text-zinc-500">
-                                {prize.position}º
-                              </div>
-                              <span className="text-xs font-bold">{prize.label}</span>
-                            </div>
-                            <span className="text-sm font-black text-cyan-500">R$ {prize.value.toLocaleString()}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {selectedComp.prizesInstagram && selectedComp.prizesInstagram.length > 0 && (
-                    <div className="space-y-4">
-                      <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">Premiação Instagram (Quantidade)</h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {selectedComp.prizesInstagram.map((prize, idx) => (
-                          <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-[10px] font-black text-zinc-500">
-                                {prize.position}º
-                              </div>
-                              <span className="text-xs font-bold">{prize.label}</span>
-                            </div>
-                            <span className="text-sm font-black text-pink-500">R$ {prize.value.toLocaleString()}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {(!selectedComp.prizesDaily && !selectedComp.prizesMonthly && !selectedComp.prizesInstagram) && (
-                    <div className="space-y-4">
-                      <h4 className="text-sm font-black uppercase tracking-widest text-zinc-400">Premiação</h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {selectedComp.prizes.map((prize, idx) => (
-                          <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-[10px] font-black text-zinc-500">
-                                {prize.position}º
-                              </div>
-                              <span className="text-xs font-bold">{prize.label}</span>
-                            </div>
-                            <span className="text-sm font-black text-amber-500">R$ {prize.value.toLocaleString()}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="p-8 bg-zinc-950 border-t border-zinc-900 space-y-6">
-                {(() => {
-                  const existingReg = registrations.find(r => r.competitionId === selectedComp.id && r.userId === user.uid);
-                  if (!existingReg || existingReg.status === 'rejected') {
-                    return (
-                      <>
-                        <label className="flex items-start gap-4 cursor-pointer group">
-                          <div className="relative flex items-center mt-1">
-                            <input
-                              type="checkbox"
-                              checked={acceptedRules}
-                              onChange={(e) => setAcceptedRules(e.target.checked)}
-                              className="peer h-5 w-5 appearance-none rounded border-2 border-zinc-800 bg-zinc-900 transition-all checked:border-amber-500 checked:bg-amber-500"
-                            />
-                            <Check className="absolute h-3.5 w-3.5 text-black opacity-0 transition-opacity peer-checked:opacity-100 left-0.5" />
-                          </div>
-                          <span className="text-xs font-bold text-zinc-500 group-hover:text-zinc-300 transition-colors">
-                            Eu li e aceito todas as regras e condições desta competição.
-                          </span>
-                        </label>
-                        <button
-                          onClick={() => handleRegister(selectedComp.id)}
-                          disabled={!acceptedRules}
-                          className={`w-full py-5 font-black rounded-2xl transition-all shadow-xl ${
-                            acceptedRules 
-                              ? 'gold-bg text-black hover:scale-[1.02] shadow-amber-500/20' 
-                              : 'bg-zinc-800 text-zinc-500 cursor-not-allowed opacity-50'
-                          }`}
-                        >
-                          {existingReg?.status === 'rejected' ? 'SOLICITAR NOVAMENTE' : 'SOLICITAR INSCRIÇÃO'}
-                        </button>
-                      </>
-                    );
-                  }
-                  return (
-                    <div className="text-center py-2">
-                      <p className="text-amber-500 font-black uppercase tracking-widest text-sm">
-                        {existingReg.status === 'approved' 
-                          ? 'Você já está participando desta competição' 
-                          : 'Você já solicitou inscrição nesta competição'}
-                      </p>
-                    </div>
-                  );
-                })()}
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Seção: Performance por Rede + Elite Global */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 pb-6">
-
-        {/* Performance por Rede Social (2/3) */}
-        <div className="xl:col-span-2 space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-violet-500/20 text-violet-400">
-              <TrendingUp className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-xl font-black tracking-tight uppercase">Desempenho por Rede</h2>
-              <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Suas métricas por plataforma</p>
-            </div>
-          </div>
-
-          {posts.length > 0 ? (
-            <div className="space-y-4">
-              {platformStats.map(({ platform, views, likes, comments, count }) => {
-                const barWidth = maxViews > 0 ? Math.max((views / maxViews) * 100, count > 0 ? 4 : 0) : 0;
-                const platformConfig = {
-                  tiktok: {
-                    label: 'TikTok',
-                    emoji: '🎵',
-                    color: 'from-pink-500 to-rose-500',
-                    border: 'border-pink-500/20',
-                    glow: 'shadow-pink-500/20',
-                    text: 'text-pink-400',
-                    bg: 'bg-pink-500/10',
-                  },
-                  youtube: {
-                    label: 'YouTube',
-                    emoji: '▶️',
-                    color: 'from-red-500 to-orange-500',
-                    border: 'border-red-500/20',
-                    glow: 'shadow-red-500/20',
-                    text: 'text-red-400',
-                    bg: 'bg-red-500/10',
-                  },
-                  instagram: {
-                    label: 'Instagram',
-                    emoji: '📸',
-                    color: 'from-purple-500 to-pink-500',
-                    border: 'border-purple-500/20',
-                    glow: 'shadow-purple-500/20',
-                    text: 'text-purple-400',
-                    bg: 'bg-purple-500/10',
-                  },
-                };
-                const cfg = platformConfig[platform];
-                const isLeader = views === maxViews && views > 0;
-
-                return (
-                  <motion.div
-                    key={platform}
-                    initial={{ opacity: 0, y: 16 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className={`glass border ${cfg.border} p-6 rounded-[28px] space-y-4 relative overflow-hidden`}
-                  >
-                    {isLeader && (
-                      <div className="absolute top-3 right-4 px-3 py-1 bg-amber-500/20 border border-amber-500/30 rounded-full text-[9px] font-black text-amber-400 uppercase tracking-widest flex items-center gap-1">
-                        <Star className="w-2.5 h-2.5" /> Melhor desempenho
-                      </div>
-                    )}
-
-                    {/* Header */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className={`text-2xl w-10 h-10 rounded-2xl ${cfg.bg} flex items-center justify-center`}>{cfg.emoji}</div>
-                        <div>
-                          <p className="font-black text-base">{cfg.label}</p>
-                          <p className="text-[10px] text-zinc-500 font-bold">{count} vídeo{count !== 1 ? 's' : ''} sincronizado{count !== 1 ? 's' : ''}</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className={`text-2xl font-black ${count > 0 ? cfg.text : 'text-zinc-700'}`}>{views.toLocaleString()}</p>
-                        <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">views</p>
-                      </div>
-                    </div>
-
-                    {/* Barra de progresso */}
-                    <div className="relative">
-                      <div className="w-full h-2.5 bg-zinc-800 rounded-full overflow-hidden">
-                        <motion.div
-                          initial={{ width: 0 }}
-                          animate={{ width: `${barWidth}%` }}
-                          transition={{ duration: 1, ease: 'easeOut', delay: 0.2 }}
-                          className={`h-full rounded-full bg-gradient-to-r ${cfg.color}`}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Métricas secundárias */}
-                    <div className="grid grid-cols-3 gap-3">
-                      <div className={`${cfg.bg} border ${cfg.border} rounded-2xl p-3 text-center`}>
-                        <p className={`text-sm font-black ${cfg.text}`}>{likes.toLocaleString()}</p>
-                        <p className="text-[9px] text-zinc-500 font-black uppercase tracking-widest mt-0.5">Likes</p>
-                      </div>
-                      <div className={`${cfg.bg} border ${cfg.border} rounded-2xl p-3 text-center`}>
-                        <p className={`text-sm font-black ${cfg.text}`}>{comments.toLocaleString()}</p>
-                        <p className="text-[9px] text-zinc-500 font-black uppercase tracking-widest mt-0.5">Comentários</p>
-                      </div>
-                      <div className={`${cfg.bg} border ${cfg.border} rounded-2xl p-3 text-center`}>
-                        <p className={`text-sm font-black ${cfg.text}`}>{count > 0 ? Math.round(views / count).toLocaleString() : '—'}</p>
-                        <p className="text-[9px] text-zinc-500 font-black uppercase tracking-widest mt-0.5">Média/vídeo</p>
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="py-16 flex flex-col items-center justify-center glass rounded-[32px] border border-zinc-800 text-center">
-              <BarChart3 className="w-12 h-12 text-zinc-700 mb-4" />
-              <p className="text-zinc-500 font-black uppercase tracking-widest text-xs">Nenhum vídeo sincronizado ainda</p>
-              <p className="text-zinc-600 text-xs mt-2 font-bold">Envie seus links para começar a ver os dados</p>
-            </div>
-          )}
-        </div>
-
-        {/* Elite Global (1/3) */}
-        <div className="space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-amber-500/20 text-amber-500">
-              <Crown className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-xl font-black tracking-tight uppercase">Elite Global</h2>
-              <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Top do HUB</p>
-            </div>
-          </div>
-          <div className="glass border border-zinc-800/50 rounded-[32px] p-4 space-y-2 max-h-[400px] overflow-y-auto custom-scrollbar">
-            {[...rankings].sort((a, b) => (b.totalViews || 0) - (a.totalViews || 0)).map((player, i) => {
-              const isMe = player.uid === user.uid;
-              const rankStyles = ['text-amber-400 border-amber-500/30 bg-amber-500/10','text-zinc-300 border-zinc-500/30 bg-zinc-500/10','text-orange-500 border-orange-700/30 bg-orange-700/10'];
-              const badgeStyle = rankStyles[i] || 'text-zinc-500 border-zinc-800 bg-zinc-900/30';
-              return (
-                <motion.div key={player.uid} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }}
-                  className={`flex items-center gap-3 p-3 rounded-2xl transition-all ${isMe ? 'bg-amber-500/10 border border-amber-500/20' : 'hover:bg-zinc-800/40'}`}
-                >
-                  <div className={`w-8 h-8 rounded-xl border flex items-center justify-center text-[10px] font-black shrink-0 ${badgeStyle}`}>
-                    {i === 0 ? <Crown className="w-3.5 h-3.5" /> : `${i + 1}º`}
-                  </div>
-                  <img src={player.photoURL || `https://ui-avatars.com/api/?name=${player.displayName}&background=random&bold=true`}
-                    className={`w-9 h-9 rounded-xl object-cover shrink-0 ${isMe ? 'ring-2 ring-amber-500' : ''}`}
-                    alt="" referrerPolicy="no-referrer" />
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-xs font-black truncate ${isMe ? 'text-amber-400' : 'text-white'}`}>{isMe ? 'Você' : player.displayName}</p>
-                    <p className="text-[10px] text-zinc-500 font-bold">{(player.totalViews || 0).toLocaleString()} views</p>
-                  </div>
-                  {i === 0 && <Trophy className="w-4 h-4 text-amber-500 shrink-0" />}
-                </motion.div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const StatCard = ({ title, value, sub, icon, color }: { title: string, value: string, sub: string, icon: React.ReactNode, color: 'amber' | 'emerald' | 'blue' | 'purple' }) => {
-  const colors = {
-    amber: 'bg-amber-500/20 text-amber-500 border-amber-500/20',
-    emerald: 'bg-emerald-500/20 text-emerald-500 border-emerald-500/20',
-    blue: 'bg-blue-500/20 text-blue-500 border-blue-500/20',
-    purple: 'bg-purple-500/20 text-purple-500 border-purple-500/20'
-  };
-
-  const glowColors = {
-    amber: 'bg-amber-500',
-    emerald: 'bg-emerald-500',
-    blue: 'bg-blue-500',
-    purple: 'bg-purple-500'
-  };
-
-  return (
-    <div className="p-6 rounded-3xl glass relative overflow-hidden group border border-zinc-800/50">
-      <div className={`absolute top-0 right-0 w-32 h-32 -mr-16 -mt-16 rounded-full opacity-10 blur-3xl transition-opacity group-hover:opacity-20 ${glowColors[color]}`} />
-      <div className="relative z-10">
-        <div className={`w-10 h-10 rounded-xl mb-4 flex items-center justify-center ${colors[color]}`}>
-          {React.cloneElement(icon as React.ReactElement<any>, { className: 'w-5 h-5' })}
-        </div>
-        <p className="text-[10px] text-zinc-500 uppercase font-black tracking-widest mb-1">{title}</p>
-        <p className="text-3xl font-black mb-1">{value}</p>
-        <p className="text-xs text-zinc-400 font-medium">{sub}</p>
-      </div>
-    </div>
-  );
-};
 
 const normalizeUrl = (url: string) => {
   try {
@@ -1292,7 +128,13 @@ const App: React.FC = () => {
   const [archivedUsers, setArchivedUsers] = useState<User[]>([]);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [globalSyncing, setGlobalSyncing] = useState(false);
-  const [settings, setSettings] = useState<{ apifyKey: string; lastSync?: string; lastResync?: string }>({ apifyKey: '' });
+  const [settings, setSettings] = useState<Settings>({ apifyKey: '', apifyKeys: [], apifyKeysSync: [] });
+  const [sessionSyncedIds, setSessionSyncedIds] = useState<string[]>([]);
+  const [syncing, setSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState(0);
+  const [syncTotal, setSyncTotal] = useState(0);
+  const [syncingPostId, setSyncingPostId] = useState<string | null>(null);
+  const [syncingCompId, setSyncingCompId] = useState<string | null>(null);
   const [timerConfig, setTimerConfig] = useState<{ enabled: boolean; endTime: number | null; targetTime: string; message: string }>({
     enabled: false,
     endTime: null,
@@ -1312,6 +154,7 @@ const App: React.FC = () => {
   const [profilePhoto, setProfilePhoto] = useState('');
   const [settingsTab, setSettingsTab] = useState<'PROFILE' | 'SOCIAL'>('PROFILE');
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
+  const [apifyKeySync, setApifyKeySync] = useState('');
   const [compTitle, setCompTitle] = useState('');
   const [compRankingMetric, setCompRankingMetric] = useState<'views' | 'likes'>('views');
   const [compGoalTarget, setCompGoalTarget] = useState<number>(0);
@@ -1573,7 +416,14 @@ const App: React.FC = () => {
       // Listener para as configurações globais (ex: chave API)
       unsubSettings = onSnapshot(doc(db, 'config', 'settings'), (docSnap) => {
         if (docSnap.exists()) {
-          setSettings(docSnap.data() as { apifyKey: string; lastSync?: string; lastResync?: string });
+          const data = docSnap.data();
+          // Migração automática e suporte a múltiplas chaves
+          const keys = data.apifyKeys || (data.apifyKey ? [data.apifyKey] : []);
+          setSettings({
+            ...data,
+            apifyKey: data.apifyKey || (keys[0] || ''),
+            apifyKeys: keys
+          } as any);
         }
       }, (error) => console.error('Erro ao carregar configurações:', error));
 
@@ -1622,10 +472,57 @@ const App: React.FC = () => {
 
       const postData = postSnap.data() as Post;
       const authorId = postData.userId;
+      const cid = postData.competitionId;
 
+      // 1. Marca como deletado no Firestore
       await updateDoc(postRef, { status: 'deleted' });
 
-      await updateUserMetrics(authorId);
+      // 2. Subtrai IMEDIATAMENTE os stats do usuário sem depender de propagação de query
+      if (cid) {
+        const userRef = doc(db, 'users', authorId);
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+          const userData = userSnap.data() as any;
+          const compStats = userData.competitionStats?.[cid] || {};
+
+          const wasApproved = postData.status === 'approved' || postData.status === 'synced';
+          const viewsGain  = wasApproved ? Math.max(0, (postData.views    || 0) - (postData.viewsBaseline    || 0)) : 0;
+          const likesGain  = wasApproved ? Math.max(0, (postData.likes    || 0) - (postData.likesBaseline    || 0)) : 0;
+          const commGain   = wasApproved ? Math.max(0, (postData.comments || 0) - (postData.commentsBaseline || 0)) : 0;
+          const shrGain    = wasApproved ? Math.max(0, (postData.shares   || 0) - (postData.sharesBaseline   || 0)) : 0;
+          const savGain    = wasApproved ? Math.max(0, (postData.saves    || 0) - (postData.savesBaseline    || 0)) : 0;
+
+          const patch: any = {
+            // Stats globais mensais
+            totalViews:    Math.max(0, (userData.totalViews    || 0) - (postData.views    || 0)),
+            totalLikes:    Math.max(0, (userData.totalLikes    || 0) - (postData.likes    || 0)),
+            totalComments: Math.max(0, (userData.totalComments || 0) - (postData.comments || 0)),
+            totalPosts:    Math.max(0, (userData.totalPosts    || 0) - 1),
+            // Stats diários globais (só se o post contava para o diário)
+            dailyViews:    Math.max(0, (userData.dailyViews    || 0) - viewsGain),
+            dailyLikes:    Math.max(0, (userData.dailyLikes    || 0) - likesGain),
+            dailyComments: Math.max(0, (userData.dailyComments || 0) - commGain),
+            dailyShares:   Math.max(0, (userData.dailyShares   || 0) - shrGain),
+            dailySaves:    Math.max(0, (userData.dailySaves    || 0) - savGain),
+            dailyPosts:    Math.max(0, (userData.dailyPosts    || 0) - (wasApproved ? 1 : 0)),
+            // Stats da competição
+            [`competitionStats.${cid}.views`]:    Math.max(0, (compStats.views    || 0) - (postData.views    || 0)),
+            [`competitionStats.${cid}.likes`]:    Math.max(0, (compStats.likes    || 0) - (postData.likes    || 0)),
+            [`competitionStats.${cid}.comments`]: Math.max(0, (compStats.comments || 0) - (postData.comments || 0)),
+            [`competitionStats.${cid}.posts`]:    Math.max(0, (compStats.posts    || 0) - 1),
+            // Stats diários da competição
+            [`competitionStats.${cid}.dailyViews`]:    Math.max(0, (compStats.dailyViews    || 0) - viewsGain),
+            [`competitionStats.${cid}.dailyLikes`]:    Math.max(0, (compStats.dailyLikes    || 0) - likesGain),
+            [`competitionStats.${cid}.dailyComments`]: Math.max(0, (compStats.dailyComments || 0) - commGain),
+            [`competitionStats.${cid}.dailyPosts`]:    Math.max(0, (compStats.dailyPosts    || 0) - (wasApproved ? 1 : 0)),
+          };
+
+          await updateDoc(userRef, patch);
+        }
+      }
+
+      // 3. Recálculo completo em background para consistência final
+      updateUserMetrics(authorId).catch(() => {});
 
       setNotification({ message: 'Vídeo removido com sucesso!', type: 'success' });
       setPostToDelete(null);
@@ -1926,7 +823,8 @@ const App: React.FC = () => {
         try {
           const cid = targetComp.id;
           
-          // Filter users who have daily stats for THIS competition
+          // --- LÓGICA V3: RESET MANUAL ABSOLUTO ---
+          // Filtra usuários que possuem estatísticas diárias para ESTA competição
           const dailyViewWinners = [...approvedUsers]
             .filter(u => (u.competitionStats?.[cid]?.dailyViews || 0) > 0)
             .sort((a, b) => (b.competitionStats?.[cid]?.dailyViews || 0) - (a.competitionStats?.[cid]?.dailyViews || 0))
@@ -1973,11 +871,10 @@ const App: React.FC = () => {
             }
           }
 
-          console.log('--- RESET DAILY RANKING LOG ---');
+          console.log('--- RESET DAILY RANKING LOG (ACTION BASED) ---');
           console.log('Target Competition:', targetComp.title);
           console.log('Daily View Winners:', dailyViewWinners.map(u => ({ name: u.displayName, views: u.competitionStats?.[cid]?.dailyViews })));
           console.log('Quantity Winner:', quantityWinner?.displayName);
-          console.log('Calculated Increments:', balanceIncrements);
 
           // Process updates using Batch
           const batch = writeBatch(db);
@@ -2002,7 +899,6 @@ const App: React.FC = () => {
             const dataToUpdate: any = {};
             
             // Reset daily stats for THIS competition
-            const oldCompStats = u.competitionStats?.[cid] || {};
             dataToUpdate[`competitionStats.${cid}.dailyViews`] = 0;
             dataToUpdate[`competitionStats.${cid}.dailyLikes`] = 0;
             dataToUpdate[`competitionStats.${cid}.dailyComments`] = 0;
@@ -2033,8 +929,7 @@ const App: React.FC = () => {
             batch.update(doc(db, 'users', u.uid), dataToUpdate);
           });
 
-          // 3. Reset post baselines for THIS competition
-          // Isso define o ponto de partida para o ranking diário após o reset
+          // 3. Reset post baselines para TODOS os posts ativos (pois o ciclo acabou)
           const postsToReset = posts.filter(p => p.competitionId === cid && (p.status === 'approved' || p.status === 'synced'));
           postsToReset.forEach(p => {
             batch.update(doc(db, 'posts', p.id), {
@@ -2046,8 +941,9 @@ const App: React.FC = () => {
             });
           });
 
-          // 4. Update competition reset timestamp
-          batch.update(doc(db, 'competitions', cid), { lastDailyReset: Date.now() });
+          // 4. Update competition reset timestamp - Marcar o agora como início do novo ciclo
+          const resetTime = Date.now();
+          batch.update(doc(db, 'competitions', cid), { lastDailyReset: resetTime });
 
           await batch.commit();
           if (Object.keys(balanceIncrements).length === 0) {
@@ -2100,9 +996,26 @@ const App: React.FC = () => {
             }
           }
 
-          // 2. Reset all users (stats to 0 and clear competitionStats)
+          // 2. Reset all users (stats to 0 but PRESERVE balance and paidTotal in competitionStats)
           const usersSnap = await getDocs(collection(db, 'users'));
           for (const uDoc of usersSnap.docs) {
+            const userData = uDoc.data();
+            const existingStats = userData.competitionStats || {};
+            const newStats: any = {};
+            
+            // Rebuild stats preserving financial data
+            Object.keys(existingStats).forEach(cid => {
+              newStats[cid] = {
+                ...existingStats[cid],
+                views: 0, likes: 0, comments: 0, shares: 0, saves: 0, posts: 0,
+                dailyViews: 0, dailyLikes: 0, dailyComments: 0, dailyShares: 0, dailySaves: 0, dailyPosts: 0, dailyInstaPosts: 0,
+                // Ensure financial fields are kept as they are
+                balance: existingStats[cid].balance || 0,
+                paidTotal: existingStats[cid].paidTotal || 0,
+                paidHistory: existingStats[cid].paidHistory || []
+              };
+            });
+
             batch.update(uDoc.ref, {
               totalViews: 0,
               totalLikes: 0,
@@ -2117,7 +1030,7 @@ const App: React.FC = () => {
               dailySaves: 0,
               dailyPosts: 0,
               dailyInstaPosts: 0,
-              competitionStats: {}
+              competitionStats: newStats
             });
             count++;
             if (count >= 400) {
@@ -2274,10 +1187,12 @@ const App: React.FC = () => {
             });
           });
 
-          // 7. Reset competitions lastDailyReset to now
+          // 7. Reset competitions lastDailyReset to now - Anchor to 20:00
+          const resetAnchor = new Date();
+          resetAnchor.setHours(20, 0, 0, 0);
           const compsSnap = await getDocs(collection(db, 'competitions'));
           compsSnap.docs.forEach(cDoc => {
-            batch.update(cDoc.ref, { lastDailyReset: Date.now() });
+            batch.update(cDoc.ref, { lastDailyReset: resetAnchor.getTime() });
           });
 
           await batch.commit();
@@ -2619,8 +1534,8 @@ const App: React.FC = () => {
         fixed inset-y-0 left-0 z-50 w-64 glass border-r border-zinc-800/50 transform transition-transform duration-300 lg:relative lg:translate-x-0
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
-          <div className="flex flex-col h-full p-6">
-            <div className="flex items-center gap-3 mb-12">
+          <div className="flex flex-col h-full p-6 overflow-y-auto">
+            <div className="flex items-center gap-3 mb-8 shrink-0">
               <div className="w-10 h-10 gold-bg rounded-xl flex items-center justify-center">
                 <Zap className="w-6 h-6 text-black" />
               </div>
@@ -2648,7 +1563,7 @@ const App: React.FC = () => {
                     user.role === 'administrativo' ? "Administrativo" : "Gestão"
                 } />
               )}
-              <NavItem active={view === 'SETTINGS'} onClick={() => setView('SETTINGS')} icon={<Settings />} label="Configurações" />
+              <NavItem active={view === 'SETTINGS'} onClick={() => setView('SETTINGS')} icon={<SettingsIcon />} label="Configurações" />
 
               <div className="pt-2">
                 <NavItem active={view === 'SUGGESTIONS'} onClick={() => setView('SUGGESTIONS')} icon={<MessageSquare />} label="Sugestões" />
@@ -2749,16 +1664,23 @@ const App: React.FC = () => {
                       comp={competitions.find(c => c.id === selectedActiveCompId)!}
                       user={user}
                       rankings={rankings}
-                      posts={posts}
+                      posts={posts.filter(p => isAdmin || p.userId === user.uid)}
                       registrations={registrations}
                       onBack={() => setSelectedActiveCompId(null)}
                       setView={setView}
+                      RankingsComponent={Rankings}
+                      PostSubmitComponent={PostSubmit}
+                      onDelete={handleDeletePost}
+                      onRemove={setRemovalModal}
+                      isAdmin={isAdmin}
+                      allCompetitions={competitions}
                     />
                   )
                 )}
                 {view === 'HISTORY' && (
                   <HistoryView 
-                    posts={posts} 
+                    posts={posts.filter(p => isAdmin || p.userId === user.uid)} 
+                    competitions={competitions}
                     onDelete={handleDeletePost} 
                     onRemove={setRemovalModal}
                     isAdmin={isAdmin} 
@@ -2776,6 +1698,18 @@ const App: React.FC = () => {
                     competitions={competitions}
                     registrations={registrations}
                     announcements={announcements}
+                    sessionSyncedIds={sessionSyncedIds}
+                    setSessionSyncedIds={setSessionSyncedIds}
+                    syncing={syncing}
+                    setSyncing={setSyncing}
+                    syncProgress={syncProgress}
+                    setSyncProgress={setSyncProgress}
+                    syncTotal={syncTotal}
+                    setSyncTotal={setSyncTotal}
+                    syncingPostId={syncingPostId}
+                    setSyncingPostId={setSyncingPostId}
+                    syncingCompId={syncingCompId}
+                    setSyncingCompId={setSyncingCompId}
                     timerConfig={timerConfig}
                     handleUpdateTimer={handleUpdateTimer}
                     onSettingsUpdate={(s) => setSettings(s)}
@@ -2853,6 +1787,8 @@ const App: React.FC = () => {
                     setIsCreatingComp={setIsCreatingComp}
                     editingUser={editingUser}
                     setEditingUser={setEditingUser}
+                    apifyKeySync={apifyKeySync}
+                    setApifyKeySync={setApifyKeySync}
                     editName={editName}
                     setEditName={setEditName}
                     editPass={editPass}
@@ -3152,506 +2088,6 @@ const App: React.FC = () => {
 
 
 
-const CompetitionRegulamento = ({ comp }: { comp: Competition }) => {
-  return (
-    <div className="space-y-6">
-      {comp.description && (
-        <div className="bg-zinc-950 border border-zinc-800 rounded-3xl p-8 space-y-3">
-          <h3 className="text-xs font-black text-amber-500 uppercase tracking-widest flex items-center gap-2"><BookOpen className="w-4 h-4" /> Sobre a Competição</h3>
-          <p className="text-zinc-300 font-bold text-sm leading-relaxed whitespace-pre-line">{comp.description}</p>
-        </div>
-      )}
-      {comp.rules && (
-        <div className="bg-zinc-950 border border-zinc-800 rounded-3xl p-8 space-y-3">
-          <h3 className="text-xs font-black text-amber-500 uppercase tracking-widest flex items-center gap-2"><Shield className="w-4 h-4" /> Regras</h3>
-          <p className="text-zinc-300 font-bold text-sm leading-relaxed whitespace-pre-line">{comp.rules}</p>
-        </div>
-      )}
-      {(comp.hashtags || comp.mentions) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {comp.hashtags && (
-            <div className="bg-zinc-950 border border-zinc-800 rounded-3xl p-6 space-y-3">
-              <h3 className="text-xs font-black text-amber-500 uppercase tracking-widest"># Hashtags Obrigatórias</h3>
-              <div className="flex flex-wrap gap-2">
-                {comp.hashtags.split(/[\s,]+/).filter(Boolean).map((tag, i) => (
-                  <span key={i} className="px-3 py-1.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-lg text-[11px] font-black">{tag.startsWith('#') ? tag : `#${tag}`}</span>
-                ))}
-              </div>
-            </div>
-          )}
-          {comp.mentions && (
-            <div className="bg-zinc-950 border border-zinc-800 rounded-3xl p-6 space-y-3">
-              <h3 className="text-xs font-black text-amber-500 uppercase tracking-widest">@ Menções Obrigatórias</h3>
-              <div className="flex flex-wrap gap-2">
-                {comp.mentions.split(/[\s,]+/).filter(Boolean).map((m, i) => (
-                  <span key={i} className="px-3 py-1.5 bg-zinc-800 text-zinc-300 border border-zinc-700 rounded-lg text-[11px] font-black">{m.startsWith('@') ? m : `@${m}`}</span>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {comp.prizes && comp.prizes.length > 0 && (
-          <div className="bg-zinc-950 border border-zinc-800 rounded-3xl p-6 space-y-4">
-            <h3 className="text-xs font-black text-amber-500 uppercase tracking-widest flex items-center gap-2"><Trophy className="w-4 h-4" /> Premiação Geral</h3>
-            <div className="space-y-2">
-              {comp.prizes.map((prize, i) => (
-                <div key={i} className="flex items-center justify-between py-2 border-b border-zinc-800/50 last:border-0">
-                  <div className="flex items-center gap-3">
-                    <span className={`w-7 h-7 rounded-xl flex items-center justify-center text-[11px] font-black ${i===0?'bg-amber-500/20 text-amber-400':i===1?'bg-zinc-600/20 text-zinc-400':i===2?'bg-orange-700/20 text-orange-500':'bg-zinc-900 text-zinc-500'}`}>{prize.position}º</span>
-                    <span className="text-zinc-300 text-sm font-bold">{prize.label || `${prize.position}º lugar`}</span>
-                  </div>
-                  <span className="text-amber-400 font-black text-sm">R$ {(prize.value||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        {comp.prizesDaily && comp.prizesDaily.length > 0 && (
-          <div className="bg-zinc-950 border border-zinc-800 rounded-3xl p-6 space-y-4">
-            <h3 className="text-xs font-black text-amber-500 uppercase tracking-widest flex items-center gap-2"><Zap className="w-4 h-4" /> Premiação Diária</h3>
-            <div className="space-y-2">
-              {comp.prizesDaily.map((prize, i) => (
-                <div key={i} className="flex items-center justify-between py-2 border-b border-zinc-800/50 last:border-0">
-                  <div className="flex items-center gap-3">
-                    <span className={`w-7 h-7 rounded-xl flex items-center justify-center text-[11px] font-black ${i===0?'bg-amber-500/20 text-amber-400':i===1?'bg-zinc-600/20 text-zinc-400':i===2?'bg-orange-700/20 text-orange-500':'bg-zinc-900 text-zinc-500'}`}>{prize.position}º</span>
-                    <span className="text-zinc-300 text-sm font-bold">{prize.label || `${prize.position}º lugar`}</span>
-                  </div>
-                  <span className="text-amber-400 font-black text-sm">R$ {(prize.value||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        {comp.prizesMonthly && comp.prizesMonthly.length > 0 && (
-          <div className="bg-zinc-950 border border-zinc-800 rounded-3xl p-6 space-y-4">
-            <h3 className="text-xs font-black text-amber-500 uppercase tracking-widest flex items-center gap-2"><TrendingUp className="w-4 h-4" /> Premiação Mensal</h3>
-            <div className="space-y-2">
-              {comp.prizesMonthly.map((prize, i) => (
-                <div key={i} className="flex items-center justify-between py-2 border-b border-zinc-800/50 last:border-0">
-                  <div className="flex items-center gap-3">
-                    <span className={`w-7 h-7 rounded-xl flex items-center justify-center text-[11px] font-black ${i===0?'bg-amber-500/20 text-amber-400':i===1?'bg-zinc-600/20 text-zinc-400':i===2?'bg-orange-700/20 text-orange-500':'bg-zinc-900 text-zinc-500'}`}>{prize.position}º</span>
-                    <span className="text-zinc-300 text-sm font-bold">{prize.label || `${prize.position}º lugar`}</span>
-                  </div>
-                  <span className="text-amber-400 font-black text-sm">R$ {(prize.value||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        {comp.prizesInstagram && comp.prizesInstagram.length > 0 && (
-          <div className="bg-zinc-950 border border-zinc-800 rounded-3xl p-6 space-y-4">
-            <h3 className="text-xs font-black text-amber-500 uppercase tracking-widest flex items-center gap-2"><Camera className="w-4 h-4" /> Premiação Instagram</h3>
-            <div className="space-y-2">
-              {comp.prizesInstagram.map((prize, i) => (
-                <div key={i} className="flex items-center justify-between py-2 border-b border-zinc-800/50 last:border-0">
-                  <div className="flex items-center gap-3">
-                    <span className={`w-7 h-7 rounded-xl flex items-center justify-center text-[11px] font-black ${i===0?'bg-amber-500/20 text-amber-400':i===1?'bg-zinc-600/20 text-zinc-400':i===2?'bg-orange-700/20 text-orange-500':'bg-zinc-900 text-zinc-500'}`}>{prize.position}º</span>
-                    <span className="text-zinc-300 text-sm font-bold">{prize.label || `${prize.position}º lugar`}</span>
-                  </div>
-                  <span className="text-amber-400 font-black text-sm">R$ {(prize.value||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-      {(comp.bonuses || comp.instaBonus || (comp.viewBonus && comp.viewBonus > 0)) && (
-        <div className="bg-zinc-950 border border-zinc-800 rounded-3xl p-6 space-y-3">
-          <h3 className="text-xs font-black text-amber-500 uppercase tracking-widest flex items-center gap-2"><Star className="w-4 h-4" /> Bônus e Multiplicadores</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {(comp.viewBonus && comp.viewBonus > 0) ? (
-              <div className="bg-zinc-900 rounded-2xl p-4 border border-zinc-800">
-                <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">Bônus por View</p>
-                <p className="text-amber-400 font-black text-lg">x{comp.viewBonus}</p>
-              </div>
-            ) : null}
-            {comp.instaBonus && (
-              <div className="bg-zinc-900 rounded-2xl p-4 border border-zinc-800 md:col-span-2">
-                <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">Bônus Instagram</p>
-                <p className="text-zinc-300 font-bold text-sm">{comp.instaBonus}</p>
-              </div>
-            )}
-            {comp.bonuses && (
-              <div className="bg-zinc-900 rounded-2xl p-4 border border-zinc-800 md:col-span-3">
-                <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">Outros Bônus</p>
-                <p className="text-zinc-300 font-bold text-sm whitespace-pre-line">{comp.bonuses}</p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-const CompetitionsView = ({ user, competitions, registrations, onSelectComp }: { 
-  user: User, 
-  competitions: Competition[], 
-  registrations: CompetitionRegistration[],
-  onSelectComp: (id: string) => void
-}) => {
-  const isStaff = user.role === 'admin' || user.role === 'auditor' || user.role === 'administrativo';
-  const [selectedRegulamentoComp, setSelectedRegulamentoComp] = useState<Competition | null>(null);
-  const [acceptedRules, setAcceptedRules] = useState(false);
-
-  const handleRegister = async (compId: string) => {
-    if (!acceptedRules) {
-      alert('Você precisa aceitar as regras para participar!');
-      return;
-    }
-    try {
-      const regId = Math.random().toString(36).substr(2, 9);
-      await setDoc(doc(db, 'competition_registrations', regId), {
-        id: regId,
-        competitionId: compId,
-        userId: user.uid,
-        userName: user.displayName,
-        userEmail: user.email,
-        status: 'pending',
-        acceptedRules: true,
-        timestamp: Date.now()
-      });
-      alert('Inscrição solicitada com sucesso! Aguarde a aprovação da diretoria.');
-      setSelectedRegulamentoComp(null);
-      setAcceptedRules(false);
-    } catch (error) {
-      console.error('Registration error', error);
-      alert('Erro ao solicitar inscrição.');
-    }
-  };
-
-  const now = Date.now();
-
-  const participating = competitions.filter(c => 
-    c.isActive && c.endDate >= now && 
-    registrations.some(r => r.competitionId === c.id && r.userId === user.uid && r.status === 'approved')
-  );
-
-  const available = competitions.filter(c => 
-    c.isActive && c.startDate <= now && c.endDate >= now && 
-    !registrations.some(r => r.competitionId === c.id && r.userId === user.uid)
-  );
-
-  const pendingRequests = competitions.filter(c => 
-    c.isActive && c.endDate >= now && 
-    registrations.some(r => r.competitionId === c.id && r.userId === user.uid && r.status === 'pending')
-  );
-
-  const upcoming = competitions.filter(c =>
-    c.isActive && c.startDate > now &&
-    !registrations.some(r => r.competitionId === c.id && r.userId === user.uid)
-  );
-
-  const CompetitionCard = ({ comp, type }: { comp: Competition, type: 'participating' | 'available' | 'pending' | 'upcoming' }) => (
-    <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl overflow-hidden glass group">
-      {comp.bannerUrl && (
-        <div className="h-32 w-full bg-zinc-800/50 relative overflow-hidden">
-          <img src={comp.bannerUrl} alt={comp.title} className="w-full h-full object-cover opacity-60 group-hover:opacity-80 transition-opacity" />
-          <div className="absolute inset-0 bg-gradient-to-t from-zinc-900/90 to-transparent" />
-        </div>
-      )}
-      <div className={`p-6 ${comp.bannerUrl ? '-mt-12 relative z-10' : ''}`}>
-        <div className="flex items-center gap-3 mb-4">
-          <div className={`w-10 h-10 flex border items-center justify-center rounded-xl bg-zinc-900 ${
-            type === 'participating' ? 'text-emerald-500 border-emerald-500/20' : 
-            type === 'pending' ? 'text-amber-500 border-amber-500/20' :
-            type === 'upcoming' ? 'text-blue-500 border-blue-500/20' :
-            'text-pink-500 border-pink-500/20'
-          }`}>
-            {type === 'participating' ? <CheckCircle2 className="w-5 h-5" /> : 
-             type === 'pending' ? <Clock className="w-5 h-5" /> : 
-             type === 'upcoming' ? <Calendar className="w-5 h-5" /> :
-             <Trophy className="w-5 h-5" />}
-          </div>
-          <div>
-            <h3 className="font-black text-lg text-white leading-tight">{comp.title}</h3>
-            <p className="text-[10px] uppercase font-black tracking-widest text-zinc-500">
-              {new Date(comp.startDate).toLocaleDateString()} - {new Date(comp.endDate).toLocaleDateString()}
-            </p>
-          </div>
-        </div>
-        
-        <p className="text-sm text-zinc-400 font-bold mb-6 line-clamp-2">
-          {comp.description}
-        </p>
-
-        {type === 'available' && (
-          <button
-            onClick={() => {
-              setSelectedRegulamentoComp(comp);
-              setAcceptedRules(false);
-            }}
-            className="w-full py-4 text-sm font-black gold-bg text-black rounded-xl hover:scale-[1.02] transition-transform flex items-center justify-center gap-2"
-          >
-            SOLICITAR INSCRIÇÃO
-          </button>
-        )}
-        {type === 'pending' && (
-          <div className="w-full py-4 text-sm font-black bg-amber-500/10 text-amber-500 rounded-xl flex items-center justify-center gap-2 border border-amber-500/20">
-            AGUARDANDO APROVAÇÃO
-          </div>
-        )}
-        {type === 'participating' && (
-          <div className="space-y-3">
-            <div className="w-full py-4 text-sm font-black bg-emerald-500/10 text-emerald-500 rounded-xl flex items-center justify-center gap-2 border border-emerald-500/20">
-              <CheckCircle2 className="w-4 h-4" /> INSCRIÇÃO APROVADA
-            </div>
-            <button
-              onClick={() => onSelectComp(comp.id)}
-              className="w-full py-4 text-sm font-black gold-bg text-black rounded-xl hover:scale-[1.02] transition-transform flex items-center justify-center gap-2"
-            >
-              ACESSAR COMPETIÇÃO
-            </button>
-          </div>
-        )}
-        {(isStaff && type !== 'participating') && (
-          <button
-            onClick={() => onSelectComp(comp.id)}
-            className="w-full mt-3 py-4 text-[10px] font-black bg-zinc-800 text-zinc-400 rounded-xl hover:text-white transition-colors flex items-center justify-center gap-2 border border-zinc-700/50"
-          >
-            ACESSAR (MODO ADMIN)
-          </button>
-        )}
-        {type === 'upcoming' && (
-          <div className="w-full py-4 text-sm font-black bg-blue-500/10 text-blue-500 rounded-xl flex items-center justify-center gap-2 border border-blue-500/20">
-            <Calendar className="w-4 h-4" /> EM BREVE
-          </div>
-        )}
-        <button
-          onClick={() => setSelectedRegulamentoComp(comp)}
-          className="w-full mt-3 py-3 text-xs font-black bg-zinc-900 border border-zinc-800 text-zinc-400 rounded-xl hover:text-white transition-colors flex items-center justify-center gap-2"
-        >
-          <BookOpen className="w-4 h-4" /> VER INFORMAÇÕES
-        </button>
-      </div>
-    </div>
-  );
-
-  return (
-    <div className="max-w-6xl mx-auto space-y-12">
-      <div className="space-y-2">
-        <h2 className="text-4xl font-black tracking-tighter">Minhas Competições</h2>
-        <p className="text-zinc-400 font-bold">Acompanhe suas inscrições e explore novas competições.</p>
-      </div>
-
-      {participating.length > 0 && (
-        <div className="space-y-6">
-          <div className="flex items-center gap-3 border-b border-zinc-800 pb-3">
-            <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-            <h3 className="text-xl font-black uppercase tracking-widest text-emerald-500">Participando Atualmente</h3>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {participating.map(c => <CompetitionCard key={c.id} comp={c} type="participating" />)}
-          </div>
-        </div>
-      )}
-
-      {pendingRequests.length > 0 && (
-        <div className="space-y-6">
-          <div className="flex items-center gap-3 border-b border-zinc-800 pb-3">
-            <Clock className="w-5 h-5 text-amber-500" />
-            <h3 className="text-xl font-black uppercase tracking-widest text-amber-500">Inscrições Pendentes</h3>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {pendingRequests.map(c => <CompetitionCard key={c.id} comp={c} type="pending" />)}
-          </div>
-        </div>
-      )}
-
-      {available.length > 0 && (
-        <div className="space-y-6">
-          <div className="flex items-center gap-3 border-b border-zinc-800 pb-3">
-            <Trophy className="w-5 h-5 text-pink-500" />
-            <h3 className="text-xl font-black uppercase tracking-widest text-pink-500">Disponíveis para Inscrição</h3>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {available.map(c => <CompetitionCard key={c.id} comp={c} type="available" />)}
-          </div>
-        </div>
-      )}
-
-      {upcoming.length > 0 && (
-        <div className="space-y-6">
-          <div className="flex items-center gap-3 border-b border-zinc-800 pb-3">
-            <Calendar className="w-5 h-5 text-blue-500" />
-            <h3 className="text-xl font-black uppercase tracking-widest text-blue-500">Próximas Competições</h3>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {upcoming.map(c => <CompetitionCard key={c.id} comp={c} type="upcoming" />)}
-          </div>
-        </div>
-      )}
-
-      {participating.length === 0 && available.length === 0 && pendingRequests.length === 0 && upcoming.length === 0 && (
-        <div className="py-24 text-center glass rounded-3xl border border-zinc-800/50 space-y-4">
-          <Trophy className="w-12 h-12 text-zinc-700 mx-auto" />
-          <h3 className="text-xl font-black text-zinc-500 uppercase tracking-widest">Nenhuma competição encontrada</h3>
-          <p className="text-zinc-600 font-bold text-sm">Fique de olho, novas competições serão lançadas em breve.</p>
-        </div>
-      )}
-
-      {selectedRegulamentoComp && (
-        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-end md:justify-center p-4 sm:p-6 pb-20">
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setSelectedRegulamentoComp(null)} />
-          <div className="relative w-full max-w-4xl max-h-[85vh] bg-zinc-950 border border-zinc-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col">
-            <div className="sticky top-0 z-10 flex items-center justify-between p-6 bg-zinc-950/90 backdrop-blur border-b border-zinc-800/50">
-               <h2 className="text-xl font-black flex items-center gap-2 text-white"><BookOpen className="w-5 h-5 text-amber-500" /> INFORMAÇÕES DA COMPETIÇÃO</h2>
-               <button onClick={() => setSelectedRegulamentoComp(null)} className="p-2 bg-zinc-900 rounded-xl hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors">
-                  <X className="w-5 h-5" />
-               </button>
-            </div>
-            <div className="overflow-y-auto p-6 scrollbar-hide">
-               <CompetitionRegulamento comp={selectedRegulamentoComp} />
-               
-               {/* Regras e Aceite */}
-               {!registrations.find(r => r.competitionId === selectedRegulamentoComp.id && r.userId === user.uid) && (
-                 <div className="mt-8 p-8 bg-zinc-900/50 border border-zinc-800 rounded-3xl space-y-6">
-                    <div className="flex flex-col gap-4">
-                      <h3 className="text-sm font-black uppercase text-amber-500 tracking-widest">Termo de Aceite</h3>
-                      <label className="flex items-start gap-4 cursor-pointer group">
-                        <div className="relative flex items-center mt-1">
-                          <input
-                            type="checkbox"
-                            checked={acceptedRules}
-                            onChange={(e) => setAcceptedRules(e.target.checked)}
-                            className="peer h-5 w-5 appearance-none rounded border-2 border-zinc-700 bg-zinc-800 transition-all checked:border-amber-500 checked:bg-amber-500"
-                          />
-                          <Check className="absolute h-3.5 w-3.5 text-black opacity-0 transition-opacity peer-checked:opacity-100 left-0.5" />
-                        </div>
-                        <span className="text-xs font-bold text-zinc-400 group-hover:text-zinc-200 transition-colors">
-                          Eu li e aceito todas as regras e condições estabelecidas para esta competição.
-                        </span>
-                      </label>
-                    </div>
-
-                    <button
-                      onClick={() => handleRegister(selectedRegulamentoComp.id)}
-                      disabled={!acceptedRules}
-                      className={`w-full py-5 font-black rounded-2xl transition-all shadow-xl ${
-                        acceptedRules 
-                          ? 'gold-bg text-black hover:scale-[1.02] shadow-amber-500/20' 
-                          : 'bg-zinc-800 text-zinc-500 cursor-not-allowed opacity-50'
-                      }`}
-                    >
-                      CONFIRMAR E SOLICITAR INSCRIÇÃO
-                    </button>
-                 </div>
-               )}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-const CompetitionDetailView = ({ 
-  comp, 
-  user, 
-  rankings, 
-  posts, 
-  registrations, 
-  onBack,
-  setView
-}: { 
-  comp: Competition, 
-  user: User, 
-  rankings: User[], 
-  posts: Post[], 
-  registrations: CompetitionRegistration[],
-  onBack: () => void,
-  setView: (view: any) => void
-}) => {
-  const [activeTab, setActiveTab] = useState<'RANKING' | 'POST' | 'REGULAMENTO'>('RANKING');
-
-  return (
-    <div className="max-w-6xl mx-auto space-y-8">
-      {/* Header Detail */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-zinc-800/50">
-        <div className="flex items-center gap-4">
-          <button 
-            onClick={onBack}
-            className="p-3 bg-zinc-900 hover:bg-zinc-800 rounded-2xl transition-colors text-zinc-400 hover:text-white"
-          >
-            <ArrowLeft className="w-6 h-6" />
-          </button>
-          <div>
-            <h2 className="text-3xl font-black tracking-tighter">{comp.title}</h2>
-            <p className="text-zinc-500 text-[10px] font-black uppercase tracking-widest mt-1">Explorando competição individual</p>
-          </div>
-        </div>
-
-        <div className="flex p-1 bg-zinc-900 rounded-2xl border border-zinc-800/50 w-full md:w-auto">
-          <button
-            onClick={() => setActiveTab('RANKING')}
-            className={`flex-1 md:flex-none px-8 py-3 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${activeTab === 'RANKING' ? 'bg-zinc-800 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
-          >
-            <Trophy className="w-4 h-4" />
-            RANKING
-          </button>
-          <button
-            onClick={() => setActiveTab('POST')}
-            className={`flex-1 md:flex-none px-6 py-3 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${activeTab === 'POST' ? 'bg-zinc-800 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
-          >
-            <Send className="w-4 h-4" />
-            POSTAR LINK
-          </button>
-          <button
-            onClick={() => setActiveTab('REGULAMENTO')}
-            className={`flex-1 md:flex-none px-6 py-3 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${activeTab === 'REGULAMENTO' ? 'bg-amber-500/20 text-amber-500 shadow-lg' : 'text-zinc-500 hover:text-amber-400'}`}
-          >
-            <BookOpen className="w-4 h-4" />
-            REGULAMENTO
-          </button>
-        </div>
-      </div>
-
-      {/* Tab Content */}
-      <div className="relative">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2 }}
-          >
-            {activeTab === 'RANKING' ? (
-              <div className="space-y-6">
-                <div className="flex justify-between items-center bg-amber-500/5 border border-amber-500/10 p-6 rounded-3xl">
-                  <div className="space-y-1">
-                    <h4 className="text-amber-500 font-black uppercase text-xs tracking-widest">Ação Rápida</h4>
-                    <p className="text-zinc-400 text-sm font-bold">Deseja enviar novos vídeos para esta competição?</p>
-                  </div>
-                  <button
-                    onClick={() => setActiveTab('POST')}
-                    className="px-6 py-3 gold-bg text-black font-black rounded-xl hover:scale-105 transition-all text-xs flex items-center gap-2"
-                  >
-                    <Send className="w-4 h-4" />
-                    PROTOCOLAR LINKS
-                  </button>
-                </div>
-                <Rankings rankings={rankings} competitions={[comp]} lockedCompetitionId={comp.id} />
-              </div>
-            ) : activeTab === 'REGULAMENTO' ? (
-              <CompetitionRegulamento comp={comp} />
-            ) : (
-              <PostSubmit 
-                user={user} 
-                competitions={[comp]} 
-                registrations={registrations} 
-                setView={setView} 
-                lockedCompetitionId={comp.id} 
-              />
-            )}
-          </motion.div>
-        </AnimatePresence>
-      </div>
-    </div>
-  );
-};
 
 const PostSubmit = ({ user, competitions, registrations, setView, lockedCompetitionId }: {
   user: User,
@@ -4027,11 +2463,18 @@ const PostSubmit = ({ user, competitions, registrations, setView, lockedCompetit
         </button>
       </form>
 
-      <div className="p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800 flex items-start gap-4">
-        <AlertCircle className="w-5 h-5 text-zinc-500 shrink-0" />
-        <p className="text-xs text-zinc-500 leading-relaxed">
-          Certifique-se de que o link é público e está correto. Links inválidos ou privados serão rejeitados automaticamente pela triagem. O prazo de aprovação é de até 24h.
-        </p>
+      <div className="p-8 rounded-3xl bg-amber-500/10 border border-amber-500/20 flex items-start gap-5 shadow-[0_0_40px_rgba(245,158,11,0.05)] relative overflow-hidden group mb-4">
+        <div className="absolute inset-0 bg-gradient-to-br from-amber-500/5 to-transparent pointer-events-none" />
+        <AlertCircle className="w-8 h-8 text-amber-500 shrink-0 transform group-hover:rotate-12 transition-transform duration-500" />
+        <div className="space-y-3 relative z-10">
+          <h3 className="text-lg font-black text-amber-500 uppercase tracking-widest leading-none">
+            AVISO CRÍTICO: REGRAS DE POSTAGEM!
+          </h3>
+          <p className="text-[13px] font-bold text-zinc-100 leading-relaxed uppercase tracking-tight max-w-2xl">
+            COLOQUE AS <span className="text-amber-500 underline decoration-2 underline-offset-4">HASHTAGS E MARCAÇÕES</span> CORRETAMENTE PARA ESTA COMPETIÇÃO. 
+            VÍDEOS SEM AS OBRIGATORIEDADES OU PRIVADOS SERÃO <span className="text-red-500">REJEITADOS</span>.
+          </p>
+        </div>
       </div>
       </>
       )}
@@ -4039,262 +2482,8 @@ const PostSubmit = ({ user, competitions, registrations, setView, lockedCompetit
   );
 };
 
-const HistoryView = ({ posts, onDelete, onRemove, isAdmin }: { 
-  posts: Post[], 
-  onDelete: (id: string) => void, 
-  onRemove: (state: { isOpen: boolean; postId: string; reason: string; consent: boolean }) => void,
-  isAdmin: boolean 
-}) => {
-  const [selectedPlatform, setSelectedPlatform] = useState<'tiktok' | 'youtube' | 'instagram' | null>(null);
-  const [filterDate, setFilterDate] = useState('');
+// HistoryView agora Ã© um componente modular importado de ./components/HistoryView
 
-  const filteredPosts = posts.filter(post => {
-    // Não mostrar posts deletados para o usuário (soft delete)
-    if (post.status === 'deleted') return false;
-    const matchesPlatform = selectedPlatform ? post.platform === selectedPlatform : true;
-    const matchesDate = !filterDate ? true : new Date(post.timestamp).setHours(0,0,0,0) >= new Date(filterDate).setHours(0,0,0,0);
-    return matchesPlatform && matchesDate;
-  });
-
-  const getPlatformCount = (p: 'tiktok' | 'youtube' | 'instagram') => posts.filter(post => post.platform === p).length;
-
-  return (
-    <div className="space-y-8">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h2 className="text-3xl font-black tracking-tight flex items-center gap-3">
-          {selectedPlatform && (
-            <button 
-              onClick={() => setSelectedPlatform(null)}
-              className="p-2.5 rounded-2xl bg-zinc-900 border border-zinc-800 text-zinc-200 hover:text-white transition-all hover:scale-105 active:scale-95 shadow-lg"
-              title="Voltar ao Hub"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-          )}
-          {selectedPlatform ? (
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-              <span className="capitalize flex items-center gap-2">
-                {selectedPlatform === 'tiktok' ? <Zap className="w-6 h-6 text-amber-500" /> :
-                 selectedPlatform === 'youtube' ? <TrendingUp className="w-6 h-6 text-red-500" /> :
-                 <Camera className="w-6 h-6 text-pink-500" />}
-                {selectedPlatform} Protocols
-              </span>
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-900 border border-zinc-800">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.5)]" />
-                <span className="text-[11px] font-black uppercase text-zinc-100 tracking-widest">{filteredPosts.length} postados</span>
-              </div>
-            </div>
-          ) : (
-            "Meus Protocolos"
-          )}
-        </h2>
-        
-        {selectedPlatform && (
-          <div className="flex items-center gap-3 animate-in fade-in slide-in-from-right-4 duration-500">
-            <div className="relative group">
-              <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-600 group-hover:text-amber-500/50 transition-colors" />
-              <input 
-                type="date"
-                value={filterDate}
-                onChange={(e) => setFilterDate(e.target.value)}
-                className="bg-zinc-900 border border-zinc-800 rounded-2xl pl-11 pr-4 py-2.5 text-xs font-black text-white focus:outline-none focus:border-amber-500/50 transition-all focus:ring-4 focus:ring-amber-500/5 w-full sm:w-auto uppercase tracking-widest shadow-inner"
-              />
-            </div>
-            {filterDate && (
-              <button 
-                onClick={() => setFilterDate('')}
-                className="p-2.5 rounded-2xl bg-zinc-900/50 border border-zinc-800 text-zinc-500 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest hover:border-zinc-700"
-              >
-                Limpar
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      <AnimatePresence mode="wait">
-        {!selectedPlatform ? (
-          <motion.div 
-            key="hub"
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-            className="grid grid-cols-1 md:grid-cols-3 gap-8 pt-4"
-          >
-            {[
-              { id: 'tiktok', name: 'TikTok', icon: Zap, color: 'text-amber-500', bg: 'bg-amber-500/10', border: 'border-amber-500/10', hover: 'hover:border-amber-500/30' },
-              { id: 'instagram', name: 'Instagram', icon: Camera, color: 'text-pink-500', bg: 'bg-pink-500/10', border: 'border-pink-500/10', hover: 'hover:border-pink-500/30' },
-              { id: 'youtube', name: 'YouTube', icon: TrendingUp, color: 'text-red-500', bg: 'bg-red-500/10', border: 'border-red-500/10', hover: 'hover:border-red-500/30' }
-            ].map((p, idx) => (
-              <motion.button
-                key={p.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: idx * 0.1 }}
-                onClick={() => setSelectedPlatform(p.id as any)}
-                className={`group relative p-10 rounded-[3rem] glass overflow-hidden transition-all duration-500 border-2 ${p.border} ${p.hover} flex flex-col items-center text-center gap-8 hover:shadow-[0_20px_50px_rgba(0,0,0,0.3)]`}
-              >
-                <div className={`p-8 rounded-[2rem] ${p.bg} transition-all duration-700 group-hover:scale-110 group-hover:rotate-12 group-hover:shadow-[0_0_30px_rgba(0,0,0,0.2)]`}>
-                  <p.icon className={`w-14 h-14 ${p.color}`} />
-                </div>
-                <div>
-                  <h3 className={`text-3xl font-black uppercase tracking-tighter mb-2 ${p.color}`}>{p.name}</h3>
-                  <div className="flex items-center gap-2 justify-center">
-                    <span className="w-1.5 h-1.5 rounded-full bg-zinc-700" />
-                    <p className="text-zinc-200 text-xs font-black uppercase tracking-[0.2em]">{getPlatformCount(p.id as any)} Protocolos</p>
-                    <span className="w-1.5 h-1.5 rounded-full bg-zinc-700" />
-                  </div>
-                </div>
-                <div className="mt-2 px-8 py-3 rounded-2xl bg-white text-black text-[10px] font-black uppercase tracking-[0.2em] transform translate-y-12 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-500 shadow-xl">
-                  ACESSAR REDE
-                </div>
-                <div className={`absolute -bottom-12 -right-12 w-32 h-32 rounded-full ${p.bg} blur-3xl opacity-0 group-hover:opacity-50 transition-opacity duration-700`} />
-              </motion.button>
-            ))}
-          </motion.div>
-        ) : (
-          <motion.div 
-            key="list"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.4, ease: "easeOut" }}
-            className="space-y-8"
-          >
-            {filteredPosts.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredPosts.map(post => {
-                  const platformLabel = post.platform === 'tiktok' ? 'TikTok' : post.platform === 'youtube' ? 'YouTube' : 'Instagram';
-                  const platformColor = post.platform === 'tiktok' ? 'text-amber-500' : post.platform === 'youtube' ? 'text-red-500' : 'text-pink-500';
-                  const platformBg = post.platform === 'tiktok' ? 'bg-amber-500/10 border-amber-500/20' : post.platform === 'youtube' ? 'bg-red-500/10 border-red-500/20' : 'bg-pink-500/10 border-pink-500/20';
-                  const platformIcon = post.platform === 'tiktok' ? <Zap className="w-5 h-5" /> : post.platform === 'youtube' ? <TrendingUp className="w-5 h-5" /> : <Camera className="w-5 h-5" />;
-                  const buttonHover = post.platform === 'tiktok' ? 'hover:bg-amber-500 hover:text-black hover:border-amber-500 shadow-amber-500/20' : post.platform === 'youtube' ? 'hover:bg-red-500 hover:text-white hover:border-red-500 shadow-red-500/20' : 'hover:bg-pink-500 hover:text-white hover:border-pink-500 shadow-pink-500/20';
-
-                  return (
-                    <div key={post.id} className="p-7 rounded-[2.5rem] glass border border-zinc-800/50 space-y-5 group hover:border-zinc-700 transition-all hover:shadow-[0_20px_40px_rgba(0,0,0,0.2)]">
-                      <div className={`flex items-center gap-3 px-4 py-2.5 rounded-2xl border ${platformBg}`}>
-                        <span className={platformColor}>{platformIcon}</span>
-                        <span className={`text-sm font-black uppercase tracking-widest ${platformColor}`}>{platformLabel}</span>
-                        {post.accountHandle && post.accountHandle !== 'ADMIN_MANUAL' && (
-                          <div className="flex items-center gap-2">
-                             <span className={`text-xs font-black opacity-40 ${platformColor}`}>|</span>
-                             <span className={`text-[11px] font-black ${platformColor} tracking-widest uppercase truncate max-w-[100px]`}>{post.accountHandle}</span>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex items-center justify-between">
-                        <div className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-[0.15em] border ${
-                          post.status === 'approved' || post.status === 'synced' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/10' :
-                          post.status === 'rejected' || post.status === 'banned' ? 'bg-red-500/10 text-red-500 border-red-500/10' :
-                          'bg-amber-500/10 text-amber-500 border-amber-500/10'
-                        }`}>
-                          {post.status === 'approved' || post.status === 'synced' ? 'Aprovado' : post.status === 'rejected' || post.status === 'banned' ? 'Recusado' : 'Em Triagem'}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] text-zinc-100 font-black uppercase tracking-widest">{new Date(post.timestamp).toLocaleDateString()}</span>
-                          {isAdmin && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                console.log('Admin Delete Clicked for post:', post.id);
-                                onDelete(post.id);
-                              }}
-                              className="p-2 rounded-xl bg-red-500/5 text-red-500/40 hover:bg-red-500 hover:text-black transition-all"
-                              title="Excluir vídeo"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                          {(post.status === 'approved' || post.status === 'synced' || post.status === 'pending') && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                console.log('User Removal Clicked for post:', post.id);
-                                onRemove({ isOpen: true, postId: post.id, reason: '', consent: false });
-                              }}
-                              className="px-3 py-1.5 rounded-xl bg-red-600 text-white text-[9px] font-black uppercase tracking-widest hover:bg-white hover:text-red-600 transition-all flex items-center gap-1.5 shadow-lg"
-                              title="Solicitar remoção"
-                            >
-                              Remover
-                            </button>
-                          )}
-                          {post.status === 'removal_requested' && (
-                            <div className="px-3 py-1.5 rounded-xl bg-amber-500/10 text-amber-500 text-[9px] font-black uppercase tracking-widest border border-amber-500/20">
-                              Pendente
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {(post.status === 'rejected' || post.status === 'banned') && post.rejectionReason && (
-                        <div className="flex items-start gap-3 px-5 py-4 rounded-3xl bg-red-500/5 border border-red-500/10">
-                          <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-                          <div className="space-y-1 min-w-0">
-                            <p className="text-[8px] font-black text-red-400 uppercase tracking-[0.2em] opacity-50">Motivo da Remoção</p>
-                            <p className="text-[11px] font-bold text-red-200/80 leading-relaxed">{post.rejectionReason}</p>
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="flex items-center gap-3 bg-zinc-900 border border-zinc-800/50 p-1.5 rounded-2xl">
-                        <p className="text-[11px] font-bold truncate text-zinc-100 flex-1 min-w-0 pl-3 uppercase tracking-tighter">{post.url}</p>
-                        <a
-                          href={post.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className={`shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-400 text-[9px] font-black uppercase tracking-widest transition-all hover:scale-105 active:scale-95 ${buttonHover}`}
-                          title="Abrir link"
-                        >
-                          <ExternalLink className="w-4 h-4" />
-                          Abrir
-                        </a>
-                      </div>
-
-                      <div className="grid grid-cols-2 divide-x divide-zinc-800/50 pt-3">
-                        <div className="flex flex-col items-center py-2">
-                          <span className="text-zinc-200 text-[9px] font-black uppercase tracking-[0.2em] mb-1">Visualizações</span>
-                          <div className="flex items-center gap-2">
-                            <Eye className={`w-3.5 h-3.5 ${platformColor} opacity-80`} />
-                            <span className="text-[14px] font-black tabular-nums text-white">{(post.views || 0).toLocaleString()}</span>
-                          </div>
-                        </div>
-                        <div className="flex flex-col items-center py-2">
-                          <span className="text-zinc-200 text-[9px] font-black uppercase tracking-[0.2em] mb-1">Curtidas</span>
-                          <div className="flex items-center gap-2">
-                            <Heart className={`w-3.5 h-3.5 ${platformColor} opacity-80`} />
-                            <span className="text-[14px] font-black tabular-nums text-white">{(post.likes || 0).toLocaleString()}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="py-32 text-center glass rounded-[3rem] border-dashed border-zinc-800 flex flex-col items-center">
-                <div className="w-20 h-20 rounded-full bg-zinc-900 flex items-center justify-center mb-6">
-                  <AlertCircle className="w-8 h-8 text-zinc-700" />
-                </div>
-                <h3 className="text-2xl font-black text-zinc-100 uppercase tracking-tighter">Nenhum protocolo encontrado</h3>
-                <p className="text-zinc-300 font-bold mt-2 text-sm max-w-xs mx-auto px-4">Não encontramos vídeos na rede {selectedPlatform} com os filtros selecionados.</p>
-                {filterDate && (
-                  <button 
-                    onClick={() => setFilterDate('')}
-                    className="mt-8 px-10 py-4 bg-white text-black rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:scale-105 active:scale-95 transition-all shadow-xl shadow-white/5"
-                  >
-                    Resetar Filtro de Data
-                  </button>
-                )}
-              </div>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-};
 
 const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { rankings: User[], competitions: Competition[], lockedCompetitionId?: string, userRole?: UserRole }) => {
   const rankingRef = useRef<HTMLDivElement>(null);
@@ -4346,10 +2535,17 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { r
     [competitions, selectedCompId, lockedCompetitionId]
   );
 
+  const totalDailyViews = useMemo(() => {
+    if (!selectedCompetition) return 0;
+    return rankings.reduce((acc, user) => {
+      const stats = user.competitionStats?.[selectedCompetition.id];
+      if (!stats) return acc;
+      return acc + (stats.dailyViews || 0);
+    }, 0);
+  }, [rankings, selectedCompetition]);
+
   const formatGoalNumber = (num: number) => {
-    if (num >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-    if (num >= 1000) return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
-    return num.toLocaleString();
+    return num.toLocaleString('pt-BR');
   };
 
   const collectiveProgress = useMemo(() => {
@@ -4566,6 +2762,21 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { r
             </button>
           ))}
         </div>
+
+        {/* Somatória de Views Diários */}
+        {rankingType === 'DAILY' && selectedCompetition && (
+          <div className="hidden md:flex flex-1 items-center justify-center animate-in fade-in zoom-in duration-300">
+            <div className="flex items-center gap-3 px-5 py-2.5 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent rounded-2xl border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.1)]">
+              <div className="w-8 h-8 rounded-xl bg-amber-500/10 flex items-center justify-center">
+                <Eye className="w-4 h-4 text-amber-500" />
+              </div>
+              <div className="flex flex-col items-start leading-none">
+                <span className="text-[8px] font-black uppercase tracking-[0.2em] text-amber-500/70 mb-1">Somatória Diária</span>
+                <span className="text-lg font-black text-amber-400 tabular-nums leading-none tracking-tight">{totalDailyViews.toLocaleString()} <span className="text-[10px] text-amber-500/50 uppercase tracking-widest">views</span></span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Métrica badge (direita) */}
         <div className="md:ml-auto flex items-center gap-3">
@@ -4998,6 +3209,56 @@ const FinancialRow = ({ user, onViewLinks, compId, isPaidView }: { user: User, o
     }
   };
 
+  const [adjustmentValue, setAdjustmentValue] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
+  const [processingAdjustment, setProcessingAdjustment] = useState(false);
+
+  const handleManualAdjustment = async (type: 'add' | 'subtract') => {
+    const val = parseFloat(adjustmentValue.replace(',', '.'));
+    if (isNaN(val) || val <= 0) {
+      alert('Insira um valor válido');
+      return;
+    }
+
+    const finalAmount = type === 'subtract' ? -val : val;
+    setProcessingAdjustment(true);
+
+    try {
+      const batch = writeBatch(db);
+      
+      const newGlobalBalance = Math.max(0, (user.balance || 0) + finalAmount);
+      const newCompBalance = Math.max(0, (user.competitionStats?.[compId || '']?.balance || 0) + finalAmount);
+
+      const transRef = doc(collection(db, 'transactions'));
+      batch.set(transRef, {
+        userId: user.uid,
+        amount: finalAmount,
+        timestamp: Date.now(),
+        status: type === 'subtract' ? 'cancelled' : 'credit',
+        type: 'adjustment',
+        description: `AJUSTE MANUAL ADMIN (${type === 'subtract' ? 'ESTORNO' : 'BÔNUS'}): ${compId || 'GERAL'}`,
+        competitionId: compId
+      });
+
+      const dataToUpdate: any = {
+        [`competitionStats.${compId}.balance`]: newCompBalance,
+        balance: newGlobalBalance
+      };
+
+      const userRef = doc(db, 'users', user.uid);
+      batch.update(userRef, dataToUpdate);
+
+      await batch.commit();
+      setAdjustmentValue('');
+      setIsEditing(false);
+    } catch (error: any) {
+      console.error('Erro no ajuste manual:', error);
+      alert('Erro ao processar ajuste');
+    } finally {
+      setProcessingAdjustment(false);
+    }
+  };
+
   return (
     <div className="grid grid-cols-[1.5fr_1fr_1.5fr_150px_220px] gap-4 items-center py-4 px-8 hover:bg-white/[0.02] transition-all group border-b border-zinc-900/50 last:border-0 min-h-[72px]">
       <div className="flex items-center gap-4 min-w-0">
@@ -5065,24 +3326,114 @@ const FinancialRow = ({ user, onViewLinks, compId, isPaidView }: { user: User, o
         >
           <BarChart3 className="w-4 h-4" />
         </button>
+
         {!isPaidView && (
-          <button
-            onClick={handlePay}
-            disabled={saving || balance <= 0}
-            className={`px-5 py-2.5 disabled:bg-zinc-900 disabled:text-zinc-700 disabled:border-zinc-800 rounded-2xl font-black text-[10px] hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2.5 uppercase tracking-widest disabled:shadow-none min-w-[120px] ${
-              confirming ? 'bg-red-500 text-white animate-pulse shadow-[0_4px_20px_rgba(239,68,68,0.4)]' : 'gold-bg text-black shadow-[0_4px_20px_rgba(245,158,11,0.2)]'
-            }`}
-          >
-            {saving ? (
-              <RefreshCw className="w-4 h-4 animate-spin" />
-            ) : confirming ? (
-              <AlertCircle className="w-4 h-4 text-white" />
+          <div className="flex items-center gap-2">
+            {isEditing ? (
+              <div className="flex items-center gap-2 animate-in slide-in-from-right-4 duration-300">
+                <input
+                  type="text"
+                  value={adjustmentValue}
+                  onChange={(e) => setAdjustmentValue(e.target.value)}
+                  placeholder="0.00"
+                  className="w-20 bg-black border border-zinc-800 rounded-lg px-2 py-2 text-[10px] font-black text-white outline-none focus:border-amber-500 transition-all font-mono"
+                />
+                <button
+                  onClick={() => handleManualAdjustment('subtract')}
+                  disabled={processingAdjustment}
+                  className="p-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all shadow-lg shadow-red-500/5 border border-red-500/20"
+                  title="Subtrair do Saldo"
+                >
+                  {processingAdjustment ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <MinusCircle className="w-3.5 h-3.5" />}
+                </button>
+                <button
+                  onClick={() => handleManualAdjustment('add')}
+                  disabled={processingAdjustment}
+                  className="p-2 rounded-lg bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white transition-all shadow-lg shadow-emerald-500/5 border border-emerald-500/20"
+                  title="Adicionar ao Saldo"
+                >
+                  {processingAdjustment ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <PlusCircle className="w-3.5 h-3.5" />}
+                </button>
+                <button
+                  onClick={() => setIsEditing(false)}
+                  className="p-2 rounded-lg bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-all"
+                  title="Cancelar"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
             ) : (
-              <Zap className="w-4 h-4 fill-current" />
+              <button
+                onClick={() => setIsEditing(true)}
+                disabled={saving}
+                className="p-2 rounded-xl bg-zinc-900/60 border border-zinc-800 text-zinc-500 hover:text-amber-500 hover:border-amber-500/30 transition-all"
+                title="Ajustar Saldo Manualmente"
+              >
+                <Pencil className="w-4 h-4" />
+              </button>
             )}
-            {saving ? 'PAGANDO...' : confirming ? 'CONFIRMAR?' : 'PAGAR'}
-          </button>
+
+            {!isEditing && (
+              <button
+                onClick={handlePay}
+                disabled={saving || balance <= 0}
+                className={`px-5 py-2.5 disabled:opacity-30 rounded-2xl font-black text-[10px] hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2.5 uppercase tracking-widest min-w-[100px] ${
+                  confirming ? 'bg-red-500 text-white animate-pulse' : 'gold-bg text-black shadow-lg shadow-amber-500/10'
+                }`}
+              >
+                {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : confirming ? <AlertCircle className="w-4 h-4" /> : <Zap className="w-4 h-4" />}
+                {saving ? 'PAGANDO...' : confirming ? 'CONFIRMAR?' : 'PAGAR'}
+              </button>
+            )}
+          </div>
         )}
+      </div>
+    </div>
+  );
+};
+
+// Componente para exibir uma transação individual no filtro diário
+const DailyTransactionRow = ({ transaction, users }: { transaction: Transaction, users: User[] }) => {
+  const user = users.find(u => u.uid === transaction.userId);
+  return (
+    <div className="grid grid-cols-[1.5fr_1fr_1.5fr_150px_220px] gap-4 items-center py-4 px-8 hover:bg-white/[0.02] transition-all group border-b border-zinc-900/50 last:border-0 min-h-[72px]">
+      <div className="flex items-center gap-4 min-w-0">
+        <div className="shrink-0 relative">
+          <img src={user?.photoURL || `https://ui-avatars.com/api/?name=${user?.displayName || 'U'}`} className="w-12 h-12 rounded-2xl object-cover border border-zinc-800 shadow-xl" alt="" />
+          <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 border-2 border-black flex items-center justify-center">
+            <CheckCircle2 className="w-2 h-2 text-black" />
+          </div>
+        </div>
+        <div className="flex flex-col min-w-0">
+          <span className="font-black text-[13px] text-white truncate uppercase tracking-tight leading-tight">{user?.displayName || 'Usuário'}</span>
+          <span className="text-zinc-600 text-[9px] font-black uppercase opacity-60 tracking-wider mt-0.5">{new Date(transaction.timestamp).toLocaleTimeString('pt-BR')}</span>
+        </div>
+      </div>
+      <div className="flex flex-col min-w-0">
+        <div className="flex items-center gap-1.5 mb-1">
+          <CreditCard className="w-3 h-3 text-zinc-700" />
+          <span className="text-zinc-600 text-[8px] font-black uppercase tracking-widest whitespace-nowrap">CHAVE PIX</span>
+        </div>
+        <span className="font-black text-[10px] text-zinc-400 truncate tracking-tight uppercase select-all">{user?.pixKey || 'NÃO INFORMADA'}</span>
+      </div>
+      <div className="flex flex-col min-w-0">
+        <div className="flex items-center gap-1.5 mb-1">
+          <Coins className="w-3 h-3 text-emerald-500/50" />
+          <span className="text-zinc-600 text-[8px] font-black uppercase tracking-widest">VALOR PAGO</span>
+        </div>
+        <p className="text-[16px] font-black tabular-nums text-emerald-500 tracking-tighter">
+          R$ {transaction.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+        </p>
+      </div>
+      <div className="text-center">
+        <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-500 text-[9px] font-black uppercase tracking-widest border border-emerald-500/20 shadow-lg shadow-emerald-500/5">
+          PAGAMENTO ÚNICO
+        </span>
+      </div>
+      <div className="flex items-center justify-end">
+        <div className="flex items-center gap-2 px-5 py-2.5 bg-zinc-900 border border-zinc-800 text-zinc-500 rounded-xl text-[9px] font-black uppercase tracking-widest opacity-60">
+          <ShieldCheck className="w-3.5 h-3.5" /> LIQUIDADO
+        </div>
       </div>
     </div>
   );
@@ -5128,6 +3479,18 @@ const AdminPanel = ({
   handleRankingResetOnly,
   handleResetRankingSimple,
   suggestions,
+  sessionSyncedIds,
+  setSessionSyncedIds,
+  syncing,
+  setSyncing,
+  syncProgress,
+  setSyncProgress,
+  syncTotal,
+  setSyncTotal,
+  syncingPostId,
+  setSyncingPostId,
+  syncingCompId,
+  setSyncingCompId,
   compTitle,
   setCompTitle,
   compRankingMetric,
@@ -5191,20 +3554,34 @@ const AdminPanel = ({
   handleSystemCleanup,
   rejectionReason,
   setRejectionReason,
-  setRejectionModal
+  setRejectionModal,
+  apifyKeySync,
+  setApifyKeySync
 }: {
   userRole: UserRole;
   posts: Post[];
   pendingUsers: User[];
   approvedUsers: User[];
   archivedUsers: User[];
-  settings: { apifyKey: string; lastSync?: string; lastResync?: string };
+  settings: Settings;
   competitions: Competition[];
   registrations: CompetitionRegistration[];
   announcements: Announcement[];
+  sessionSyncedIds: string[];
+  setSessionSyncedIds: (v: any) => void;
+  syncing: boolean;
+  setSyncing: (v: boolean) => void;
+  syncProgress: number;
+  setSyncProgress: (v: number) => void;
+  syncTotal: number;
+  setSyncTotal: (v: number) => void;
+  syncingPostId: string | null;
+  setSyncingPostId: (v: string | null) => void;
+  syncingCompId: string | null;
+  setSyncingCompId: (v: string | null) => void;
   timerConfig: { enabled: boolean; endTime: number | null; targetTime: string; message: string };
   handleUpdateTimer: (config: { enabled: boolean; endTime: number | null; targetTime: string; message: string }) => Promise<void>;
-  onSettingsUpdate: (s: { apifyKey: string; lastSync?: string; lastResync?: string }) => void;
+  onSettingsUpdate: (s: Settings) => void;
   editingCompId: string | null;
   setEditingCompId: (val: string | null) => void;
   setCompToDelete: (val: string | null) => void;
@@ -5295,20 +3672,22 @@ const AdminPanel = ({
   rejectionReason: string;
   setRejectionReason: (v: string) => void;
   setRejectionModal: (v: { isOpen: boolean; postId: string; status: PostStatus }) => void;
+  apifyKeySync: string;
+  setApifyKeySync: (v: string) => void;
 }) => {
   const [tab, setTab] = useState<'VISAO_GERAL' | 'POSTS' | 'USERS' | 'USERS_APPROVED' | 'COMPETITIONS' | 'SYNC' | 'REGISTROS' | 'AVISOS' | 'TIMER' | 'FINANCEIRO' | 'ACESSOS' | 'SUGESTOES' | 'RESSINCRONIZACAO' | 'SINCRONIZACAO' | 'ARCHIVED' | 'RELATORIOS' | 'REMOVED_POSTS' | 'REMOVAL_REQUESTS'>('VISAO_GERAL');
   const [selectedSyncCompId, setSelectedSyncCompId] = useState<string>('ALL');
   const [selectedResetCompId, setSelectedResetCompId] = useState<string>('');
   const [auditUserId, setAuditUserId] = useState<string | null>(null);
+  const [auditDayFilter, setAuditDayFilter] = useState<string>('');
   const [selectedCompId, setSelectedCompId] = useState<string | null>(null);
-  const [syncing, setSyncing] = useState(false);
-  const [syncProgress, setSyncProgress] = useState(0);
-  const [syncTotal, setSyncTotal] = useState(0);
-  const [syncingCompId, setSyncingCompId] = useState<string | null>(null);
-  const [syncingPostId, setSyncingPostId] = useState<string | null>(null);
   const [apifyKey, setApifyKey] = useState(settings.apifyKey);
   const [financeTab, setFinanceTab] = useState<'RESUMO' | 'PENDING' | 'REALIZED'>('RESUMO');
   const [financeCompId, setFinanceCompId] = useState<string>(() => competitions[0]?.id || '');
+  const [financeDateFilter, setFinanceDateFilter] = useState('');
+  const [manuallyAddedFinancialUsers, setManuallyAddedFinancialUsers] = useState<string[]>([]);
+  const [searchManualUser, setSearchManualUser] = useState('');
+  const [showManualUserSelect, setShowManualUserSelect] = useState(false);
   const [newUserName, setNewUserName] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserPass, setNewUserPass] = useState('');
@@ -5316,6 +3695,52 @@ const AdminPanel = ({
   const [creatingUser, setCreatingUser] = useState(false);
   const [syncDetailCompId, setSyncDetailCompId] = useState<string | null>(null);
   const [validatedPostsLocal, setValidatedPostsLocal] = useState<string[]>([]);
+  const [realizedPayments, setRealizedPayments] = useState<Transaction[]>([]);
+  const [loadingFinancials, setLoadingFinancials] = useState(false);
+  const [selectedNetworkUserId, setSelectedNetworkUserId] = useState<string>('all');
+  const [selectedResyncPostIds, setSelectedResyncPostIds] = useState<string[]>([]);
+  const [selectedSyncPostIds, setSelectedSyncPostIds] = useState<string[]>([]);
+  const isSameDay = (timestamp: number, dateStr: string) => {
+    if (!dateStr) return true;
+    const date = new Date(timestamp);
+    const filterDate = new Date(dateStr + 'T12:00:00'); // Use mid-day to avoid TZ issues
+    return date.getFullYear() === filterDate.getFullYear() &&
+           date.getMonth() === filterDate.getMonth() &&
+           date.getDate() === filterDate.getDate();
+  };
+
+  useEffect(() => {
+    if (!financeCompId && competitions.length > 0) {
+      setFinanceCompId(competitions[0].id);
+    }
+  }, [competitions, financeCompId]);
+
+  useEffect(() => {
+    const fetchFilteredTransactions = async () => {
+      if (tab === 'FINANCEIRO' && financeTab === 'REALIZED' && financeDateFilter && financeCompId) {
+        setLoadingFinancials(true);
+        try {
+          // Busca transações da competição
+          const q = query(
+            collection(db, 'transactions'), 
+            where('competitionId', '==', financeCompId),
+            orderBy('timestamp', 'desc')
+          );
+          const snap = await getDocs(q);
+          const allTrans = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
+          
+          // Filtra manualmente por dia (mais simples que lidar com timestamps complexos no Firestore query)
+          const filtered = allTrans.filter(t => isSameDay(t.timestamp, financeDateFilter));
+          setRealizedPayments(filtered);
+        } catch (e) {
+          console.error("Erro fetch transações filtradas", e);
+        } finally {
+          setLoadingFinancials(false);
+        }
+      }
+    };
+    fetchFilteredTransactions();
+  }, [tab, financeTab, financeDateFilter, financeCompId]);
 
   // States for Admin Manual Link Submission
   const [adminManualUrl, setAdminManualUrl] = useState('');
@@ -5343,9 +3768,7 @@ const AdminPanel = ({
   });
 
   const formatGoalNumber = (num: number) => {
-    if (num >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-    if (num >= 1000) return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
-    return num.toLocaleString();
+    return num.toLocaleString('pt-BR');
   };
 
   const selectedMetaComp = useMemo(() => 
@@ -5400,11 +3823,19 @@ const AdminPanel = ({
   }, [approvedUsers, selectedMetaComp]);
 
   const postsToday = useMemo(() => {
-    return approvedUsers.reduce((sum, u) => {
-      if (!selectedMetaComp) return sum + (u.dailyPosts || 0);
-      return sum + (u.competitionStats?.[selectedMetaComp.id]?.dailyPosts || 0);
-    }, 0);
-  }, [approvedUsers, selectedMetaComp]);
+    const lastReset = selectedMetaComp?.lastDailyReset || 0;
+    
+    return posts.filter(p => {
+      const isApproved = p.status === 'approved' || p.status === 'synced';
+      const isWithinComp = !selectedMetaComp || p.competitionId === selectedMetaComp.id;
+      
+      const approvedAt = p.approvedAt || p.timestamp || 0;
+      const isAfterReset = approvedAt > lastReset;
+      const isNewDailyPost = !(p as any).forceMonthly && ((p as any).forceDaily || isAfterReset);
+
+      return isApproved && isWithinComp && isNewDailyPost;
+    }).length;
+  }, [posts, selectedMetaComp]);
 
   // Fallback para posts rejeitados (usa o array posts já que não temos contador no perfil)
   // Com o limite aumentado para 10.000, deve ser suficiente para quase todos os casos
@@ -5431,6 +3862,42 @@ const AdminPanel = ({
     const lastPost = Math.max(...userPosts.map(p => p.timestamp));
     return now - lastPost > 3 * dayMs;
   });
+
+  const userPostAverages = useMemo(() => {
+    const currentNow = Date.now();
+    
+    // First, map each user to their earliest post timestamp to avoid O(N*M) lookups inside the map
+    const userFirstPostTime: Record<string, number> = {};
+    posts.forEach(p => {
+       if (!userFirstPostTime[p.userId] || p.timestamp < userFirstPostTime[p.userId]) {
+         userFirstPostTime[p.userId] = p.timestamp;
+       }
+    });
+
+    return approvedUsers
+      .map(u => {
+        // Find the timestamp of their first ever post as the true "start" date
+        const firstPostTime = userFirstPostTime[u.uid];
+        
+        // If they have no posts, use current time (0 days active = 0 avg)
+        const activeStart = firstPostTime || currentNow;
+        
+        // Calculate days between first post and now.
+        // Math.ceil ensures that if they posted today, it counts as 1 day (not 0).
+        // Math.max guarantees we never divide by zero.
+        const daysActive = Math.max(1, Math.ceil((currentNow - activeStart) / (24 * 60 * 60 * 1000)));
+        
+        const avg = (u.totalPosts || 0) / daysActive;
+        
+        return {
+          uid: u.uid,
+          displayName: u.displayName,
+          photoURL: u.photoURL,
+          avgPostsPerDay: avg
+        };
+      })
+      .sort((a, b) => b.avgPostsPerDay - a.avgPostsPerDay);
+  }, [approvedUsers, posts]);
 
   const newUsers7d = approvedUsers.filter(u => u.approvedAt && u.approvedAt > now - 7 * dayMs).length;
 
@@ -5620,13 +4087,68 @@ const AdminPanel = ({
       alert('Por favor, insira uma chave antes de salvar.');
       return;
     }
+    
+    // Evitar duplicatas
+    if (settings.apifyKeys?.includes(trimmedKey)) {
+      alert('Esta chave já está na lista.');
+      return;
+    }
+
     try {
-      await updateDoc(doc(db, 'config', 'settings'), { apifyKey: trimmedKey });
-      setApifyKey(trimmedKey);
-      onSettingsUpdate({ ...settings, apifyKey: trimmedKey });
-      alert('✅ Chave API salva com sucesso!\nEspaços em branco foram removidos automaticamente.');
+      const newKeys = [...(settings.apifyKeys || []), trimmedKey];
+      await updateDoc(doc(db, 'config', 'settings'), { 
+        apifyKeys: newKeys,
+        apifyKey: trimmedKey // Mantém a última como principal por compatibilidade
+      });
+      setApifyKey(''); // Limpa o input após adicionar
+      alert('✅ Chave API adicionada com sucesso!');
     } catch (error: any) {
       alert(`❌ Erro ao salvar chave: ${error.message}`);
+    }
+  };
+
+  const handleDeleteApiKey = async (keyToDelete: string) => {
+    if (!confirm('Tem certeza que deseja remover esta chave?')) return;
+    try {
+      const newKeys = (settings.apifyKeys || []).filter(k => k !== keyToDelete);
+      await updateDoc(doc(db, 'config', 'settings'), { 
+        apifyKeys: newKeys,
+        apifyKey: newKeys[0] || '' // Atualiza a principal
+      });
+      alert('✅ Chave removida.');
+    } catch (error: any) {
+      alert(`❌ Erro ao remover chave: ${error.message}`);
+    }
+  };
+
+  const handleSaveSyncKey = async () => {
+    const trimmedKey = apifyKeySync.trim();
+    if (!trimmedKey) {
+      alert('Por favor, insira uma chave antes de salvar.');
+      return;
+    }
+    if (settings.apifyKeysSync?.includes(trimmedKey)) {
+      alert('Esta chave já está na lista.');
+      return;
+    }
+    try {
+      const newKeys = [...(settings.apifyKeysSync || []), trimmedKey];
+      await updateDoc(doc(db, 'config', 'settings'), { apifyKeysSync: newKeys });
+      setApifyKeySync('');
+      alert('✅ Chave de Sincronização Inicial adicionada!');
+    } catch (error: any) {
+      alert(`❌ Erro ao salvar chave: ${error.message}`);
+    }
+  };
+
+  const handleDeleteSyncKey = async (keyToDelete: string) => {
+    if (!confirm('Remover esta chave de sincronização inicial?')) return;
+    try {
+      const newKeys = (settings.apifyKeysSync || []).filter(k => k !== keyToDelete);
+      await updateDoc(doc(db, 'config', 'settings'), { apifyKeysSync: newKeys });
+      alert('✅ Chave removida.');
+    } catch (error: any) {
+      alert(`❌ Erro ao remover chave: ${error.message}`);
     }
   };
 
@@ -5655,17 +4177,20 @@ const AdminPanel = ({
   };
 
   const handleSync = async () => {
-    if (!apifyKey) {
+    const keys = settings.apifyKeys && settings.apifyKeys.length > 0 ? settings.apifyKeys : [apifyKey];
+    if (keys.length === 0 || !keys[0]) {
       alert('Por favor, insira sua chave Apify para sincronizar.');
       return;
     }
+
     setSyncing(true);
     try {
-      // Save key to Firestore
-      await setDoc(doc(db, 'config', 'settings'), { apifyKey });
-      onSettingsUpdate({ apifyKey });
+      // Save key to Firestore if it's the only one
+      if (!settings.apifyKeys || settings.apifyKeys.length === 0) {
+        await setDoc(doc(db, 'config', 'settings'), { apifyKey });
+      }
 
-      await syncViewsWithApify(apifyKey);
+      await syncViewsWithApify(keys);
       alert('Sincronização concluída com sucesso!');
     } catch (error: any) {
       alert(`Erro na sincronização: ${error.message}`);
@@ -5675,13 +4200,15 @@ const AdminPanel = ({
   };
 
   const handleSingleSync = async (post: Post) => {
-    if (!apifyKey) {
+    const keys = settings.apifyKeys && settings.apifyKeys.length > 0 ? settings.apifyKeys : [apifyKey];
+    if (keys.length === 0 || !keys[0]) {
       alert('Por favor, insira sua chave Apify para sincronizar.');
       return;
     }
+
     setSyncingPostId(post.id);
     try {
-      await syncSinglePostWithApify(apifyKey, post, true);
+      await syncSinglePostWithApify(keys, post, false);
       alert('Sincronização do vídeo concluída!');
     } catch (error: any) {
       alert(`Erro na sincronização: ${error.message}`);
@@ -5691,10 +4218,16 @@ const AdminPanel = ({
   };
 
   const handleSyncApprovedSequentially = async () => {
-    if (!apifyKey) {
-      alert('Por favor, insira sua chave Apify para sincronizar.');
+    // Prioriza chaves exclusivas de sincronização se fornecidas
+    const keys = (settings.apifyKeysSync && settings.apifyKeysSync.length > 0)
+      ? settings.apifyKeysSync 
+      : (settings.apifyKeys && settings.apifyKeys.length > 0 ? settings.apifyKeys : [apifyKey]);
+
+    if (keys.length === 0 || !keys[0]) {
+      alert('Configurações de API ausentes.');
       return;
     }
+
     const approvedPosts = posts.filter(p => p.status === 'approved');
     if (approvedPosts.length === 0) {
       alert('Nenhum vídeo aprovado para sincronizar.');
@@ -5702,21 +4235,88 @@ const AdminPanel = ({
     }
 
     setSyncing(true);
+    setSyncTotal(approvedPosts.length);
+    setSyncProgress(0);
+    setSessionSyncedIds([]);
+    
+    let completed = 0;
     try {
       for (const post of approvedPosts) {
         setSyncingPostId(post.id);
-        await syncSinglePostWithApify(apifyKey, post, true);
-        // Important: Update status to synced after successful sync
+        await syncSinglePostWithApify(keys, post, false);
         await updateDoc(doc(db, 'posts', post.id), { status: 'synced' });
+        await updateUserMetrics(post.userId);
+        completed++;
+        setSyncProgress(completed);
+        setSessionSyncedIds((prev: string[]) => [...prev, post.id]);
       }
-      // Update last sync timestamp
       await updateDoc(doc(db, 'config', 'settings'), { lastSync: new Date().toISOString() });
-      alert('Sincronização sequencial de todos os vídeos aprovados concluída!');
-    } catch (error: any) {
-      alert(`Erro na sincronização sequencial: ${error.message}`);
+      alert('Sincronização sequencial concluída!');
+    } catch (e: any) {
+      alert(`Erro na sincronização: ${e.message}`);
     } finally {
       setSyncing(false);
       setSyncingPostId(null);
+      setSyncProgress(0);
+      setSyncTotal(0);
+    }
+  };
+
+  const handleSyncApprovedParallel = async () => {
+    const syncKeys = settings.apifyKeysSync || [];
+    if (syncKeys.length < 2) {
+      if (confirm('Você não tem chaves exclusivas de sincronização configuradas (mínimo 2). Deseja usar o modo sequencial com as chaves disponíveis?')) {
+        handleSyncApprovedSequentially();
+      }
+      return;
+    }
+
+    const approvedPosts = posts.filter(p => p.status === 'approved');
+    if (approvedPosts.length === 0) {
+      alert('Nenhum vídeo aprovado para sincronizar.');
+      return;
+    }
+
+    setSyncing(true);
+    setSyncTotal(approvedPosts.length);
+    setSyncProgress(0);
+    setSessionSyncedIds([]);
+
+    const mid = Math.ceil(approvedPosts.length / 2);
+    const forwardGroup = approvedPosts.slice(0, mid);
+    const backwardGroup = approvedPosts.slice(mid).reverse();
+
+    let completed = 0;
+    const worker = async (group: Post[], key: string) => {
+      for (const post of group) {
+        try {
+          setSyncingPostId(post.id);
+          await syncSinglePostWithApify([key], post, false);
+          await updateDoc(doc(db, 'posts', post.id), { status: 'synced' });
+          await updateUserMetrics(post.userId);
+          completed++;
+          setSyncProgress(completed);
+          setSessionSyncedIds((prev: string[]) => [...prev, post.id]);
+        } catch (err) {
+          console.error(`Erro no worker com chave ${key}:`, err);
+        }
+      }
+    };
+
+    try {
+      await Promise.all([
+        worker(forwardGroup, syncKeys[0]),
+        worker(backwardGroup, syncKeys[1])
+      ]);
+      await updateDoc(doc(db, 'config', 'settings'), { lastSync: new Date().toISOString() });
+      alert('Sincronização Paralela (Dual-Sync) concluída com sucesso!');
+    } catch (e: any) {
+      alert('Erro na sincronização paralela: ' + e.message);
+    } finally {
+      setSyncing(false);
+      setSyncingPostId(null);
+      setSyncProgress(0);
+      setSyncTotal(0);
     }
   };
 
@@ -5740,24 +4340,36 @@ const AdminPanel = ({
   };
 
   const handleSyncAllSequentially = async () => {
-    if (!apifyKey) {
+    const keys = settings.apifyKeys && settings.apifyKeys.length > 0 ? settings.apifyKeys : [apifyKey];
+    if (keys.length === 0 || !keys[0]) {
       alert('Por favor, insira sua chave Apify para sincronizar.');
       return;
     }
-    const syncedPosts = posts.filter(p => p.status === 'synced');
+
+    const allSyncedPosts = posts.filter(p => p.status === 'synced');
+    const syncedPosts = allSyncedPosts.filter(p => !sessionSyncedIds.includes(p.id));
+
     if (syncedPosts.length === 0) {
-      alert('Nenhum vídeo sincronizado para ressincronizar.');
+      if (allSyncedPosts.length > 0) {
+        alert('Todos os posts já foram conferidos nesta sessão! Liberando todos os vídeos para uma nova ressincronização completa.');
+        setSessionSyncedIds([]);
+        setSyncProgress(0);
+        setSyncTotal(0);
+      } else {
+        alert('Nenhum vídeo sincronizado para ressincronizar.');
+      }
       return;
     }
 
     setSyncing(true);
-    setSyncProgress(0);
-    setSyncTotal(syncedPosts.length);
+    let current = sessionSyncedIds.length;
+    setSyncProgress(current);
+    setSyncTotal(allSyncedPosts.length);
     try {
-      let current = 0;
       for (const post of syncedPosts) {
         setSyncingPostId(post.id);
-        await syncSinglePostWithApify(apifyKey, post, true);
+        await syncSinglePostWithApify(keys, post, false);
+        setSessionSyncedIds((prev: string[]) => [...prev, post.id]);
         current++;
         setSyncProgress(current);
       }
@@ -5773,26 +4385,99 @@ const AdminPanel = ({
     }
   };
 
+  const handleSyncAllParallel = async () => {
+    const keys = settings.apifyKeys && settings.apifyKeys.length > 0 ? settings.apifyKeys : [apifyKey];
+    if (keys.length < 1) {
+      alert('Configure pelo menos uma chave de API nas Configurações.');
+      return;
+    }
+
+    const allSyncedPosts = posts.filter(p => p.status === 'synced' || p.status === 'banned');
+    const syncedPosts = allSyncedPosts.filter(p => !sessionSyncedIds.includes(p.id));
+
+    if (syncedPosts.length === 0) {
+      if (allSyncedPosts.length > 0) {
+        alert('Todos os posts já foram conferidos nesta sessão! Liberando todos os vídeos para uma nova ressincronização completa.');
+        setSessionSyncedIds([]);
+        setSyncProgress(0);
+        setSyncTotal(0);
+      } else {
+        alert('Nenhum vídeo sincronizado para ressincronizar.');
+      }
+      return;
+    }
+
+    setSyncing(true);
+    let completed = sessionSyncedIds.length;
+    setSyncProgress(completed);
+    setSyncTotal(allSyncedPosts.length);
+    
+    const worker = async (list: Post[], key: string) => {
+      for (const post of list) {
+        setSyncingPostId(post.id);
+        try {
+          // Usa apenas a chave específica deste worker
+          await syncSinglePostWithApify([key], post, false);
+          setSessionSyncedIds((prev: string[]) => [...prev, post.id]);
+          completed++;
+          setSyncProgress(completed);
+        } catch (e) {
+          console.error(`Erro no Multi-Sync (all) para o post ${post.id}:`, e);
+        }
+      }
+    };
+
+    try {
+      // Distribui os posts em N grupos, um para cada chave
+      const n = keys.length;
+      const groups: Post[][] = Array.from({ length: n }, () => []);
+      syncedPosts.forEach((post, i) => {
+        groups[i % n].push(post);
+      });
+
+      await Promise.all(groups.map((group, i) => worker(group, keys[i])));
+      alert(`Sincronização Paralela (Multi-Sync) com ${n} chaves finalizada!`);
+    } catch (error: any) {
+      alert(`Erro no Multi-Sync: ${error.message}`);
+    } finally {
+      setSyncing(false);
+      setSyncingCompId(null);
+      setSyncingPostId(null);
+    }
+  };
+
   const handleSyncCompetitionSequentially = async (compId: string) => {
-    if (!apifyKey) {
+    const keys = settings.apifyKeys && settings.apifyKeys.length > 0 ? settings.apifyKeys : [apifyKey];
+    if (keys.length === 0 || !keys[0]) {
       alert('Por favor, insira sua chave Apify para sincronizar.');
       return;
     }
-    const compPosts = posts.filter(p => p.competitionId === compId && (p.status === 'synced' || p.status === 'banned'));
+
+    const allCompPosts = posts.filter(p => p.competitionId === compId && (p.status === 'synced' || p.status === 'banned'));
+    const compPosts = allCompPosts.filter(p => !sessionSyncedIds.includes(p.id));
+
     if (compPosts.length === 0) {
-      alert('Nenhum vídeo nesta competição para ressincronizar.');
+      if (allCompPosts.length > 0) {
+        alert('Todos os posts desta competição já foram conferidos! Liberando para uma nova bateria completa.');
+        setSessionSyncedIds([]);
+        setSyncProgress(0);
+        setSyncTotal(0);
+      } else {
+        alert('Nenhum vídeo nesta competição para ressincronizar.');
+      }
       return;
     }
 
     setSyncing(true);
     setSyncingCompId(compId);
-    setSyncProgress(0);
-    setSyncTotal(compPosts.length);
+    let current = sessionSyncedIds.length;
+    setSyncProgress(current);
+    setSyncTotal(allCompPosts.length);
     try {
-      let current = 0;
       for (const post of compPosts) {
         setSyncingPostId(post.id);
-        await syncSinglePostWithApify(apifyKey, post, true);
+        await syncSinglePostWithApify(keys, post, false);
+        setSessionSyncedIds((prev: string[]) => [...prev, post.id]);
         current++;
         setSyncProgress(current);
       }
@@ -5803,6 +4488,229 @@ const AdminPanel = ({
       setSyncing(false);
       setSyncingCompId(null);
       setSyncingPostId(null);
+    }
+  };
+
+  const handleSyncCompetitionParallel = async (compId: string) => {
+    const keys = settings.apifyKeys && settings.apifyKeys.length > 0 ? settings.apifyKeys : [apifyKey];
+    if (keys.length < 1) {
+      alert('Configure pelo menos uma chave de API nas Configurações.');
+      return;
+    }
+
+    const allCompPosts = posts.filter(p => p.competitionId === compId && (p.status === 'synced' || p.status === 'banned'));
+    const compPosts = allCompPosts.filter(p => !sessionSyncedIds.includes(p.id));
+
+    if (compPosts.length === 0) {
+      if (allCompPosts.length > 0) {
+        alert('Todos os posts desta competição já foram conferidos! Liberando para uma nova bateria completa.');
+        setSessionSyncedIds([]);
+        setSyncProgress(0);
+        setSyncTotal(0);
+      } else {
+        alert('Nenhum vídeo nesta competição para ressincronizar.');
+      }
+      return;
+    }
+
+    setSyncing(true);
+    setSyncingCompId(compId);
+    let completed = sessionSyncedIds.length;
+    setSyncProgress(completed);
+    setSyncTotal(allCompPosts.length);
+
+    const worker = async (list: Post[], key: string) => {
+      for (const post of list) {
+        setSyncingPostId(post.id);
+        try {
+          await syncSinglePostWithApify([key], post, false);
+          setSessionSyncedIds((prev: string[]) => [...prev, post.id]);
+          completed++;
+          setSyncProgress(completed);
+        } catch (e) {
+          console.error(`Erro no Multi-Sync (comp) para o post ${post.id}:`, e);
+        }
+      }
+    };
+
+    try {
+      const n = keys.length;
+      const groups: Post[][] = Array.from({ length: n }, () => []);
+      compPosts.forEach((post, i) => {
+        groups[i % n].push(post);
+      });
+
+      await Promise.all(groups.map((group, i) => worker(group, keys[i])));
+      alert(`Multi-Sync da competição finalizado com ${n} chaves!`);
+    } catch (error: any) {
+      alert(`Erro no Multi-Sync: ${error.message}`);
+    } finally {
+      setSyncing(false);
+      setSyncingCompId(null);
+      setSyncingPostId(null);
+    }
+  };
+
+  const handleBulkForceMonthly = async () => {
+    if (selectedResyncPostIds.length === 0) return;
+    if (!confirm(`Deseja forçar ${selectedResyncPostIds.length} posts para o MENSAL?`)) return;
+    
+    setSyncing(true);
+    try {
+      const userIdsToUpdate = new Set<string>();
+      for (const postId of selectedResyncPostIds) {
+        const post = posts.find(p => p.id === postId);
+        if (post) {
+          await updateDoc(doc(db, 'posts', postId), { forceMonthly: true, forceDaily: false });
+          userIdsToUpdate.add(post.userId);
+        }
+      }
+      
+      for (const userId of userIdsToUpdate) {
+        await updateUserMetrics(userId);
+      }
+      
+      alert('Ação em lote concluída: Posts forçados para o Mensal!');
+      setSelectedResyncPostIds([]);
+    } catch (e: any) {
+      alert('Erro na ação em lote: ' + e.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleBulkForceDaily = async () => {
+    if (selectedResyncPostIds.length === 0) return;
+    if (!confirm(`Deseja forçar ${selectedResyncPostIds.length} posts para o DIÁRIO?`)) return;
+    
+    setSyncing(true);
+    try {
+      const userIdsToUpdate = new Set<string>();
+      for (const postId of selectedResyncPostIds) {
+        const post = posts.find(p => p.id === postId);
+        if (post) {
+          await updateDoc(doc(db, 'posts', postId), { forceDaily: true, forceMonthly: false });
+          userIdsToUpdate.add(post.userId);
+        }
+      }
+      
+      for (const userId of userIdsToUpdate) {
+        await updateUserMetrics(userId);
+      }
+      
+      alert('Ação em lote concluída: Posts forçados para o Diário!');
+      setSelectedResyncPostIds([]);
+    } catch (e: any) {
+      alert('Erro na ação em lote: ' + e.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleBulkResetMetrics = async () => {
+    if (selectedResyncPostIds.length === 0) return;
+    if (!confirm(`Deseja ZERAR as métricas de ${selectedResyncPostIds.length} posts e enviá-los de volta para sincronização?`)) return;
+    
+    setSyncing(true);
+    try {
+      const userIdsToUpdate = new Set<string>();
+      for (const postId of selectedResyncPostIds) {
+        const post = posts.find(p => p.id === postId);
+        if (post) {
+          await updateDoc(doc(db, 'posts', postId), { 
+            status: 'approved',
+            views: 0, likes: 0, comments: 0, shares: 0, saves: 0,
+            viewsBaseline: 0, likesBaseline: 0, commentsBaseline: 0, sharesBaseline: 0, savesBaseline: 0
+          });
+          userIdsToUpdate.add(post.userId);
+        }
+      }
+      
+      for (const userId of userIdsToUpdate) {
+        await updateUserMetrics(userId);
+      }
+      
+      alert('Ação em lote concluída: Posts resetados e enviados para re-sincronia!');
+      setSelectedResyncPostIds([]);
+    } catch (e: any) {
+      alert('Erro na ação em lote: ' + e.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleBulkSyncSelected = async () => {
+    if (selectedResyncPostIds.length === 0) return;
+    const keys = settings.apifyKeys && settings.apifyKeys.length > 0 ? settings.apifyKeys : [apifyKey];
+    if (keys.length < 1) {
+      alert('Configure pelo menos uma chave de API.');
+      return;
+    }
+
+    setSyncing(true);
+    setSyncTotal(selectedResyncPostIds.length);
+    let completed = 0;
+    setSyncProgress(0);
+
+    try {
+      const selectedPosts = posts.filter(p => selectedResyncPostIds.includes(p.id));
+      const n = keys.length;
+      const groups: Post[][] = Array.from({ length: n }, () => []);
+      selectedPosts.forEach((post, i) => groups[i % n].push(post));
+
+      const worker = async (list: Post[], key: string) => {
+        for (const post of list) {
+          setSyncingPostId(post.id);
+          try {
+            await syncSinglePostWithApify([key], post, false);
+            completed++;
+            setSyncProgress(completed);
+          } catch (e) {
+            console.error(`Erro no Bulk Sync para o post ${post.id}:`, e);
+          }
+        }
+      };
+
+      await Promise.all(groups.map((group, i) => worker(group, keys[i])));
+      alert('Sincronização em lote dos selecionados finalizada!');
+      setSelectedResyncPostIds([]);
+    } catch (error: any) {
+      alert(`Erro no Bulk Sync: ${error.message}`);
+    } finally {
+      setSyncing(false);
+      setSyncingPostId(null);
+    }
+  };
+
+  const handleBulkRevertToPending = async () => {
+    if (selectedSyncPostIds.length === 0) return;
+    if (!confirm(`Deseja reverter ${selectedSyncPostIds.length} posts selecionados para a Triagem (Pendentes)?`)) return;
+
+    try {
+      setSyncing(true);
+      const affectedUserIds = new Set<string>();
+      
+      for (const postId of selectedSyncPostIds) {
+        const post = posts.find(p => p.id === postId);
+        if (post) {
+          affectedUserIds.add(post.userId);
+          await updateDoc(doc(db, 'posts', postId), { 
+            status: 'pending', 
+            approvedAt: deleteField() 
+          });
+        }
+      }
+      
+      for (const uid of Array.from(affectedUserIds)) {
+        await updateUserMetrics(uid);
+      }
+      
+      setSelectedSyncPostIds([]);
+      alert('Links revertidos para a Triagem com sucesso!');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'bulk_revert');
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -5866,27 +4774,98 @@ const AdminPanel = ({
 
         {userRole === 'admin' && (
           <div className="flex flex-wrap items-center gap-6 bg-zinc-900/50 p-6 rounded-[32px] border border-zinc-800/50">
-            {/* CONFIGURAÇÃO DA CHAVE API */}
-            <div className="flex flex-col gap-2 flex-1 min-w-[320px]">
-              <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Configuração Apify</label>
-              <div className="flex items-center gap-2">
-                <div className="relative flex-1 group">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none group-focus-within:text-amber-500 transition-colors" />
-                  <input
-                    type="text"
-                    value={apifyKey}
-                    onChange={(e) => setApifyKey(e.target.value)}
-                    placeholder="Insira sua Chave API aqui"
-                    className="w-full bg-black border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-xs font-bold focus:border-amber-500 outline-none transition-all placeholder:text-zinc-700"
-                  />
+            {/* CONFIGURAÇÃO DA CHAVE API GERAL */}
+            <div className="flex flex-col gap-4 flex-1 min-w-[300px]">
+              <div className="flex flex-col gap-2">
+                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                  Chaves Gerais (Ressincronização)
+                  <InfoTooltip text="Chaves usadas para a atualização periódica de todos os vídeos já auditados." />
+                </label>
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1 group">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none group-focus-within:text-amber-500 transition-colors" />
+                    <input
+                      type="text"
+                      value={apifyKey}
+                      onChange={(e) => setApifyKey(e.target.value)}
+                      placeholder="Adicionar chave..."
+                      className="w-full bg-black border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-xs font-bold focus:border-amber-500 outline-none transition-all placeholder:text-zinc-700"
+                    />
+                  </div>
+                  <button
+                    onClick={handleSaveApiKey}
+                    className="px-6 py-3 bg-zinc-800 text-zinc-300 font-black rounded-xl hover:bg-zinc-700 active:scale-95 transition-all text-[10px] uppercase whitespace-nowrap"
+                  >
+                    Salvar
+                  </button>
                 </div>
-                <button
-                  onClick={handleSaveApiKey}
-                  className="px-6 py-3 gold-bg text-black font-black rounded-xl hover:scale-105 active:scale-95 transition-all shadow-lg shadow-amber-500/20 text-[10px] uppercase whitespace-nowrap"
-                >
-                  Salvar
-                </button>
               </div>
+
+              {settings.apifyKeys && settings.apifyKeys.length > 0 && (
+                <div className="flex flex-wrap gap-2 max-h-[80px] overflow-y-auto pr-2 custom-scrollbar">
+                  {settings.apifyKeys.map((key, idx) => (
+                    <div key={idx} className="flex items-center gap-2 bg-black/40 border border-zinc-800/50 px-3 py-1.5 rounded-lg group">
+                      <code className="text-[9px] text-zinc-500 font-mono truncate max-w-[80px]">
+                        {key.substring(0, 6)}...{key.substring(key.length - 4)}
+                      </code>
+                      <button 
+                        onClick={() => handleDeleteApiKey(key)}
+                        className="text-zinc-600 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
+                        title="Remover Chave"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* CONFIGURAÇÃO DA CHAVE API EXCLUSIVA PARA SINCRONISMO */}
+            <div className="flex flex-col gap-4 flex-1 min-w-[300px] border-l border-zinc-800/50 pl-6">
+              <div className="flex flex-col gap-2">
+                <label className="text-[10px] font-black text-amber-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                  <Zap className="w-3 h-3 fill-current" /> Chaves Sincronismo Inicial
+                  <InfoTooltip text="Chaves usadas exclusivamente para a primeira validação de links aprovados. Recomendado usar chaves diferentes das gerais." />
+                </label>
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1 group">
+                    <Zap className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none group-focus-within:text-amber-500 transition-colors" />
+                    <input
+                      type="text"
+                      value={apifyKeySync}
+                      onChange={(e) => setApifyKeySync(e.target.value)}
+                      placeholder="Adicionar chave sync..."
+                      className="w-full bg-black border border-amber-500/20 rounded-xl py-3 pl-12 pr-4 text-xs font-bold focus:border-amber-500 outline-none transition-all placeholder:text-zinc-700"
+                    />
+                  </div>
+                  <button
+                    onClick={handleSaveSyncKey}
+                    className="px-6 py-3 gold-bg text-black font-black rounded-xl hover:scale-105 active:scale-95 transition-all shadow-lg shadow-amber-500/20 text-[10px] uppercase whitespace-nowrap"
+                  >
+                    Adicionar
+                  </button>
+                </div>
+              </div>
+
+              {settings.apifyKeysSync && settings.apifyKeysSync.length > 0 && (
+                <div className="flex flex-wrap gap-2 max-h-[80px] overflow-y-auto pr-2 custom-scrollbar">
+                  {settings.apifyKeysSync.map((key, idx) => (
+                    <div key={idx} className="flex items-center gap-2 bg-amber-500/5 border border-amber-500/20 px-3 py-1.5 rounded-lg group">
+                      <code className="text-[9px] text-zinc-400 font-mono truncate max-w-[80px]">
+                        {key.substring(0, 6)}...{key.substring(key.length - 4)}
+                      </code>
+                      <button 
+                        onClick={() => handleDeleteSyncKey(key)}
+                        className="text-zinc-600 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
+                        title="Remover Chave"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* RESET DIÁRIO */}
@@ -6257,14 +5236,33 @@ const AdminPanel = ({
                   trend: undefined
                 },
                 { 
-                  label: 'Saúde da Comunidade', 
-                  value: newUsers7d, 
-                  sub: `${inactiveUsers.length} inativos (3d)`, 
-                  icon: Users, 
+                  label: 'Redes Vinculadas', 
+                  value: (() => {
+                    const activeUsers = [...approvedUsers, ...pendingUsers];
+                    const targetUsers = selectedNetworkUserId === 'all' ? activeUsers : activeUsers.filter(u => u.uid === selectedNetworkUserId);
+                    return targetUsers.reduce((acc: number, u: any) => acc + (u.tiktok?.length || 0) + (u.instagram?.length || 0) + ((u as any).userInstagram?.length || 0) + (u.youtube?.length || 0), 0);
+                  })(),
+                  sub: (() => {
+                    const activeUsers = [...approvedUsers, ...pendingUsers];
+                    if (selectedNetworkUserId !== 'all') {
+                      const selUser = activeUsers.find(u => u.uid === selectedNetworkUserId);
+                      if (!selUser) return 'Usuário não encontrado';
+                      const tkCount = (selUser.tiktok || []).length;
+                      const igCount = ((selUser.instagram || []).length + ((selUser as any).userInstagram || []).length);
+                      const ytCount = (selUser.youtube || []).length;
+                      const totalCount = tkCount + igCount + ytCount;
+                      return `Visualizando detalhes de perfis (${totalCount})`;
+                    }
+                    const tk = activeUsers.reduce((acc: number, u: any) => acc + (u.tiktok?.length || 0), 0);
+                    const ig = activeUsers.reduce((acc: number, u: any) => acc + (u.instagram?.length || 0) + ((u as any).userInstagram?.length || 0), 0);
+                    const yt = activeUsers.reduce((acc: number, u: any) => acc + (u.youtube?.length || 0), 0);
+                    return `Tiktok: ${tk} • Insta: ${ig} • YT: ${yt}`;
+                  })(), 
+                  icon: Share2, 
                   color: 'text-pink-500', 
                   bg: 'bg-pink-500/10',
-                  desc: 'Novos integrantes (7 dias)',
-                  tooltip: 'Novos usuários na última semana e usuários inativos nos últimos 3 dias.',
+                  desc: 'Total de contas sociais cadastradas',
+                  tooltip: 'Quantidade de redes sociais conectadas nos perfis dos usuários.',
                   trend: undefined
                 },
               ].map((stat, i) => (
@@ -6302,8 +5300,51 @@ const AdminPanel = ({
                     </div>
                   </div>
 
-                  <div className="mt-8 pt-4 border-t border-zinc-900/50 relative z-10">
+                  <div className="mt-8 pt-4 border-t border-zinc-900/50 relative z-10 flex flex-col gap-3">
                     <p className="text-[9px] font-black text-zinc-700 uppercase tracking-widest leading-none">{stat.desc}</p>
+                    {stat.label === 'Redes Vinculadas' && (
+                      <>
+                        <select
+                          value={selectedNetworkUserId}
+                          onChange={(e) => setSelectedNetworkUserId(e.target.value)}
+                          className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-2 py-1.5 text-[8px] font-black text-zinc-300 uppercase tracking-widest focus:outline-none focus:border-pink-500/50 transition-all cursor-pointer"
+                        >
+                          <option value="all" className="bg-zinc-900 text-zinc-300 font-black">TODOS OS USUÁRIOS</option>
+                          {[...approvedUsers, ...pendingUsers]
+                            .sort((a, b) => (a.displayName || a.email || '').localeCompare(b.displayName || b.email || ''))
+                            .map(u => (
+                            <option key={u.uid} value={u.uid} className="bg-zinc-900 text-zinc-300">
+                              {u.displayName ? u.displayName.toUpperCase() : (u.email ? u.email.toUpperCase() : 'SEM NOME')}
+                            </option>
+                          ))}
+                        </select>
+                        {selectedNetworkUserId !== 'all' && (() => {
+                          const selUser = [...approvedUsers, ...pendingUsers].find(u => u.uid === selectedNetworkUserId);
+                          if (!selUser) return null;
+                          const tks = selUser.tiktok || [];
+                          const igs = [...(selUser.instagram || []), ...((selUser as any).userInstagram || [])];
+                          const yts = selUser.youtube || [];
+                          const allHandles = [
+                            ...tks.map(h => ({ platform: 'TikTok', handle: h, color: 'text-pink-500 bg-pink-500/10 border-pink-500/20' })),
+                            ...igs.map(h => ({ platform: 'Instagram', handle: h, color: 'text-blue-500 bg-blue-500/10 border-blue-500/20' })),
+                            ...yts.map(h => ({ platform: 'YouTube', handle: h, color: 'text-red-500 bg-red-500/10 border-red-500/20' }))
+                          ];
+                          if (allHandles.length === 0) return <div className="text-[9px] text-zinc-500 text-center font-bold mt-2">NENHUMA CONTA ENCONTRADA</div>;
+                          return (
+                            <div className="mt-2 flex flex-col gap-2 max-h-[120px] overflow-y-auto custom-scrollbar pr-1">
+                              {allHandles.map((h, idx) => (
+                                <div key={idx} className="flex flex-col gap-1.5 items-center justify-center p-2 rounded-xl bg-black border border-zinc-900 group text-center">
+                                  <span className="text-[8px] font-black text-zinc-500 uppercase">{h.platform}</span>
+                                  <div className={`px-3 py-1 rounded-full border text-[9px] font-black tracking-widest ${h.color} truncate w-full max-w-[200px]`}>
+                                    {h.handle}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </>
+                    )}
                   </div>
                 </motion.div>
               ))}
@@ -6353,51 +5394,50 @@ const AdminPanel = ({
                 </div>
               </div>
 
-              {/* Inactive Users Preview */}
+              {/* Efficiency Metric Card */}
               <div className="p-8 rounded-[40px] bg-zinc-950 border border-zinc-900 flex flex-col">
                 <div className="flex items-center justify-between mb-8">
                   <div>
-                    <h4 className="text-lg font-black uppercase text-white tracking-tight">Fila de Inatividade</h4>
-                    <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest text-red-500/70">Integrantes sem postar há 3 dias</p>
+                    <h4 className="text-lg font-black uppercase text-white tracking-tight">Eficiência de Postagem</h4>
+                    <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Média de posts por dia / criador</p>
                   </div>
-                  <UserX className="w-6 h-6 text-red-500/30" />
+                  <TrendingUp className="w-6 h-6 text-amber-500/30" />
                 </div>
                 
-                <div className="flex-1 space-y-3 overflow-y-auto max-h-[220px] custom-scrollbar pr-1">
-                  {inactiveUsers.slice(0, 10).map((u, i) => (
-                    <div key={u.uid} className="flex items-center justify-between p-3 rounded-2xl bg-black border border-zinc-900 group">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg overflow-hidden border border-zinc-800">
-                          <img src={u.photoURL || `https://ui-avatars.com/api/?name=${u.displayName}`} alt="" className="w-full h-full object-cover" />
+                <div className="flex-1 space-y-3 overflow-y-auto max-h-[300px] custom-scrollbar pr-1">
+                  {userPostAverages.map((u) => {
+                    const avg = u.avgPostsPerDay || 0;
+                    const colorClass = avg >= 1.0 ? 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20' :
+                                     avg >= 0.5 ? 'text-amber-500 bg-amber-500/10 border-amber-500/20' :
+                                     'text-zinc-500 bg-zinc-500/10 border-zinc-500/20';
+                    return (
+                      <div key={u.uid} className="flex items-center justify-between p-3 rounded-2xl bg-black border border-zinc-900 group">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg overflow-hidden border border-zinc-800">
+                            <img src={u.photoURL || `https://ui-avatars.com/api/?name=${u.displayName}`} alt="" className="w-full h-full object-cover" />
+                          </div>
+                          <span className="text-[10px] font-black text-zinc-400 uppercase truncate max-w-[100px]">{u.displayName}</span>
                         </div>
-                        <span className="text-[10px] font-black text-zinc-400 uppercase truncate max-w-[100px]">{u.displayName}</span>
+                        <div className={`px-3 py-1 rounded-full border text-[9px] font-black tracking-widest ${colorClass}`}>
+                          {avg.toFixed(2)} / DIA
+                        </div>
                       </div>
-                      <span className="text-[8px] font-bold text-zinc-700 uppercase tracking-widest">Sem posts</span>
-                    </div>
-                  ))}
-                  {inactiveUsers.length === 0 && (
+                    );
+                  })}
+                  {userPostAverages.length === 0 && (
                     <div className="h-full flex flex-col items-center justify-center text-center py-10">
                       <ShieldCheck className="w-8 h-8 text-emerald-500/20 mb-2" />
-                      <p className="text-[9px] font-black text-zinc-700 uppercase">Todos os ativos postaram!</p>
+                      <p className="text-[9px] font-black text-zinc-700 uppercase">Aguardando dados...</p>
                     </div>
                   )}
                 </div>
-                
-                {userRole === 'admin' && (
-                  <button 
-                    onClick={() => setTab('USERS_APPROVED')}
-                    className="mt-6 w-full py-4 rounded-2xl border border-zinc-800 text-[9px] font-black uppercase tracking-widest text-zinc-500 hover:text-white hover:border-zinc-700 transition-all"
-                  >
-                    Ver todos os {inactiveUsers.length} inativos
-                  </button>
-                )}
               </div>
             </div>
 
             {/* Middle Section: Distribution & Status */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Distribution Card */}
-              <div className="lg:col-span-2 p-8 rounded-[40px] bg-zinc-950 border border-zinc-900">
+              {/* Distribution Card - Full width now */}
+              <div className="lg:col-span-3 p-8 rounded-[40px] bg-zinc-950 border border-zinc-900">
                 <div className="flex items-center justify-between mb-8">
                   <div>
                     <h4 className="text-lg font-black uppercase text-white tracking-tight flex items-center">
@@ -6441,54 +5481,6 @@ const AdminPanel = ({
                       </>
                     );
                   })()}
-                </div>
-              </div>
-
-              {/* Redes Sociais - Substituindo Integridade */}
-              <div className="p-8 rounded-[40px] gold-bg border border-white/10 group overflow-hidden relative flex flex-col justify-between">
-                <div className="absolute top-0 right-0 w-40 h-40 bg-white/20 blur-[80px] -mr-20 -mt-20 rounded-full" />
-                <div>
-                  <h4 className="text-lg font-black uppercase text-black tracking-tight mb-1 relative z-10">Redes Sociais</h4>
-                  <p className="text-[10px] font-black text-black/60 uppercase tracking-widest mb-8 relative z-10">Contas registradas no hub</p>
-                  
-                  <div className="space-y-4 relative z-10">
-                    <div className="p-4 rounded-2xl bg-black/5 border border-black/10 flex items-center justify-between group/item hover:bg-black/10 transition-all">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-xl bg-black/10 flex items-center justify-center">
-                          <Zap className="w-4 h-4 text-black" />
-                        </div>
-                        <span className="text-[10px] font-black text-black uppercase">TikTok</span>
-                      </div>
-                      <span className="text-lg font-black text-black">{socialCounts.tiktok}</span>
-                    </div>
-
-                    <div className="p-4 rounded-2xl bg-black/5 border border-black/10 flex items-center justify-between group/item hover:bg-black/10 transition-all">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-xl bg-black/10 flex items-center justify-center">
-                          <Camera className="w-4 h-4 text-black" />
-                        </div>
-                        <span className="text-[10px] font-black text-black uppercase">Instagram</span>
-                      </div>
-                      <span className="text-lg font-black text-black">{socialCounts.instagram}</span>
-                    </div>
-
-                    <div className="p-4 rounded-2xl bg-black/5 border border-black/10 flex items-center justify-between group/item hover:bg-black/10 transition-all">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-xl bg-black/10 flex items-center justify-center">
-                          <Eye className="w-4 h-4 text-black" />
-                        </div>
-                        <span className="text-[10px] font-black text-black uppercase">YouTube</span>
-                      </div>
-                      <span className="text-lg font-black text-black">{socialCounts.youtube}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-8 pt-4 border-t border-black/10 flex justify-between items-center relative z-10">
-                  <span className="text-[9px] font-black text-black/40 uppercase tracking-widest">Total Geral</span>
-                  <span className="text-xs font-black text-black uppercase tracking-tighter">
-                    {socialCounts.tiktok + socialCounts.instagram + socialCounts.youtube} Canais
-                  </span>
                 </div>
               </div>
             </div>
@@ -6574,6 +5566,27 @@ const AdminPanel = ({
                       <option key={c.id} value={c.id}>{c.title} {c.isActive ? '• ATIVA' : ''}</option>
                     ))}
                   </select>
+                </div>
+
+                <div className="flex flex-col gap-1 px-2">
+                  <label className="text-[8px] font-black text-zinc-600 uppercase tracking-[0.2em] ml-1">Filtrar por Dia:</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="date"
+                      value={financeDateFilter}
+                      onChange={(e) => setFinanceDateFilter(e.target.value)}
+                      className="bg-black border border-zinc-800 rounded-xl py-2 px-4 text-[10px] font-black text-amber-500 outline-none focus:border-amber-500 transition-all cursor-pointer hover:bg-zinc-900 icon-calendar-white"
+                    />
+                    {financeDateFilter && (
+                      <button 
+                        onClick={() => setFinanceDateFilter('')}
+                        className="p-2.5 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all border border-red-500/20"
+                        title="Limpar Filtro"
+                      >
+                        <XCircle className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex p-1 bg-black rounded-2xl border border-zinc-800">
@@ -6913,30 +5926,110 @@ const AdminPanel = ({
 
                     {(financeTab === 'PENDING' || financeTab === 'REALIZED') && (
                       <div className="animate-in fade-in duration-500">
-                        <div className="flex items-center gap-2 bg-zinc-900/50 p-1.5 rounded-xl border border-zinc-800/50 overflow-x-auto custom-scrollbar w-full md:w-fit pb-1 md:pb-1.5 mb-6">
-                          {competitions.length === 0 && (
-                            <span className="px-4 py-2 text-zinc-600 font-black text-[10px] uppercase tracking-widest">Nenhuma competição cadastrada</span>
-                          )}
-                          {competitions.map(comp => (
-                            <button
-                              key={comp.id}
-                              onClick={() => setFinanceCompId(comp.id)}
-                              className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all whitespace-nowrap flex items-center gap-1.5 ${financeCompId === comp.id ? 'bg-amber-500/10 text-amber-500 shadow-md border border-amber-500/20' : 'text-zinc-500 hover:text-amber-400 hover:bg-amber-500/5'}`}
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                          <div className="flex items-center gap-2 bg-zinc-900/50 p-1.5 rounded-xl border border-zinc-800/50 overflow-x-auto custom-scrollbar w-full md:w-fit">
+                            {competitions.length === 0 && (
+                              <span className="px-4 py-2 text-zinc-600 font-black text-[10px] uppercase tracking-widest">Nenhuma competição cadastrada</span>
+                            )}
+                            {competitions.map(comp => (
+                              <button
+                                key={comp.id}
+                                onClick={() => setFinanceCompId(comp.id)}
+                                className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all whitespace-nowrap flex items-center gap-1.5 ${financeCompId === comp.id ? 'bg-amber-500/10 text-amber-500 shadow-md border border-amber-500/20' : 'text-zinc-500 hover:text-amber-400 hover:bg-amber-500/5'}`}
+                              >
+                                <Trophy className="w-3.5 h-3.5" /> {comp.title}
+                              </button>
+                            ))}
+                          </div>
+                          
+                          <div className="relative w-full md:w-auto">
+                            <button 
+                              onClick={() => setShowManualUserSelect(!showManualUserSelect)}
+                              className="w-full md:w-auto px-4 py-2.5 bg-zinc-900 text-zinc-300 font-black rounded-xl text-[10px] uppercase tracking-widest border border-zinc-800 hover:border-amber-500/50 hover:text-amber-500 transition-all flex items-center justify-center gap-2 shadow-lg"
                             >
-                              <Trophy className="w-3.5 h-3.5" /> {comp.title}
+                              <Plus className="w-3.5 h-3.5" /> INSERIR USUÁRIO MANUAL
                             </button>
-                          ))}
+
+                            {showManualUserSelect && (
+                              <div className="absolute right-0 top-full mt-2 w-64 bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl z-50 p-3 flex flex-col gap-3">
+                                <input 
+                                  type="text"
+                                  placeholder="Buscar por nome..."
+                                  value={searchManualUser}
+                                  onChange={(e) => setSearchManualUser(e.target.value)}
+                                  className="bg-black border border-zinc-800 rounded-xl py-2 px-3 text-[10px] font-bold text-white outline-none focus:border-amber-500"
+                                />
+                                <div className="max-h-48 overflow-y-auto custom-scrollbar flex flex-col gap-1">
+                                  {approvedUsers
+                                    .filter(u => u.displayName.toLowerCase().includes(searchManualUser.toLowerCase()))
+                                    .map(u => (
+                                      <button
+                                        key={u.uid}
+                                        onClick={() => {
+                                          setManuallyAddedFinancialUsers(prev => prev.includes(u.uid) ? prev : [...prev, u.uid]);
+                                          setShowManualUserSelect(false);
+                                          setSearchManualUser('');
+                                        }}
+                                        className="text-left px-3 py-2 rounded-lg text-[10px] font-black text-zinc-400 hover:bg-zinc-900 hover:text-white uppercase transition-all truncate"
+                                      >
+                                        {u.displayName}
+                                      </button>
+                                  ))}
+                                  {approvedUsers.filter(u => u.displayName.toLowerCase().includes(searchManualUser.toLowerCase())).length === 0 && (
+                                    <p className="text-[10px] font-bold text-zinc-600 text-center py-2">Nenhum usuário encontrado</p>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
                         
                         <ListHeader columns={['INTEGRANTE', 'CHAVE PIX', 'SALDO', 'STATUS', 'GERENCIAR']} gridClass="grid-cols-[1.5fr_1fr_1.5fr_150px_220px]" />
                         <div className="max-h-[700px] overflow-y-auto custom-scrollbar">
                           {(() => {
+                            if (loadingFinancials) {
+                              return (
+                                <div className="py-32 text-center">
+                                  <RefreshCw className="w-10 h-10 text-amber-500 animate-spin mx-auto mb-4" />
+                                  <p className="text-zinc-600 font-black uppercase text-[10px] tracking-widest">Carregando dados financeiros...</p>
+                                </div>
+                              );
+                            }
+
+                            if (financeTab === 'REALIZED' && financeDateFilter) {
+                              return (
+                                <>
+                                  {realizedPayments.map(t => (
+                                    <DailyTransactionRow key={t.id} transaction={t} users={approvedUsers} />
+                                  ))}
+                                  {realizedPayments.length === 0 && (
+                                    <div className="py-32 text-center">
+                                      <History className="w-12 h-12 text-zinc-900 mx-auto mb-4" />
+                                      <p className="text-zinc-700 font-black uppercase text-[10px] tracking-widest">Nenhum pagamento registrado neste dia.</p>
+                                    </div>
+                                  )}
+                                </>
+                              );
+                            }
+
                             const filteredUsers = approvedUsers.filter(u => {
                               const b = financeCompId ? (u.competitionStats?.[financeCompId]?.balance || 0) : 0;
                               const paid = financeCompId ? (u.competitionStats?.[financeCompId]?.paidTotal || 0) : 0;
-                              if (financeTab === 'PENDING') return b > 0;
-                              // REALIZED: teve pagamento confirmado nesta competição
-                              return paid > 0 && b <= 0;
+                              
+                              if (financeDateFilter && financeTab === 'PENDING') {
+                                // Filtra usuários que tiveram posts aprovados na data selecionada E possuem saldo
+                                const dailyPosts = posts.filter(p => 
+                                  p.userId === u.uid && 
+                                  p.competitionId === financeCompId && 
+                                  (p.status === 'approved' || p.status === 'synced') &&
+                                  p.approvedAt && isSameDay(p.approvedAt, financeDateFilter)
+                                );
+                                return b > 0 && dailyPosts.length > 0;
+                              }
+
+                              if (financeTab === 'PENDING') return b > 0 || manuallyAddedFinancialUsers.includes(u.uid);
+                              // Para REALIZED, mostramos quem já recebeu qualquer valor
+                              return paid > 0 || manuallyAddedFinancialUsers.includes(u.uid);
                             });
                             
                             return (
@@ -7098,13 +6191,71 @@ const AdminPanel = ({
                   </button>
                 </div>
 
+                {/* Bulk Actions Header for SINCRONIZACAO */}
+                <div className="bg-zinc-900/50 p-6 rounded-[32px] border border-zinc-800/50 flex flex-wrap items-center justify-between gap-6">
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={() => {
+                        const allCompPendingSync = posts.filter(p => p.status === 'approved' && p.competitionId === syncDetailCompId).map(p => p.id);
+                        if (selectedSyncPostIds.length === allCompPendingSync.length) {
+                          setSelectedSyncPostIds([]);
+                        } else {
+                          setSelectedSyncPostIds(allCompPendingSync);
+                        }
+                      }}
+                      className="px-4 py-2 rounded-xl bg-zinc-800 text-zinc-400 text-[10px] font-black uppercase tracking-widest border border-zinc-700 hover:bg-zinc-700 hover:text-white transition-all"
+                    >
+                      {selectedSyncPostIds.length > 0 && selectedSyncPostIds.length === posts.filter(p => p.status === 'approved' && p.competitionId === syncDetailCompId).length 
+                        ? 'Desmarcar Todos' 
+                        : 'Selecionar Todos'}
+                    </button>
+                    {selectedSyncPostIds.length > 0 && (
+                      <span className="text-amber-500 font-black text-[10px] uppercase tracking-widest">
+                        {selectedSyncPostIds.length} selecionados
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {selectedSyncPostIds.length > 0 && (
+                      <button
+                        onClick={handleBulkRevertToPending}
+                        disabled={syncing}
+                        className="px-6 py-2.5 rounded-xl bg-red-500/10 text-red-500 border border-red-500/20 text-[10px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all disabled:opacity-50 flex items-center gap-2"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        Reverter para Posts (Triagem)
+                      </button>
+                    )}
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 gap-4">
                   {posts.filter(p => p.status === 'approved' && p.competitionId === syncDetailCompId).map(post => (
-                    <div key={post.id} className="p-6 rounded-3xl glass flex flex-col md:flex-row items-center gap-6 group hover:border-amber-500/30 transition-all">
-                      <div className="w-16 h-16 rounded-2xl bg-zinc-900 flex items-center justify-center shrink-0">
-                        {post.platform === 'tiktok' ? <Zap className="w-8 h-8 text-amber-500" /> :
-                          post.platform === 'youtube' ? <TrendingUp className="w-8 h-8 text-red-500" /> :
-                            <Camera className="w-8 h-8 text-pink-500" />}
+                    <div 
+                      key={post.id} 
+                      onClick={() => {
+                        if (selectedSyncPostIds.includes(post.id)) {
+                          setSelectedSyncPostIds(prev => prev.filter(id => id !== post.id));
+                        } else {
+                          setSelectedSyncPostIds(prev => [...prev, post.id]);
+                        }
+                      }}
+                      className={`p-6 rounded-[32px] glass-card border transition-all duration-300 group flex flex-col md:flex-row items-center gap-6 cursor-pointer
+                        ${selectedSyncPostIds.includes(post.id) ? 'border-amber-500/50 bg-amber-500/5 shadow-[0_0_20px_rgba(245,158,11,0.05)]' : 'border-zinc-800/50 hover:border-zinc-700'}
+                      `}
+                    >
+                      <div className="flex items-center gap-4 shrink-0">
+                        <div className={`w-5 h-5 rounded-md border-2 transition-all flex items-center justify-center
+                          ${selectedSyncPostIds.includes(post.id) ? 'bg-amber-500 border-amber-500' : 'border-zinc-700 group-hover:border-zinc-500'}
+                        `}>
+                          {selectedSyncPostIds.includes(post.id) && <Check className="w-3.5 h-3.5 text-black stroke-[4]" />}
+                        </div>
+                        <div className="w-16 h-16 rounded-2xl bg-zinc-900 flex items-center justify-center shrink-0">
+                          {post.platform === 'tiktok' ? <Zap className="w-8 h-8 text-amber-500" /> :
+                            post.platform === 'youtube' ? <TrendingUp className="w-8 h-8 text-red-500" /> :
+                              <Camera className="w-8 h-8 text-pink-500" />}
+                        </div>
                       </div>
                       <div className="flex-1 min-w-0 text-center md:text-left">
                         <p className="text-sm font-black text-zinc-300 uppercase tracking-tight mb-1">{post.userName}</p>
@@ -7115,16 +6266,20 @@ const AdminPanel = ({
                           <span>{new Date(post.timestamp).toLocaleString()}</span>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3 shrink-0">
+                      <div className="flex items-center gap-3 shrink-0" onClick={e => e.stopPropagation()}>
                         <a href={post.url} target="_blank" rel="noreferrer" className="px-5 py-3 rounded-xl bg-zinc-900 text-zinc-400 font-bold text-xs hover:text-zinc-100 transition-colors">
                           Ver Link
                         </a>
                         <button
                           onClick={async () => {
                             setSyncingPostId(post.id);
+                            const keys = (settings.apifyKeysSync && settings.apifyKeysSync.length > 0)
+                              ? settings.apifyKeysSync 
+                              : (settings.apifyKeys && settings.apifyKeys.length > 0 ? settings.apifyKeys : [apifyKey]);
                             try {
-                              await syncSinglePostWithApify(apifyKey, post, true);
+                              await syncSinglePostWithApify(keys, post, false);
                               await updateDoc(doc(db, 'posts', post.id), { status: 'synced' });
+                              await updateUserMetrics(post.userId);
                               alert('Vídeo sincronizado com sucesso!');
                             } catch (e: any) {
                               alert('Erro ao sincronizar: ' + e.message);
@@ -7147,22 +6302,32 @@ const AdminPanel = ({
               <div className="space-y-6">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-zinc-900/30 p-8 rounded-[40px] border border-zinc-800/50">
                   <div className="space-y-2">
-                    <h3 className="text-2xl font-black uppercase gold-gradient">Sincronização por Competição</h3>
-                    <p className="text-zinc-500 font-bold text-xs uppercase tracking-widest">Selecione uma competição ou processe todos de forma sequencial.</p>
+                    <h3 className="text-2xl font-black uppercase gold-gradient">Sincronização de Triagem</h3>
+                    <p className="text-zinc-500 font-bold text-xs uppercase tracking-widest">Validação inicial de links aprovados. Selecione uma competição ou processe todos.</p>
                     {settings.lastSync && (
                       <p className="text-amber-500/60 font-black text-[10px] uppercase tracking-[0.2em] mt-2">
                         ÚLTIMA SINCRONIZAÇÃO: {formatLastSyncDate(settings.lastSync)}
                       </p>
                     )}
                   </div>
-                  <button
-                    onClick={handleSyncApprovedSequentially}
-                    disabled={syncing}
-                    className="px-10 py-5 gold-bg text-black font-black rounded-2xl hover:scale-[1.02] transition-all flex items-center justify-center gap-3 shadow-2xl shadow-amber-500/20 disabled:opacity-50"
-                  >
-                    {syncing ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
-                    SINCRONIZAR TUDO (SEQUENCIAL)
-                  </button>
+                  <div className="flex flex-wrap items-center gap-4">
+                    <button
+                      onClick={handleSyncApprovedParallel}
+                      disabled={syncing}
+                      className="px-8 py-5 bg-gradient-to-r from-amber-600 to-amber-500 text-black font-black rounded-2xl hover:scale-[1.02] transition-all flex items-center justify-center gap-3 shadow-[0_0_20px_rgba(245,158,11,0.3)] disabled:opacity-50"
+                    >
+                      {syncing ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
+                      DUAL-SYNC (ALTA PERFORMANCE)
+                    </button>
+                    <button
+                      onClick={handleSyncApprovedSequentially}
+                      disabled={syncing}
+                      className="px-8 py-5 bg-zinc-800 text-white font-black rounded-2xl hover:scale-[1.02] transition-all flex items-center justify-center gap-3 border border-zinc-700 disabled:opacity-50"
+                    >
+                      {syncing ? <RefreshCw className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
+                      SEQUENCIAL
+                    </button>
+                  </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {competitions.map(comp => {
@@ -7262,6 +6427,11 @@ const AdminPanel = ({
                       </span>
                     </div>
                     <p className="font-bold truncate text-zinc-500 mb-2 text-xs">{post.url}</p>
+                    <div className="flex items-center justify-center md:justify-start gap-4 text-[10px] font-black text-zinc-500 mb-2">
+                      <span className="uppercase">{post.platform}</span>
+                      <span className="w-1 h-1 rounded-full bg-zinc-800" />
+                      <span>{new Date(post.timestamp).toLocaleString()}</span>
+                    </div>
                     <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 text-[10px] font-black text-zinc-500">
                       <div className="flex items-center gap-1"><Eye className="w-3 h-3" /> {post.views.toLocaleString()}</div>
                       <div className="flex items-center gap-1"><Heart className="w-3 h-3" /> {post.likes.toLocaleString()}</div>
@@ -7390,61 +6560,137 @@ const AdminPanel = ({
                   </div>
                 </div>
 
-                <div className="space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
-                  {posts.filter(p => p.userId === auditUserId).map(post => (
-                    <div key={post.id} className="p-4 rounded-2xl bg-black border border-zinc-800 flex flex-col md:flex-row gap-4 items-center justify-between">
-                      <div className="flex items-center gap-4 w-full md:w-auto">
-                        {post.platform === 'tiktok' ? <Zap className="w-6 h-6 text-amber-500" /> :
-                          post.platform === 'youtube' ? <TrendingUp className="w-6 h-6 text-red-500" /> :
-                            <Camera className="w-6 h-6 text-pink-500" />}
-                        <div className="flex flex-col overflow-hidden max-w-[200px]">
-                          <p className="font-bold text-xs truncate text-zinc-300">{post.url}</p>
-                          <p className={`text-[10px] font-black uppercase ${post.status === 'approved' || post.status === 'synced' ? 'text-emerald-500' : post.status === 'rejected' || post.status === 'banned' ? 'text-red-500' : 'text-amber-500'}`}>
-                            STATUS: {post.status === 'approved' || post.status === 'synced' ? 'APROVADO' : post.status === 'rejected' || post.status === 'banned' ? 'RECUSADO' : 'EM TRIAGEM'}
-                          </p>
+                {/* Daily Summary + Filter */}
+                {(() => {
+                  const userPosts = posts.filter(p => p.userId === auditUserId);
+                  
+                  // Agrupar posts por dia (usando timestamp)
+                  const dayMap: Record<string, typeof userPosts> = {};
+                  userPosts.forEach(p => {
+                    const d = new Date(p.timestamp);
+                    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                    if (!dayMap[key]) dayMap[key] = [];
+                    dayMap[key].push(p);
+                  });
+                  const sortedDays = Object.keys(dayMap).sort((a, b) => b.localeCompare(a));
+                  
+                  const filteredPosts = auditDayFilter
+                    ? (dayMap[auditDayFilter] || [])
+                    : userPosts;
+
+                  return (
+                    <>
+                      {/* Cards de resumo por dia */}
+                      {sortedDays.length > 0 && (
+                        <div className="mb-6">
+                          <div className="flex items-center justify-between mb-3">
+                            <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Posts por Dia</p>
+                            {auditDayFilter && (
+                              <button
+                                onClick={() => setAuditDayFilter('')}
+                                className="text-[10px] font-black text-amber-500 uppercase tracking-widest hover:text-amber-400 transition-colors flex items-center gap-1"
+                              >
+                                <X className="w-3 h-3" /> Limpar Filtro
+                              </button>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {sortedDays.map(day => {
+                              const dayPosts = dayMap[day];
+                              const approved = dayPosts.filter(p => p.status === 'approved' || p.status === 'synced').length;
+                              const pending = dayPosts.filter(p => p.status === 'pending').length;
+                              const rejected = dayPosts.filter(p => p.status === 'rejected' || p.status === 'banned').length;
+                              const isSelected = auditDayFilter === day;
+                              const label = new Date(day + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+                              return (
+                                <button
+                                  key={day}
+                                  onClick={() => setAuditDayFilter(isSelected ? '' : day)}
+                                  className={`flex flex-col items-center px-4 py-3 rounded-2xl border transition-all text-left ${
+                                    isSelected
+                                      ? 'bg-amber-500/10 border-amber-500/50 text-amber-500'
+                                      : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-600 hover:text-white'
+                                  }`}
+                                >
+                                  <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
+                                  <span className={`text-xl font-black mt-0.5 ${isSelected ? 'text-amber-500' : 'text-white'}`}>{dayPosts.length}</span>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    {approved > 0 && <span className="text-[8px] font-black text-emerald-500">{approved}✓</span>}
+                                    {pending > 0 && <span className="text-[8px] font-black text-amber-400">{pending}⏳</span>}
+                                    {rejected > 0 && <span className="text-[8px] font-black text-red-500">{rejected}✗</span>}
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {auditDayFilter && (
+                            <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest mt-3">
+                              Mostrando {filteredPosts.length} post{filteredPosts.length !== 1 ? 's' : ''} de {new Date(auditDayFilter + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                            </p>
+                          )}
                         </div>
+                      )}
+
+                      {/* Lista de posts */}
+                      <div className="space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
+                        {filteredPosts.map(post => (
+                          <div key={post.id} className="p-4 rounded-2xl bg-black border border-zinc-800 flex flex-col md:flex-row gap-4 items-center justify-between">
+                            <div className="flex items-center gap-4 w-full md:w-auto">
+                              {post.platform === 'tiktok' ? <Zap className="w-6 h-6 text-amber-500" /> :
+                                post.platform === 'youtube' ? <TrendingUp className="w-6 h-6 text-red-500" /> :
+                                  <Camera className="w-6 h-6 text-pink-500" />}
+                              <div className="flex flex-col overflow-hidden max-w-[200px]">
+                                <p className="font-bold text-xs truncate text-zinc-300">{post.url}</p>
+                                <p className={`text-[10px] font-black uppercase ${post.status === 'approved' || post.status === 'synced' ? 'text-emerald-500' : post.status === 'rejected' || post.status === 'banned' ? 'text-red-500' : 'text-amber-500'}`}>
+                                  STATUS: {post.status === 'approved' || post.status === 'synced' ? 'APROVADO' : post.status === 'rejected' || post.status === 'banned' ? 'RECUSADO' : 'EM TRIAGEM'}
+                                </p>
+                                <p className="text-[9px] font-bold text-zinc-600 mt-0.5">{new Date(post.timestamp).toLocaleString('pt-BR')}</p>
+                              </div>
+                            </div>
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 text-xs w-full md:w-auto">
+                              <div className="flex items-center gap-4 bg-zinc-900/50 p-2 rounded-xl">
+                                <span className="text-zinc-500 font-bold uppercase tracking-widest flex items-center gap-1"><Eye className="w-3 h-3 text-zinc-400" /> {(post.views || 0).toLocaleString()}</span>
+                                <span className="text-zinc-500 font-bold uppercase tracking-widest flex items-center gap-1"><Heart className="w-3 h-3 text-zinc-400" /> {(post.likes || 0).toLocaleString()}</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <a href={post.url} target="_blank" rel="noreferrer" className="flex-1 text-center sm:flex-none px-4 py-2 rounded-xl bg-zinc-900 text-zinc-400 font-bold hover:text-white transition-colors">
+                                  Ver Link
+                                </a>
+                                <button
+                                  onClick={() => handlePostStatus(post.id, 'approved')}
+                                  className={`p-2 rounded-xl transition-all ${post.status === 'approved' || post.status === 'synced' ? 'bg-emerald-500 text-black' : 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-black'}`}
+                                  title="Aprovar Vídeo"
+                                >
+                                  <CheckCircle2 className="w-5 h-5" />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setRejectionReason(post.rejectionReason || '');
+                                    setRejectionModal({ isOpen: true, postId: post.id, status: post.status });
+                                  }}
+                                  className={`p-2 rounded-xl transition-all ${post.rejectionReason ? 'bg-amber-500 text-black' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
+                                  title="Enviar/Editar Mensagem"
+                                >
+                                  <MessageSquare className="w-5 h-5" />
+                                </button>
+                                <button
+                                  onClick={() => handlePostStatus(post.id, 'rejected')}
+                                  className={`p-2 rounded-xl transition-all ${post.status === 'rejected' || post.status === 'banned' ? 'bg-red-500 text-black' : 'bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-black'}`}
+                                  title="Rejeitar Vídeo"
+                                >
+                                  <XCircle className="w-5 h-5" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        {filteredPosts.length === 0 && (
+                          <p className="text-center py-6 text-zinc-500 font-bold">Nenhum vídeo registrado para este usuário{auditDayFilter ? ' neste dia' : ''}.</p>
+                        )}
                       </div>
-                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 text-xs w-full md:w-auto">
-                        <div className="flex items-center gap-4 bg-zinc-900/50 p-2 rounded-xl">
-                          <span className="text-zinc-500 font-bold uppercase tracking-widest flex items-center gap-1"><Eye className="w-3 h-3 text-zinc-400" /> {(post.views || 0).toLocaleString()}</span>
-                          <span className="text-zinc-500 font-bold uppercase tracking-widest flex items-center gap-1"><Heart className="w-3 h-3 text-zinc-400" /> {(post.likes || 0).toLocaleString()}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <a href={post.url} target="_blank" rel="noreferrer" className="flex-1 text-center sm:flex-none px-4 py-2 rounded-xl bg-zinc-900 text-zinc-400 font-bold hover:text-white transition-colors">
-                            Ver Link
-                          </a>
-                          <button
-                            onClick={() => handlePostStatus(post.id, 'approved')}
-                            className={`p-2 rounded-xl transition-all ${post.status === 'approved' || post.status === 'synced' ? 'bg-emerald-500 text-black' : 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-black'}`}
-                            title="Aprovar Vídeo"
-                          >
-                            <CheckCircle2 className="w-5 h-5" />
-                          </button>
-                          <button
-                            onClick={() => {
-                              setRejectionReason(post.rejectionReason || '');
-                              setRejectionModal({ isOpen: true, postId: post.id, status: post.status });
-                            }}
-                            className={`p-2 rounded-xl transition-all ${post.rejectionReason ? 'bg-amber-500 text-black' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
-                            title="Enviar/Editar Mensagem"
-                          >
-                            <MessageSquare className="w-5 h-5" />
-                          </button>
-                          <button
-                            onClick={() => handlePostStatus(post.id, 'rejected')}
-                            className={`p-2 rounded-xl transition-all ${post.status === 'rejected' || post.status === 'banned' ? 'bg-red-500 text-black' : 'bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-black'}`}
-                            title="Rejeitar Vídeo"
-                          >
-                            <XCircle className="w-5 h-5" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  {posts.filter(p => p.userId === auditUserId).length === 0 && (
-                    <p className="text-center py-6 text-zinc-500 font-bold">Nenhum vídeo registrado para este usuário.</p>
-                  )}
-                </div>
+                    </>
+                  );
+                })()}
               </div>
             ) : (
               <div className="space-y-1">
@@ -8522,18 +7768,33 @@ const AdminPanel = ({
                       <p className="text-zinc-500 font-bold text-xs uppercase tracking-widest">Atualização Individual de Métricas</p>
                     </div>
 
-                    <button
-                      onClick={() => handleSyncCompetitionSequentially(syncDetailCompId!)}
-                      disabled={syncing}
-                      className={`px-8 py-4 rounded-2xl border transition-all flex items-center gap-3 text-xs font-black uppercase tracking-widest
-                        ${syncingCompId === syncDetailCompId 
-                          ? 'bg-amber-500 text-black border-amber-500 shadow-xl shadow-amber-500/20' 
-                          : 'bg-amber-500/10 border-amber-500/30 text-amber-500 hover:bg-amber-500 hover:text-black'
-                        } disabled:opacity-50`}
-                    >
-                      {syncingCompId === syncDetailCompId ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
-                      {syncingCompId === syncDetailCompId ? `SINCRONIZANDO: ${syncProgress} / ${syncTotal}` : 'RESSINCRONIZAR TODOS'}
-                    </button>
+                    <div className="flex flex-wrap items-center gap-4">
+                      <button
+                        onClick={() => handleSyncCompetitionSequentially(syncDetailCompId!)}
+                        disabled={syncing}
+                        className={`px-8 py-4 rounded-2xl border transition-all flex items-center gap-3 text-[10px] font-black uppercase tracking-widest
+                          ${syncingCompId === syncDetailCompId && !sessionSyncedIds.length 
+                            ? 'bg-amber-500 text-black border-amber-500 shadow-xl shadow-amber-500/20' 
+                            : 'bg-zinc-800/50 border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:text-white'
+                          } disabled:opacity-50`}
+                      >
+                        {syncingCompId === syncDetailCompId && !sessionSyncedIds.length ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
+                        SEQUENCIAL
+                      </button>
+
+                      <button
+                        onClick={() => handleSyncCompetitionParallel(syncDetailCompId!)}
+                        disabled={syncing}
+                        className={`px-8 py-4 rounded-2xl border transition-all flex items-center gap-3 text-[10px] font-black uppercase tracking-widest
+                          ${syncingCompId === syncDetailCompId
+                            ? 'bg-amber-500 text-black border-amber-500 shadow-xl shadow-amber-500/20' 
+                            : 'gold-bg text-black hover:scale-[1.02]'
+                          } disabled:opacity-50`}
+                      >
+                        {syncingCompId === syncDetailCompId ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
+                        {syncingCompId === syncDetailCompId ? `DUAL-SYNC: ${syncProgress} / ${syncTotal}` : 'DUAL-SYNC (ALTA PERFORMANCE)'}
+                      </button>
+                    </div>
                   </div>
 
                   <button
@@ -8544,9 +7805,96 @@ const AdminPanel = ({
                   </button>
                 </div>
 
+                {/* Bulk Actions Header */}
+                <div className="bg-zinc-900/50 p-6 rounded-[32px] border border-zinc-800/50 flex flex-wrap items-center justify-between gap-6">
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={() => {
+                        const allCompPosts = posts.filter(p => (p.status === 'synced' || p.status === 'banned') && p.competitionId === syncDetailCompId).map(p => p.id);
+                        if (selectedResyncPostIds.length === allCompPosts.length) {
+                          setSelectedResyncPostIds([]);
+                        } else {
+                          setSelectedResyncPostIds(allCompPosts);
+                        }
+                      }}
+                      className="px-4 py-2 rounded-xl bg-zinc-800 text-zinc-400 text-[10px] font-black uppercase tracking-widest border border-zinc-700 hover:bg-zinc-700 hover:text-white transition-all"
+                    >
+                      {selectedResyncPostIds.length > 0 && selectedResyncPostIds.length === posts.filter(p => (p.status === 'synced' || p.status === 'banned') && p.competitionId === syncDetailCompId).length 
+                        ? 'Desmarcar Todos' 
+                        : 'Selecionar Todos'}
+                    </button>
+                    {selectedResyncPostIds.length > 0 && (
+                      <span className="text-amber-500 font-black text-[10px] uppercase tracking-widest">
+                        {selectedResyncPostIds.length} selecionados
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {selectedResyncPostIds.length > 0 && (
+                      <>
+                        <button
+                          onClick={handleBulkForceMonthly}
+                          disabled={syncing}
+                          className="px-4 py-2 rounded-xl bg-violet-500/10 text-violet-400 border border-violet-500/20 text-[9px] font-black uppercase tracking-widest hover:bg-violet-500 hover:text-white transition-all disabled:opacity-50"
+                        >
+                          Mensal em Lote
+                        </button>
+                        <button
+                          onClick={handleBulkForceDaily}
+                          disabled={syncing}
+                          className="px-4 py-2 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20 text-[9px] font-black uppercase tracking-widest hover:bg-amber-500 hover:text-black transition-all disabled:opacity-50"
+                        >
+                          Diário em Lote
+                        </button>
+                        <button
+                          onClick={handleBulkResetMetrics}
+                          disabled={syncing}
+                          className="px-4 py-2 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[9px] font-black uppercase tracking-widest hover:bg-blue-500 hover:text-white transition-all disabled:opacity-50"
+                        >
+                          Zerar e Voltar
+                        </button>
+                        <button
+                          onClick={handleBulkSyncSelected}
+                          disabled={syncing}
+                          className="px-4 py-2 rounded-xl gold-bg text-black text-[9px] font-black uppercase tracking-widest hover:scale-105 transition-all disabled:opacity-50"
+                        >
+                          Sinc. Selecionados
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 gap-4">
-                  {posts.filter(p => (p.status === 'synced' || p.status === 'banned') && p.competitionId === syncDetailCompId).map(post => (
-                    <div key={post.id} className={`p-6 rounded-[32px] glass-card border transition-all duration-500 group flex flex-col md:flex-row items-center gap-8 ${post.status === 'banned' ? 'border-red-500/10 opacity-60' : 'border-zinc-800/50 hover:border-amber-500/30'}`}>
+                  {posts.filter(p => (p.status === 'synced' || p.status === 'banned') && p.competitionId === syncDetailCompId).map(post => {
+                    const isSyncedInSession = sessionSyncedIds.includes(post.id);
+                    const sessionActive = syncing || sessionSyncedIds.length > 0;
+                    const isDimmed = sessionActive && isSyncedInSession;
+
+                    return (
+                      <div 
+                        key={post.id} 
+                        onClick={() => {
+                          if (selectedResyncPostIds.includes(post.id)) {
+                            setSelectedResyncPostIds(prev => prev.filter(id => id !== post.id));
+                          } else {
+                            setSelectedResyncPostIds(prev => [...prev, post.id]);
+                          }
+                        }}
+                        className={`p-6 rounded-[32px] glass-card border transition-all duration-500 group flex flex-col md:flex-row items-center gap-8 cursor-pointer
+                          ${post.status === 'banned' ? 'border-red-500/10 opacity-60' : 'border-zinc-800/50 hover:border-amber-500/30'}
+                          ${isDimmed ? 'opacity-30 grayscale blur-[1px]' : 'opacity-100 grayscale-0'}
+                          ${isSyncedInSession ? 'border-emerald-500/30 bg-emerald-500/[0.02]' : ''}
+                          ${selectedResyncPostIds.includes(post.id) ? 'border-amber-500/50 bg-amber-500/5 ring-1 ring-amber-500/20' : ''}
+                        `}
+                      >
+                      {/* Checkbox */}
+                      <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all shrink-0 ${
+                        selectedResyncPostIds.includes(post.id) ? 'bg-amber-500 border-amber-500 text-black' : 'border-zinc-700 bg-zinc-900 group-hover:border-zinc-500'
+                      }`}>
+                        {selectedResyncPostIds.includes(post.id) && <Check className="w-4 h-4" strokeWidth={4} />}
+                      </div>
                       {/* Ícone da Plataforma com Glow */}
                       <div className={`w-20 h-20 rounded-3xl flex items-center justify-center shrink-0 transition-all duration-500 group-hover:scale-110 relative ${
                         post.platform === 'tiktok' ? 'bg-amber-500/10 text-amber-500 shadow-lg shadow-amber-500/5' :
@@ -8565,11 +7913,25 @@ const AdminPanel = ({
                           <p className={`text-lg font-black uppercase tracking-tight transition-colors ${post.status === 'banned' ? 'text-zinc-600 line-through' : 'text-white group-hover:text-amber-500'}`}>
                             {post.userName}
                           </p>
-                          <div className="flex gap-2">
-                            {post.status === 'synced' ? (
+                          <div className="flex gap-2 flex-wrap">
+                            {isSyncedInSession ? (
+                              <span className="px-3 py-1 rounded-full bg-emerald-500 text-black text-[8px] font-black uppercase tracking-widest border border-emerald-400 flex items-center gap-1 shadow-lg shadow-emerald-500/20 animate-in zoom-in-50 duration-300">
+                                <CheckCircle2 className="w-3 h-3" /> OK / CONCLUÍDO
+                              </span>
+                            ) : post.status === 'synced' ? (
                               <span className="px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-500 text-[8px] font-black uppercase tracking-widest border border-emerald-500/20">ATUALIZADO</span>
                             ) : (
                               <span className="px-3 py-1 rounded-full bg-red-500/10 text-red-500 text-[8px] font-black uppercase tracking-widest border border-red-500/20">SUSPENSO</span>
+                            )}
+                            {(post as any).forceMonthly && (
+                              <span className="px-3 py-1 rounded-full bg-violet-500/20 text-violet-400 text-[8px] font-black uppercase tracking-widest border border-violet-500/30 flex items-center gap-1">
+                                <Calendar className="w-2.5 h-2.5" /> SÓ MENSAL
+                              </span>
+                            )}
+                            {(post as any).forceDaily && (
+                              <span className="px-3 py-1 rounded-full bg-amber-500/20 text-amber-500 text-[8px] font-black uppercase tracking-widest border border-amber-500/30 flex items-center gap-1">
+                                <Zap className="w-2.5 h-2.5" /> SÓ DIÁRIO
+                              </span>
                             )}
                           </div>
                         </div>
@@ -8577,6 +7939,12 @@ const AdminPanel = ({
                         <p className="font-bold truncate text-zinc-500 text-xs hover:text-zinc-300 transition-colors cursor-pointer max-w-md mx-auto md:mx-0">
                           {post.url}
                         </p>
+
+                        <div className="flex items-center justify-center md:justify-start gap-4 text-[10px] font-black text-zinc-500 mt-1">
+                          <span className="uppercase">{post.platform}</span>
+                          <span className="w-1 h-1 rounded-full bg-zinc-800" />
+                          <span>{new Date(post.timestamp).toLocaleString()}</span>
+                        </div>
 
                         <div className="flex flex-wrap items-center justify-center md:justify-start gap-6 pt-2">
                           <div className="flex items-center gap-2 group/metric">
@@ -8606,45 +7974,108 @@ const AdminPanel = ({
                           <ExternalLink className="w-5 h-5" />
                         </a>
 
-                        {post.status === 'synced' ? (
-                          <button
-                            onClick={async () => {
-                              try {
-                                await updateDoc(doc(db, 'posts', post.id), { status: 'banned' });
-                                await updateUserMetrics(post.userId);
-                                alert('Vídeo suspenso com sucesso.');
-                              } catch(e: any) { alert('Erro: ' + e.message); }
-                            }}
-                            className="px-6 py-3.5 bg-red-500/10 text-red-500 font-black rounded-2xl hover:bg-red-500 hover:text-white transition-all text-[9px] tracking-widest uppercase"
-                          >
-                            SUSPENDER
-                          </button>
-                        ) : (
-                          <button
-                            onClick={async () => {
-                              try {
-                                await updateDoc(doc(db, 'posts', post.id), { status: 'synced' });
-                                await updateUserMetrics(post.userId);
-                                alert('Vídeo reativado com sucesso.');
-                              } catch(e: any) { alert('Erro: ' + e.message); }
-                            }}
-                            className="px-6 py-3.5 bg-emerald-500/10 text-emerald-500 font-black rounded-2xl hover:bg-emerald-500 hover:text-black transition-all text-[9px] tracking-widest uppercase"
-                          >
-                            REATIVAR
-                          </button>
-                        )}
-                        
+                        {/* Botão Forçar Mensal */}
                         <button
                           onClick={async () => {
-                            setSyncingPostId(post.id);
+                            const isAlreadyForced = (post as any).forceMonthly === true;
+                            const msg = isAlreadyForced
+                              ? 'Este link já está forçado para o Mensal. Deseja REVERTER para o comportamento normal (voltará ao Diário se dentro do ciclo)?'
+                              : 'Forçar este link para o Ranking MENSAL? Ele sairá do Diário e todos os seus dados diários serão removidos imediatamente.';
+                            if (!confirm(msg)) return;
                             try {
-                              await syncSinglePostWithApify(apifyKey, post, true);
-                              alert('Métricas atualizadas!');
-                            } catch (e: any) {
-                              alert('Erro ao atualizar: ' + e.message);
-                            } finally {
-                              setSyncingPostId(null);
+                              // 1. Marca o post no Firestore
+                              await updateDoc(doc(db, 'posts', post.id), { forceMonthly: !isAlreadyForced });
+
+                              // 2. Recálculo completo (para garantir consistência e evitar valores negativos ou duplicados)
+                              await updateUserMetrics(post.userId);
+
+                              alert(isAlreadyForced ? 'Revertido! Link voltou ao comportamento normal.' : '✅ Link forçado para o Mensal! Stats diários removidos.');
+                            } catch(e: any) { alert('Erro: ' + e.message); }
+                          }}
+                          className={`flex items-center justify-center gap-2 px-4 py-3 rounded-2xl transition-all text-[9px] tracking-widest uppercase font-black whitespace-nowrap shadow-lg
+                            ${(post as any).forceMonthly
+                              ? 'bg-violet-500 text-white hover:bg-violet-400'
+                              : 'bg-zinc-800 text-zinc-400 hover:bg-violet-600 hover:text-white'
+                            }`}
+                          title={(post as any).forceMonthly ? 'Clique para reverter ao comportamento normal' : 'Forçar link para Ranking Mensal'}
+                        >
+                          <Calendar className="w-4 h-4" />
+                          {(post as any).forceMonthly ? 'MENSAL ✓' : 'MENSAL'}
+                        </button>
+
+                        {/* Botão Forçar Diário */}
+                        <button
+                          onClick={async () => {
+                            const isAlreadyForcedDaily = (post as any).forceDaily === true;
+                            if (!isAlreadyForcedDaily && (post as any).forceMonthly) {
+                               alert('Remova primeiro a tag Mensal antes de forçar no Diário.');
+                               return;
                             }
+                            const msg = isAlreadyForcedDaily
+                              ? 'Este link já está forçado para o Diário. Deseja REVERTER para o comportamento normal?'
+                              : 'Forçar este link para o Ranking DIÁRIO? Ele entrará na contagem diária permanentemente.';
+                            if (!confirm(msg)) return;
+                            try {
+                              await updateDoc(doc(db, 'posts', post.id), { forceDaily: !isAlreadyForcedDaily });
+                              
+                              // 2. Recálculo completo garantido
+                              await updateUserMetrics(post.userId);
+
+                              alert(isAlreadyForcedDaily ? 'Revertido! Link voltou ao comportamento normal.' : '✅ Link forçado para o Diário! Stats integrados imediatamente.');
+                            } catch(e: any) { alert('Erro: ' + e.message); }
+                          }}
+                          className={`flex items-center justify-center gap-2 px-4 py-3 rounded-2xl transition-all text-[9px] tracking-widest uppercase font-black whitespace-nowrap shadow-lg
+                            ${(post as any).forceDaily
+                              ? 'bg-amber-500 text-black hover:bg-amber-400'
+                              : 'bg-zinc-800 text-zinc-400 hover:bg-amber-600 hover:text-white'
+                            }`}
+                          title={(post as any).forceDaily ? 'Clique para reverter ao comportamento normal' : 'Forçar link para Ranking Diário'}
+                        >
+                          <Zap className="w-4 h-4" />
+                          {(post as any).forceDaily ? 'DIÁRIO ✓' : 'DIÁRIO'}
+                        </button>
+
+                        <button
+                          onClick={async () => {
+                            if (!confirm('Tem certeza que deseja voltar este link para a sincronização? As métricas atuais serão ZERADAS para que ele seja recolocado no ranking corretamente.')) return;
+                            try {
+                              await updateDoc(doc(db, 'posts', post.id), { 
+                                status: 'approved',
+                                views: 0,
+                                likes: 0,
+                                comments: 0,
+                                shares: 0,
+                                saves: 0,
+                                viewsBaseline: 0,
+                                likesBaseline: 0,
+                                commentsBaseline: 0,
+                                sharesBaseline: 0,
+                                savesBaseline: 0
+                              });
+                              await updateUserMetrics(post.userId);
+                              alert('Link enviado de volta para Sincronização e métricas zeradas.');
+                            } catch(e: any) { alert('Erro: ' + e.message); }
+                          }}
+                          className="w-12 h-12 rounded-2xl bg-zinc-800 text-zinc-400 flex items-center justify-center hover:bg-blue-600 hover:text-white transition-all shadow-lg"
+                          title="Voltar para Sincronização (Zerar Métricas)"
+                        >
+                          <RotateCcw className="w-5 h-5" />
+                        </button>
+
+                        <button
+                          onClick={async () => {
+                            const keys = settings.apifyKeys && settings.apifyKeys.length > 0 ? settings.apifyKeys : [apifyKey];
+                            if (keys.length === 0 || !keys[0]) {
+                              alert('Configurações de API ausentes.');
+                              return;
+                            }
+                            try {
+                              setSyncingPostId(post.id);
+                              await syncSinglePostWithApify(keys, post, false);
+                              setSessionSyncedIds((prev: string[]) => [...prev, post.id]);
+                              alert('Sincronização individual concluída!');
+                            } catch (e: any) { alert('Erro: ' + e.message); }
+                            finally { setSyncingPostId(null); }
                           }}
                           disabled={syncingPostId === post.id}
                           className={`flex items-center justify-center gap-3 px-6 py-3.5 rounded-2xl transition-all text-[9px] tracking-widest uppercase font-black whitespace-nowrap
@@ -8658,34 +8089,96 @@ const AdminPanel = ({
                         </button>
                       </div>
                     </div>
-                  ))}
-                </div>
+                  );
+                })}
               </div>
-            ) : (
-              <div className="space-y-6">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-zinc-900/30 p-8 rounded-[40px] border border-zinc-800/50">
-                  <div className="space-y-2">
-                    <h3 className="text-2xl font-black uppercase gold-gradient">Ressincronização de Rankings</h3>
-                    <p className="text-zinc-500 font-bold text-xs uppercase tracking-[0.2em]">Selecione uma competição para atualizar as métricas gerais.</p>
-                  </div>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-zinc-900/30 p-8 rounded-[40px] border border-zinc-800/50">
+                <div className="space-y-2">
+                  <h3 className="text-2xl font-black uppercase gold-gradient">Ressincronização de Rankings</h3>
+                  <p className="text-zinc-500 font-bold text-xs uppercase tracking-[0.2em]">Selecione uma competição para atualizar as métricas gerais.</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-4">
                   <button
                     onClick={handleSyncAllSequentially}
+                    disabled={syncing}
+                    className="px-8 py-5 bg-zinc-800 text-zinc-400 font-black rounded-2xl border border-zinc-700 hover:bg-zinc-700 hover:text-white transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+                  >
+                    {syncing && !syncingCompId ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
+                    SEQUENCIAL
+                  </button>
+
+                  <button
+                    onClick={handleSyncAllParallel}
                     disabled={syncing}
                     className="px-10 py-5 gold-bg text-black font-black rounded-2xl hover:scale-[1.02] transition-all flex items-center justify-center gap-3 shadow-2xl shadow-amber-500/20 disabled:opacity-50"
                   >
                     {syncing && !syncingCompId ? (
                       <>
                         <RefreshCw className="w-5 h-5 animate-spin" />
-                        SINCRONIZANDO: {syncProgress} / {syncTotal}
+                        MULTI-SYNC: {syncProgress} / {syncTotal}
                       </>
                     ) : (
                       <>
-                        <Zap className="w-5 h-5" />
-                        RESSINCRONIZAR TUDO
+                        <Zap className="w-5 h-5 font-black" />
+                        MULTI-SYNC ({settings.apifyKeys?.length || 1} CHAVES)
                       </>
                     )}
                   </button>
                 </div>
+              </div>
+
+              {/* GESTÃO DE CHAVES DIRETO NA ABA DE RESSINCRONIZAÇÃO */}
+              <div className="bg-zinc-900/50 p-6 rounded-[32px] border border-zinc-800/50 space-y-4">
+                <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-amber-500 uppercase tracking-widest flex items-center gap-2">
+                      <Key className="w-3 h-3" /> Gestão de Chaves Apify (Multi-Sync)
+                    </label>
+                    <p className="text-zinc-500 text-[9px] font-bold uppercase">Adicione múltiplas chaves para acelerar o processamento paralelo.</p>
+                  </div>
+
+                  <div className="flex items-center gap-3 flex-1 max-w-2xl">
+                    <div className="relative flex-1 group">
+                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 group-focus-within:text-amber-500 transition-colors" />
+                      <input
+                        type="text"
+                        value={apifyKey}
+                        onChange={(e) => setApifyKey(e.target.value)}
+                        placeholder="Insira nova chave Apify..."
+                        className="w-full bg-black border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-xs font-bold focus:border-amber-500 outline-none transition-all"
+                      />
+                    </div>
+                    <button
+                      onClick={handleSaveApiKey}
+                      className="px-6 py-3 gold-bg text-black font-black rounded-xl hover:scale-105 transition-all text-[10px] uppercase"
+                    >
+                      Adicionar
+                    </button>
+                  </div>
+                </div>
+
+                {settings.apifyKeys && settings.apifyKeys.length > 0 && (
+                  <div className="flex flex-wrap gap-2 pt-2 border-t border-zinc-800/50">
+                    {settings.apifyKeys.map((key, idx) => (
+                      <div key={idx} className="flex items-center gap-2 bg-black/40 border border-zinc-800/50 px-3 py-1.5 rounded-lg group">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        <code className="text-[9px] text-zinc-400 font-mono">
+                          {key.substring(0, 8)}...{key.substring(key.length - 6)}
+                        </code>
+                        <button 
+                          onClick={() => handleDeleteApiKey(key)}
+                          className="text-zinc-600 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {competitions.map(comp => {
@@ -8735,30 +8228,48 @@ const AdminPanel = ({
                           </div>
 
                           {/* Botão de Ressincronizar - Estilo Pílula Premium */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleSyncCompetitionSequentially(comp.id);
-                            }}
-                            disabled={syncing}
-                            className={`w-full py-4 px-6 rounded-2xl border transition-all flex items-center justify-center gap-3 text-[10px] font-black uppercase tracking-[0.2em]
-                              ${syncingCompId === comp.id 
-                                ? 'bg-amber-500 text-black border-amber-500 animate-pulse-gold shadow-lg shadow-amber-500/40' 
-                                : 'bg-black border-zinc-800 text-amber-500 hover:bg-amber-500 hover:text-black hover:border-amber-500 hover:shadow-lg hover:shadow-amber-500/20'
-                              } disabled:opacity-50`}
-                          >
-                            {syncingCompId === comp.id ? (
-                              <>
-                                <RefreshCw className="w-4 h-4 animate-spin" />
-                                {syncProgress} / {syncTotal}
-                              </>
-                            ) : (
-                              <>
-                                <Zap className="w-4 h-4" />
-                                RESSINCRONIZAR AGORA
-                              </>
-                            )}
-                          </button>
+                          <div className="grid grid-cols-2 gap-3">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSyncCompetitionSequentially(comp.id);
+                              }}
+                              disabled={syncing}
+                              className={`py-4 px-4 rounded-2xl border transition-all flex items-center justify-center gap-2 text-[8px] font-black uppercase tracking-widest
+                                ${syncingCompId === comp.id 
+                                  ? 'bg-zinc-800 border-zinc-700 text-zinc-400' 
+                                  : 'bg-black border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white'
+                                } disabled:opacity-50`}
+                            >
+                              {syncingCompId === comp.id ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+                              SEQUENCIAL
+                            </button>
+
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSyncCompetitionParallel(comp.id);
+                              }}
+                              disabled={syncing}
+                              className={`py-4 px-4 rounded-2xl border transition-all flex items-center justify-center gap-2 text-[8px] font-black uppercase tracking-widest
+                                ${syncingCompId === comp.id 
+                                  ? 'bg-amber-500 text-black border-amber-500 shadow-lg shadow-amber-500/20' 
+                                  : 'gold-bg text-black border-amber-500/50 hover:scale-[1.05] shadow-md'
+                                } disabled:opacity-50`}
+                            >
+                              {syncingCompId === comp.id ? (
+                                <>
+                                  <RefreshCw className="w-3 h-3 animate-spin" />
+                                  {syncProgress}/{syncTotal}
+                                </>
+                              ) : (
+                                <>
+                                  <Zap className="w-3 h-3" />
+                                  MULTI-SYNC
+                                </>
+                              )}
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );
@@ -8917,7 +8428,7 @@ const AdminPanel = ({
               </div>
             </div>
           </div>
-        ) : tab === 'RELATORIOS' ? (
+        ) : tab === 'RELATORIOS' && (userRole === 'admin' || userRole === 'auditor') ? (
           <div className="space-y-6 animate-in fade-in duration-500 max-w-7xl mx-auto">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-zinc-900/50 p-8 rounded-[40px] border border-zinc-800/50">
               <div className="space-y-2">
@@ -9114,418 +8625,6 @@ const AdminPanel = ({
     </div>
   );
 };
-
-const SettingsView = ({
-  user,
-  profileName,
-  setProfileName,
-  profileTiktok,
-  setProfileTiktok,
-  profileInstagram,
-  setProfileInstagram,
-  profileYoutube,
-  setProfileYoutube,
-  profilePhoto,
-  handleProfilePhotoUpload,
-  handleUpdateProfile,
-  isUpdatingProfile,
-  settingsTab,
-  setSettingsTab
-}: {
-  user: User;
-  profileName: string;
-  setProfileName: (val: string) => void;
-  profileTiktok: string[];
-  setProfileTiktok: (val: string[]) => void;
-  profileInstagram: string[];
-  setProfileInstagram: (val: string[]) => void;
-  profileYoutube: string[];
-  setProfileYoutube: (val: string[]) => void;
-  profilePhoto: string;
-  handleProfilePhotoUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  handleUpdateProfile: () => void;
-  isUpdatingProfile: boolean;
-  settingsTab: 'PROFILE' | 'SOCIAL';
-  setSettingsTab: (val: 'PROFILE' | 'SOCIAL') => void;
-}) => {
-  const addSocial = (platform: 'tiktok' | 'instagram' | 'youtube') => {
-    if (platform === 'tiktok') setProfileTiktok([...profileTiktok, '@']);
-    if (platform === 'instagram') setProfileInstagram([...profileInstagram, '@']);
-    if (platform === 'youtube') setProfileYoutube([...profileYoutube, '@']);
-  };
-
-  const removeSocial = (platform: 'tiktok' | 'instagram' | 'youtube', index: number) => {
-    if (platform === 'tiktok') setProfileTiktok(profileTiktok.filter((_, i) => i !== index));
-    if (platform === 'instagram') setProfileInstagram(profileInstagram.filter((_, i) => i !== index));
-    if (platform === 'youtube') setProfileYoutube(profileYoutube.filter((_, i) => i !== index));
-  };
-
-  const updateSocial = (platform: 'tiktok' | 'instagram' | 'youtube', index: number, val: string) => {
-    const newVal = '@' + val.replace('@', '');
-    if (platform === 'tiktok') {
-      const list = [...profileTiktok];
-      list[index] = newVal;
-      setProfileTiktok(list);
-    }
-    if (platform === 'instagram') {
-      const list = [...profileInstagram];
-      list[index] = newVal;
-      setProfileInstagram(list);
-    }
-    if (platform === 'youtube') {
-      const list = [...profileYoutube];
-      list[index] = newVal;
-      setProfileYoutube(list);
-    }
-  };
-
-  return (
-    <div className="max-w-2xl mx-auto space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div className="space-y-1">
-          <h2 className="text-3xl font-black tracking-tight gold-gradient uppercase">Configurações</h2>
-          <p className="text-zinc-500 font-bold text-[10px] uppercase tracking-widest">Gerencie seu perfil e redes sociais</p>
-        </div>
-        <button
-          onClick={handleUpdateProfile}
-          disabled={isUpdatingProfile}
-          className="px-10 py-5 gold-bg text-black font-black rounded-2xl hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-3 shadow-xl shadow-amber-500/10"
-        >
-          {isUpdatingProfile ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
-          SALVAR ALTERAÇÕES
-        </button>
-      </div>
-
-      <div className="flex p-1.5 bg-zinc-900 border border-zinc-800 rounded-2xl w-full">
-        <button
-          onClick={() => setSettingsTab('PROFILE')}
-          className={`flex-1 py-3.5 rounded-xl font-black text-xs tracking-widest transition-all ${settingsTab === 'PROFILE' ? 'bg-amber-500 text-black shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
-        >
-          MEU PERFIL
-        </button>
-        <button
-          onClick={() => setSettingsTab('SOCIAL')}
-          className={`flex-1 py-3.5 rounded-xl font-black text-xs tracking-widest transition-all ${settingsTab === 'SOCIAL' ? 'bg-amber-500 text-black shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
-        >
-          REDES SOCIAIS
-        </button>
-      </div>
-
-      <div className="space-y-6">
-        {settingsTab === 'PROFILE' ? (
-          <div className="p-8 rounded-[40px] glass border border-zinc-800 space-y-8 relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-8 opacity-5">
-              <UserIcon className="w-40 h-40" />
-            </div>
-            <div className="flex flex-col md:flex-row items-center gap-8 relative z-10">
-              <div className="relative group">
-                <div className="w-32 h-32 rounded-[40px] border-4 border-zinc-900 shadow-2xl overflow-hidden relative">
-                  <img
-                    src={profilePhoto || user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}`}
-                    className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500"
-                    alt=""
-                  />
-                  <label
-                    htmlFor="profile-photo-upload"
-                    className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                  >
-                    <Camera className="w-8 h-8 text-amber-500" />
-                    <input
-                      type="file"
-                      id="profile-photo-upload"
-                      className="hidden"
-                      accept="image/*"
-                      onChange={handleProfilePhotoUpload}
-                    />
-                  </label>
-                </div>
-              </div>
-              <div className="flex-1 space-y-4 w-full">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-2">
-                    <UserIcon className="w-3 h-3" /> Seu Nome de Exibição
-                  </label>
-                  <input
-                    type="text"
-                    value={profileName}
-                    onChange={(e) => setProfileName(e.target.value)}
-                    className="w-full bg-black border border-zinc-800 rounded-2xl py-5 px-6 text-sm font-bold focus:border-amber-500 outline-none transition-all shadow-inner"
-                    placeholder="Seu nome no Hub"
-                  />
-                </div>
-                <div className="p-5 rounded-2xl bg-zinc-900/50 border border-zinc-800/50">
-                  <p className="text-[10px] text-zinc-500 uppercase font-black tracking-widest mb-1">E-mail de Login</p>
-                  <p className="font-bold text-zinc-300">{user.email}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 pt-8 border-t border-zinc-800 relative z-10">
-              <div className="p-6 rounded-3xl bg-zinc-900/50 border border-zinc-800/50 group hover:border-amber-500/30 transition-all">
-                <p className="text-[10px] text-zinc-500 uppercase font-black tracking-widest mb-1 flex items-center gap-2">
-                  <Crown className="w-3 h-3 text-amber-500" /> Cargo Atual
-                </p>
-                <p className="font-black text-amber-500 uppercase text-xs">{user.role}</p>
-              </div>
-              <div className="p-6 rounded-3xl bg-zinc-900/50 border border-zinc-800/50">
-                <p className="text-[10px] text-zinc-500 uppercase font-black tracking-widest mb-1">Identificador #ID</p>
-                <p className="font-bold text-zinc-300 text-xs font-mono">{user.uid.substr(0, 12).toUpperCase()}</p>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="p-10 rounded-[40px] glass border border-zinc-800 space-y-12 relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-8 opacity-5">
-              <Share2 className="w-40 h-40" />
-            </div>
-            
-            <div className="space-y-4 relative z-10">
-              <div className="flex items-center gap-3 text-amber-500">
-                <Zap className="w-5 h-5 shadow-amber-500/20" />
-                <h3 className="text-xl font-black uppercase tracking-tight">Vincular Várias Contas</h3>
-              </div>
-              <p className="text-xs text-zinc-500 font-bold leading-relaxed">Você pode cadastrar múltiplos perfis (@) para cada rede social. Isso permite que você envie vídeos de diferentes contas suas.</p>
-            </div>
-
-            <div className="space-y-12 relative z-10">
-              {/* TikTok Section */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between px-1">
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-                    <Zap className="w-3.5 h-3.5 text-amber-500" /> Contas TikTok
-                  </label>
-                  <button 
-                    onClick={() => addSocial('tiktok')}
-                    className="text-[10px] font-black text-amber-500 hover:text-amber-400 uppercase tracking-widest flex items-center gap-1 transition-colors"
-                  >
-                    + Adicionar Perfil
-                  </button>
-                </div>
-                <div className="space-y-3">
-                  {profileTiktok.map((val, idx) => (
-                    <div key={idx} className="relative group animate-in slide-in-from-left-2 duration-300">
-                      <span className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600 font-black text-sm">@</span>
-                      <input
-                        type="text"
-                        value={val.replace('@', '')}
-                        onChange={(e) => updateSocial('tiktok', idx, e.target.value)}
-                        placeholder="seu_usuario"
-                        className="w-full bg-black border border-zinc-800 rounded-2xl py-5 pl-12 pr-14 text-sm font-black focus:border-amber-500 outline-none transition-all"
-                      />
-                      <button 
-                        onClick={() => removeSocial('tiktok', idx)}
-                        className="absolute right-5 top-1/2 -translate-y-1/2 p-2 text-zinc-700 hover:text-red-500 transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                  {profileTiktok.length === 0 && (
-                    <div onClick={() => addSocial('tiktok')} className="py-8 border-2 border-dashed border-zinc-800 rounded-3xl flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-amber-500/30 transition-all group">
-                      <Zap className="w-5 h-5 text-zinc-800 group-hover:text-amber-500/50" />
-                      <p className="text-[10px] font-black text-zinc-700 group-hover:text-amber-500/50 uppercase tracking-widest">Nenhuma conta TikTok vinculada</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Instagram Section */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between px-1">
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-                    <Camera className="w-3.5 h-3.5 text-pink-500" /> Contas Instagram
-                  </label>
-                  <button 
-                    onClick={() => addSocial('instagram')}
-                    className="text-[10px] font-black text-pink-500 hover:text-pink-400 uppercase tracking-widest flex items-center gap-1 transition-colors"
-                  >
-                    + Adicionar Perfil
-                  </button>
-                </div>
-                <div className="space-y-3">
-                  {profileInstagram.map((val, idx) => (
-                    <div key={idx} className="relative group animate-in slide-in-from-left-2 duration-300">
-                      <span className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600 font-black text-sm">@</span>
-                      <input
-                        type="text"
-                        value={val.replace('@', '')}
-                        onChange={(e) => updateSocial('instagram', idx, e.target.value)}
-                        placeholder="seu_perfil"
-                        className="w-full bg-black border border-zinc-800 rounded-2xl py-5 pl-12 pr-14 text-sm font-black focus:border-pink-500 outline-none transition-all"
-                      />
-                      <button 
-                        onClick={() => removeSocial('instagram', idx)}
-                        className="absolute right-5 top-1/2 -translate-y-1/2 p-2 text-zinc-700 hover:text-red-500 transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                  {profileInstagram.length === 0 && (
-                    <div onClick={() => addSocial('instagram')} className="py-8 border-2 border-dashed border-zinc-800 rounded-3xl flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-pink-500/30 transition-all group">
-                      <Camera className="w-5 h-5 text-zinc-800 group-hover:text-pink-500/50" />
-                      <p className="text-[10px] font-black text-zinc-700 group-hover:text-pink-500/50 uppercase tracking-widest">Nenhuma conta Instagram vinculada</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* YouTube Section */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between px-1">
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-                    <TrendingUp className="w-3.5 h-3.5 text-red-500" /> Canais YouTube
-                  </label>
-                  <button 
-                    onClick={() => addSocial('youtube')}
-                    className="text-[10px] font-black text-red-500 hover:text-red-400 uppercase tracking-widest flex items-center gap-1 transition-colors"
-                  >
-                    + Adicionar Canal
-                  </button>
-                </div>
-                <div className="space-y-3">
-                  {profileYoutube.map((val, idx) => (
-                    <div key={idx} className="relative group animate-in slide-in-from-left-2 duration-300">
-                      <span className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600 font-black text-sm">@</span>
-                      <input
-                        type="text"
-                        value={val.replace('@', '')}
-                        onChange={(e) => updateSocial('youtube', idx, e.target.value)}
-                        placeholder="seu_canal"
-                        className="w-full bg-black border border-zinc-800 rounded-2xl py-5 pl-12 pr-14 text-sm font-black focus:border-red-500 outline-none transition-all"
-                      />
-                      <button 
-                        onClick={() => removeSocial('youtube', idx)}
-                        className="absolute right-5 top-1/2 -translate-y-1/2 p-2 text-zinc-700 hover:text-red-500 transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                  {profileYoutube.length === 0 && (
-                    <div onClick={() => addSocial('youtube')} className="py-8 border-2 border-dashed border-zinc-800 rounded-3xl flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-red-500/30 transition-all group">
-                      <TrendingUp className="w-5 h-5 text-zinc-800 group-hover:text-red-500/50" />
-                      <p className="text-[10px] font-black text-zinc-700 group-hover:text-red-500/50 uppercase tracking-widest">Nenhum canal YouTube vinculado</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="p-6 rounded-3xl bg-amber-500/5 border border-amber-500/10 flex items-start gap-4">
-              <ShieldCheck className="w-5 h-5 text-amber-500 shrink-0" />
-              <p className="text-[10px] text-amber-500/70 font-bold leading-relaxed uppercase tracking-wide">
-                Importante: Você pode adicionar múltiplos perfis, mas lembre-se que cada vídeo postado deve originar-se de um desses perfis cadastrados para ser validado.
-              </p>
-            </div>
-          </div>
-        )}
-
-        <div className="p-8 rounded-3xl bg-zinc-950/50 border border-zinc-900 flex items-start gap-5">
-          <div className="w-10 h-10 rounded-2xl bg-zinc-900 flex items-center justify-center shrink-0">
-            <AlertCircle className="w-5 h-5 text-zinc-600" />
-          </div>
-          <p className="text-xs text-zinc-500 font-medium leading-relaxed">
-            Mantenha suas contas vinculadas atualizadas. O MetaRayx Hub realiza verificações periódicas para garantir a integridade dos dados das competições.
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const SuggestionsView = ({
-  suggestionMsg,
-  setSuggestionMsg,
-  handleSendSuggestion,
-  suggestions
-}: {
-  suggestionMsg: string;
-  setSuggestionMsg: (v: string) => void;
-  handleSendSuggestion: () => void;
-  suggestions: Suggestion[];
-}) => (
-  <div className="max-w-4xl mx-auto space-y-12 p-4 pb-20">
-    <div className="space-y-4 text-center">
-      <h2 className="text-4xl md:text-5xl font-black tracking-tighter uppercase gold-gradient">Mural de Sugestões</h2>
-      <p className="text-zinc-500 font-bold text-xs uppercase tracking-widest max-w-lg mx-auto">Colabore com a evolução do MetaRayx. Vote, sugira e acompanhe o que estamos construindo.</p>
-    </div>
-
-    <div className="p-8 rounded-[40px] glass border border-zinc-800 space-y-8 shadow-2xl relative overflow-hidden">
-      <div className="absolute top-0 right-0 p-8 opacity-5">
-        <MessageSquare className="w-32 h-32" />
-      </div>
-      <div className="space-y-4 relative z-10">
-        <div className="flex items-center gap-3 text-amber-500">
-          <Zap className="w-5 h-5" />
-          <span className="text-xs font-black uppercase tracking-widest">O que podemos melhorar?</span>
-        </div>
-        <textarea
-          value={suggestionMsg}
-          onChange={(e) => setSuggestionMsg(e.target.value)}
-          placeholder="Descreva sua ideia ou funcionalidade..."
-          className="w-full bg-black border border-zinc-800 rounded-3xl py-6 px-8 text-sm font-bold focus:border-amber-500 outline-none transition-all h-32 resize-none shadow-inner"
-        />
-      </div>
-
-      <button
-        onClick={handleSendSuggestion}
-        disabled={!suggestionMsg.trim()}
-        className="w-full py-5 gold-bg text-black font-black rounded-2xl hover:scale-[1.01] transition-all shadow-xl shadow-amber-500/10 disabled:opacity-50 flex items-center justify-center gap-3 relative z-10"
-      >
-        <Send className="w-5 h-5" />
-        ENVIAR MINHA SUGESTÃO
-      </button>
-    </div>
-
-    <div className="space-y-6">
-      <div className="flex items-center gap-3 px-2">
-        <div className="w-1.5 h-6 gold-bg rounded-full" />
-        <h3 className="font-black uppercase tracking-widest text-sm text-zinc-400">Ideias da Comunidade</h3>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {suggestions.map(s => (
-          <motion.div
-            key={s.id}
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="p-6 rounded-[32px] bg-zinc-900/50 border border-zinc-800/50 flex flex-col justify-between gap-4 group hover:border-zinc-700 transition-all"
-          >
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest ${s.status === 'pendente' ? 'bg-zinc-800 text-zinc-500' :
-                    s.status === 'analise' ? 'bg-cyan-500/10 text-cyan-500' :
-                      s.status === 'desenvolvimento' ? 'bg-amber-500/10 text-amber-500' :
-                        'bg-emerald-500/10 text-emerald-500'
-                  }`}>
-                  {s.status === 'pendente' ? 'EM ESPERA' :
-                    s.status === 'analise' ? 'EM ANÁLISE' :
-                      s.status === 'desenvolvimento' ? 'DESENVOLVENDO' : 'CONCLUÍDO'}
-                </span>
-                <span className="text-[9px] text-zinc-700 font-bold uppercase">{new Date(s.timestamp).toLocaleDateString()}</span>
-              </div>
-              <p className="text-zinc-300 text-sm font-bold leading-relaxed">{s.message}</p>
-            </div>
-
-            <div className="flex items-center gap-2 pt-2 border-t border-zinc-800/50">
-              <div className="w-6 h-6 rounded-lg bg-zinc-800 flex items-center justify-center">
-                <UserIcon className="w-3 h-3 text-zinc-500" />
-              </div>
-              <span className="text-[10px] font-black text-zinc-600 uppercase">Enviado por @{s.userName?.toLowerCase().split(' ')[0]}</span>
-            </div>
-          </motion.div>
-        ))}
-        {suggestions.length === 0 && (
-          <div className="col-span-full py-20 text-center space-y-4">
-            <MessageSquare className="w-12 h-12 text-zinc-800 mx-auto opacity-20" />
-            <p className="text-zinc-600 font-bold uppercase text-[10px] tracking-widest">Inaugure o mural com sua ideia!</p>
-          </div>
-        )}
-      </div>
-    </div>
-  </div>
-);
 
 const ConfirmModal = ({
   isOpen,

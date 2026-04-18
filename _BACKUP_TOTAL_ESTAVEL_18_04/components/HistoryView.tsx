@@ -26,7 +26,6 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   const [selectedPlatform, setSelectedPlatform] = useState<'tiktok' | 'youtube' | 'instagram' | null>(null);
   const [filterDate, setFilterDate] = useState('');
   const [selectedCompId, setSelectedCompId] = useState<string | 'all'>(fixedCompetitionId || 'all');
-  const [selectedHandle, setSelectedHandle] = useState<string | 'all'>('all');
 
   const filteredPosts = posts.filter(post => {
     // Não mostrar posts deletados para o usuário (soft delete)
@@ -35,9 +34,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
     const matchesPlatform = selectedPlatform ? post.platform === selectedPlatform : true;
     const matchesDate = !filterDate ? true : new Date(post.timestamp).setHours(0,0,0,0) >= new Date(filterDate).setHours(0,0,0,0);
     const matchesComp = selectedCompId === 'all' ? true : post.competitionId === selectedCompId;
-    const matchesHandle = selectedHandle === 'all' ? true : post.accountHandle === selectedHandle;
     
-    return matchesPlatform && matchesDate && matchesComp && matchesHandle;
+    return matchesPlatform && matchesDate && matchesComp;
   });
 
   const getPlatformCount = (p: 'tiktok' | 'youtube' | 'instagram') => {
@@ -54,15 +52,6 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
 
   // Filtrar competições que têm posts ou estão ativas (para o seletor)
   const relevantCompetitions = competitions.sort((a, b) => b.startDate - a.startDate);
-
-  // Extrair handles únicos disponíveis no histórico do usuário
-  const availableHandles = React.useMemo(() => {
-    const handles = new Set<string>();
-    posts.forEach(p => {
-      if (p.accountHandle) handles.add(p.accountHandle);
-    });
-    return Array.from(handles).sort();
-  }, [posts]);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
@@ -160,33 +149,6 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
             </div>
           </div>
         )}
-
-        {/* Account Handle Selector (Dropdown) */}
-        {availableHandles.length > 0 && (
-          <div className="flex flex-col gap-2 mt-2 w-full max-w-xs">
-            <div className="flex items-center gap-2 text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">
-              <TrendingUp className="w-3.5 h-3.5" /> Filtrar por Perfil / Conta
-            </div>
-            <div className="relative group">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-600 transition-colors group-hover:text-amber-500" />
-              <select
-                value={selectedHandle}
-                onChange={(e) => setSelectedHandle(e.target.value)}
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl pl-11 pr-4 py-3 text-xs font-black text-white focus:outline-none focus:border-amber-500/50 transition-all focus:ring-4 focus:ring-amber-500/5 uppercase tracking-widest shadow-inner appearance-none cursor-pointer"
-              >
-                <option value="all">Todas as Contas</option>
-                {availableHandles.map(handle => (
-                  <option key={handle} value={handle}>
-                    @{handle.replace(/^@/, '')}
-                  </option>
-                ))}
-              </select>
-              <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-600">
-                <Filter className="w-4 h-4" />
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
       <AnimatePresence mode="wait">
@@ -250,16 +212,9 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                   return (
                     <div key={post.id} className="p-7 rounded-[2.5rem] glass border border-zinc-800/50 space-y-5 group hover:border-zinc-700 transition-all hover:shadow-[0_20px_40px_rgba(0,0,0,0.2)]">
                       <div className="flex items-center justify-between">
-                        <div className={`flex flex-col gap-1 px-5 py-3 rounded-2xl border ${platformBg}`}>
-                          <div className="flex items-center gap-2">
-                            <span className={platformColor}>{platformIcon}</span>
-                            <span className={`text-[9px] font-black uppercase tracking-[0.2em] ${platformColor}`}>{platformLabel}</span>
-                          </div>
-                          {post.accountHandle && (
-                            <span className="text-white font-black text-xs lowercase truncate max-w-[140px]">
-                              @{post.accountHandle.replace(/^@/, '')}
-                            </span>
-                          )}
+                        <div className={`flex items-center gap-3 px-4 py-2 rounded-2xl border ${platformBg} shrink-0`}>
+                          <span className={platformColor}>{platformIcon}</span>
+                          <span className={`text-[10px] font-black uppercase tracking-widest ${platformColor}`}>{platformLabel}</span>
                         </div>
                         <div className="text-right">
                            <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest truncate max-w-[120px]">

@@ -21,7 +21,8 @@ import {
   Eye,
   Heart
 } from 'lucide-react';
-import { Post, Competition, Settings } from '../../types';
+import { motion } from 'framer-motion';
+import { Post, Competition, Settings, User } from '../../types';
 import { PostTagRow } from './AdminUI';
 
 interface RessincronizacaoTabProps {
@@ -57,13 +58,8 @@ interface RessincronizacaoTabProps {
   onForceDaily: (post: Post) => Promise<void>;
   onResetToSync: (post: Post) => Promise<void>;
   onSingleSync: (post: Post) => Promise<void>;
+  setRejectionReason: (val: string) => void;
   setRejectionModal: (val: { isOpen: boolean; postId: string; status: any }) => void;
-  handleMovePostToCompetition: (postId: string, newCompId: string) => Promise<void>;
-  pendingMoves: Record<string, string>;
-  setPendingMoves: (val: any) => void;
-  selectedAdminHandle: string;
-  setSelectedAdminHandle: (handle: string) => void;
-  adminHandles: string[];
 }
 
 export const RessincronizacaoTab: React.FC<RessincronizacaoTabProps> = ({
@@ -99,13 +95,7 @@ export const RessincronizacaoTab: React.FC<RessincronizacaoTabProps> = ({
   onResetToSync,
   onSingleSync,
   setRejectionReason,
-  setRejectionModal,
-  handleMovePostToCompetition,
-  pendingMoves,
-  setPendingMoves,
-  selectedAdminHandle,
-  setSelectedAdminHandle,
-  adminHandles
+  setRejectionModal
 }) => {
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -121,21 +111,6 @@ export const RessincronizacaoTab: React.FC<RessincronizacaoTabProps> = ({
               </div>
 
               <div className="flex flex-wrap items-center gap-4">
-                {/* Filtro por Handle Administrativo */}
-                <div className="flex flex-col gap-1.5 w-[200px]">
-                  <label className="text-[9px] font-black text-zinc-500 uppercase tracking-widest ml-1">Filtrar por Conta (@)</label>
-                  <select
-                    value={selectedAdminHandle}
-                    onChange={(e) => setSelectedAdminHandle(e.target.value)}
-                    className="bg-black border border-zinc-800 rounded-xl py-3 px-4 text-xs font-bold text-white outline-none focus:border-amber-500 transition-all appearance-none cursor-pointer"
-                  >
-                    <option value="all">Todas as Contas</option>
-                    {adminHandles.map(handle => (
-                      <option key={handle} value={handle}>@{handle.replace(/^@/, '')}</option>
-                    ))}
-                  </select>
-                </div>
-
                 <button
                   onClick={() => handleSyncCompetitionSequentially(syncDetailCompId!)}
                   disabled={syncing}
@@ -143,7 +118,7 @@ export const RessincronizacaoTab: React.FC<RessincronizacaoTabProps> = ({
                     ${syncingCompId === syncDetailCompId && !sessionSyncedIds.length 
                       ? 'bg-amber-500 text-black border-amber-500 shadow-xl shadow-amber-500/20' 
                       : 'bg-zinc-800/50 border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:text-white'
-                    } disabled:opacity-50 mt-auto h-fit`}
+                    } disabled:opacity-50`}
                 >
                   {syncingCompId === syncDetailCompId && !sessionSyncedIds.length ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
                   SEQUENCIAL
@@ -156,7 +131,7 @@ export const RessincronizacaoTab: React.FC<RessincronizacaoTabProps> = ({
                     ${syncingCompId === syncDetailCompId
                       ? 'bg-amber-500 text-black border-amber-500 shadow-xl shadow-amber-500/20' 
                       : 'gold-bg text-black hover:scale-[1.02]'
-                    } disabled:opacity-50 mt-auto h-fit`}
+                    } disabled:opacity-50`}
                 >
                   {syncingCompId === syncDetailCompId ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
                   {syncingCompId === syncDetailCompId ? `DUAL-SYNC: ${syncProgress} / ${syncTotal}` : 'DUAL-SYNC (ALTA PERFORMANCE)'}
@@ -166,7 +141,7 @@ export const RessincronizacaoTab: React.FC<RessincronizacaoTabProps> = ({
 
             <button
               onClick={() => setSyncDetailCompId(null)}
-              className="px-8 py-3 bg-zinc-800 text-zinc-400 font-black rounded-2xl text-[10px] uppercase tracking-widest hover:bg-zinc-700 hover:text-white transition-all flex items-center gap-2 mt-auto"
+              className="px-8 py-3 bg-zinc-800 text-zinc-400 font-black rounded-2xl text-[10px] uppercase tracking-widest hover:bg-zinc-700 hover:text-white transition-all flex items-center gap-2"
             >
               <ArrowLeft className="w-4 h-4" /> VOLTAR AOS CARDS
             </button>
@@ -176,22 +151,18 @@ export const RessincronizacaoTab: React.FC<RessincronizacaoTabProps> = ({
             <div className="flex items-center gap-4">
               <button
                 onClick={() => {
-                  const allVisiblePosts = posts.filter(p => {
-                    const matchesComp = p.competitionId === syncDetailCompId;
-                    const matchesStatus = p.status === 'synced' || p.status === 'banned';
-                    const matchesHandle = selectedAdminHandle === 'all' || p.accountHandle === selectedAdminHandle;
-                    return matchesComp && matchesStatus && matchesHandle;
-                  }).map(p => p.id);
-                  
-                  if (selectedResyncPostIds.length === allVisiblePosts.length) {
+                  const allCompPosts = posts.filter(p => (p.status === 'synced' || p.status === 'banned') && p.competitionId === syncDetailCompId).map(p => p.id);
+                  if (selectedResyncPostIds.length === allCompPosts.length) {
                     setSelectedResyncPostIds([]);
                   } else {
-                    setSelectedResyncPostIds(allVisiblePosts);
+                    setSelectedResyncPostIds(allCompPosts);
                   }
                 }}
                 className="px-4 py-2 rounded-xl bg-zinc-800 text-zinc-400 text-[10px] font-black uppercase tracking-widest border border-zinc-700 hover:bg-zinc-700 hover:text-white transition-all"
               >
-                {selectedResyncPostIds.length > 0 ? 'Desmarcar Todos' : 'Selecionar Filtrados'}
+                {selectedResyncPostIds.length > 0 && selectedResyncPostIds.length === posts.filter(p => (p.status === 'synced' || p.status === 'banned') && p.competitionId === syncDetailCompId).length 
+                  ? 'Desmarcar Todos' 
+                  : 'Selecionar Todos'}
               </button>
               {selectedResyncPostIds.length > 0 && (
                 <span className="text-amber-500 font-black text-[10px] uppercase tracking-widest">
@@ -237,12 +208,7 @@ export const RessincronizacaoTab: React.FC<RessincronizacaoTabProps> = ({
           </div>
 
           <div className="grid grid-cols-1 gap-4">
-            {posts.filter(p => {
-              const matchesComp = p.competitionId === syncDetailCompId;
-              const matchesStatus = p.status === 'synced' || p.status === 'banned';
-              const matchesHandle = selectedAdminHandle === 'all' || p.accountHandle === selectedAdminHandle;
-              return matchesComp && matchesStatus && matchesHandle;
-            }).map(post => {
+            {posts.filter(p => (p.status === 'synced' || p.status === 'banned') && p.competitionId === syncDetailCompId).map(post => {
               const isSyncedInSession = sessionSyncedIds.includes(post.id);
               const sessionActive = syncing || sessionSyncedIds.length > 0;
               const isDimmed = sessionActive && isSyncedInSession;
@@ -290,11 +256,6 @@ export const RessincronizacaoTab: React.FC<RessincronizacaoTabProps> = ({
                     <p className={`text-lg font-black uppercase tracking-tight transition-colors ${post.status === 'banned' ? 'text-zinc-600 line-through' : 'text-white group-hover:text-amber-500'}`}>
                       {post.userName}
                     </p>
-                    {post.accountHandle && (
-                      <span className="text-[10px] font-black text-amber-500/80 lowercase bg-amber-500/5 px-2 py-0.5 rounded-lg border border-amber-500/10 mr-2">
-                        @{post.accountHandle.replace(/^@/, '')}
-                      </span>
-                    )}
                     <div className="flex gap-2 flex-wrap">
                       {isSyncedInSession ? (
                         <span className="px-3 py-1 rounded-full bg-emerald-500 text-black text-[8px] font-black uppercase tracking-widest border border-emerald-400 flex items-center gap-1 shadow-lg shadow-emerald-500/20 animate-in zoom-in-50 duration-300">
@@ -345,44 +306,6 @@ export const RessincronizacaoTab: React.FC<RessincronizacaoTabProps> = ({
                 </div>
 
                 <div className="flex flex-col md:flex-row items-center gap-3 shrink-0 p-2 bg-zinc-900/50 rounded-[28px] border border-white/5" onClick={e => e.stopPropagation()}>
-                  
-                  {/* ── REMANEJAR ── */}
-                  <div className="flex flex-col gap-1 mr-2 bg-black/40 p-2 rounded-2xl border border-zinc-800/50">
-                    <label className="text-[9px] font-black text-zinc-600 uppercase tracking-widest px-1 text-center">Mover para:</label>
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={pendingMoves[post.id] || post.competitionId}
-                        onChange={(e) => {
-                          setPendingMoves((prev: any) => ({ ...prev, [post.id]: e.target.value }));
-                        }}
-                        className="bg-black/50 border border-zinc-800 rounded-xl py-2 px-3 text-[10px] font-bold text-zinc-300 focus:border-amber-500 outline-none w-[120px]"
-                      >
-                        {competitions.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.title}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        onClick={async () => {
-                          const newCompId = pendingMoves[post.id];
-                          const newCompName = competitions.find(c => c.id === newCompId)?.title;
-                          if (newCompId && newCompId !== post.competitionId) {
-                            if (window.confirm(`Tem certeza que deseja mover este link para a competição "${newCompName}"?`)) {
-                              await handleMovePostToCompetition(post.id, newCompId);
-                              setPendingMoves((prev: any) => { const n = { ...prev }; delete n[post.id]; return n; });
-                            }
-                          }
-                        }}
-                        disabled={!pendingMoves[post.id] || pendingMoves[post.id] === post.competitionId}
-                        className="p-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-black transition-all disabled:opacity-50 disabled:grayscale"
-                        title="Confirmar mudança de competição"
-                      >
-                        <Check className="w-5 h-5" strokeWidth={3} />
-                      </button>
-                    </div>
-                  </div>
-
                   <a href={post.url} target="_blank" rel="noreferrer" className="w-12 h-12 rounded-2xl bg-zinc-800 text-zinc-400 flex items-center justify-center hover:bg-amber-500 hover:text-black transition-all shadow-lg" title="Ver Link Original">
                     <ExternalLink className="w-5 h-5" />
                   </a>
