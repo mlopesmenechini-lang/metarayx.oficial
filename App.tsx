@@ -2543,23 +2543,31 @@ const PostSubmit = ({ user, competitions, registrations, setView, lockedCompetit
                 <Trophy className="w-10 h-10 text-amber-500" />
               </div>
               
-              <div className="space-y-3 text-center">
-                <h3 className="text-2xl font-black tracking-tight text-white uppercase italic">Confirmar Protocolo</h3>
-                <p className="text-zinc-400 font-bold text-sm leading-relaxed uppercase tracking-tight">
-                  Você tem certeza que esses links são desta competição:<br/>
-                  <span className="text-amber-500 text-lg block mt-2">
-                    {approvedCompetitions.find(c => c.id === selectedCompId)?.title || "esta competição"}
+              <div className="space-y-4 text-center">
+                <div className="space-y-1">
+                  <h3 className="text-2xl font-black tracking-tight text-white uppercase italic">Verificação Final</h3>
+                  <p className="text-[10px] font-black text-amber-500 uppercase tracking-[0.2em]">Segurança do Protocolo</p>
+                </div>
+                
+                <p className="text-zinc-400 font-bold text-sm leading-relaxed px-2">
+                  Você confirma que este link pertence <span className="text-white underline decoration-amber-500/50 underline-offset-4">de fato</span> à competição:
+                  <span className="text-white text-xl block mt-3 font-black tracking-tighter bg-zinc-900 py-3 rounded-2xl border border-zinc-800 shadow-inner">
+                    {approvedCompetitions.find(c => c.id === selectedCompId)?.title || "a esta competição"}
                   </span>
+                </p>
+                
+                <p className="text-[9px] text-zinc-600 font-black uppercase tracking-widest">
+                  Certifique-se antes de continuar. Envios incorretos não serão validados.
                 </p>
               </div>
 
-              <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-3 pt-2">
                 <button
                   onClick={handlePerformSubmit}
-                  className="w-full py-5 gold-bg text-black font-black rounded-2xl hover:scale-[1.02] transition-all flex items-center justify-center gap-3 shadow-[0_0_20px_rgba(245,158,11,0.2)]"
+                  className="w-full py-5 gold-bg text-black font-black rounded-2xl hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3 shadow-[0_10px_30px_rgba(245,158,11,0.2)]"
                 >
                   <CheckCircle2 className="w-6 h-6" />
-                  SIM, TENHO CERTEZA!
+                  CONFIRMAR E PROTOCOLAR
                 </button>
                 <button
                   onClick={() => setShowConfirmModal(false)}
