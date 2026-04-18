@@ -278,7 +278,7 @@ export const SincronizacaoTab: React.FC<SincronizacaoTabProps> = ({
                 className="px-8 py-5 bg-gradient-to-r from-amber-600 to-amber-500 text-black font-black rounded-2xl hover:scale-[1.02] transition-all flex items-center justify-center gap-3 shadow-[0_0_20px_rgba(245,158,11,0.3)] disabled:opacity-50"
               >
                 {syncing ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
-                DUAL-SYNC (ALTA PERFORMANCE)
+                MULTI-SYNC (TODAS AS CHAVES)
               </button>
               <button
                 onClick={handleSyncApprovedSequentially}

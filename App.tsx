@@ -4430,11 +4430,12 @@ const AdminPanel = ({
   };
 
   const handleSyncApprovedParallel = async () => {
-    const syncKeys = settings.apifyKeysSync || [];
-    if (syncKeys.length < 2) {
-      if (confirm('Você não tem chaves exclusivas de sincronização configuradas (mínimo 2). Deseja usar o modo sequencial com as chaves disponíveis?')) {
-        handleSyncApprovedSequentially();
-      }
+    const syncKeys = settings.apifyKeysSync && settings.apifyKeysSync.length > 0 
+      ? settings.apifyKeysSync 
+      : (settings.apifyKeys || []);
+      
+    if (syncKeys.length < 1) {
+      alert('Por favor, configure pelo menos uma chave Apify (Rede Social) para sincronização.');
       return;
     }
 
@@ -4449,9 +4450,10 @@ const AdminPanel = ({
     setSyncProgress(0);
     setSessionSyncedIds([]);
 
-    const mid = Math.ceil(approvedPosts.length / 2);
-    const forwardGroup = approvedPosts.slice(0, mid);
-    const backwardGroup = approvedPosts.slice(mid).reverse();
+    const n = syncKeys.length;
+    const groups: Post[][] = Array.from({ length: n }, () => []);
+    // Distribuir posts alternadamente para que as chaves não fiquem presas em uma mesma competição extensa
+    approvedPosts.forEach((post, i) => groups[i % n].push(post));
 
     let completed = 0;
     const worker = async (group: Post[], key: string) => {
@@ -4471,12 +4473,9 @@ const AdminPanel = ({
     };
 
     try {
-      await Promise.all([
-        worker(forwardGroup, syncKeys[0]),
-        worker(backwardGroup, syncKeys[1])
-      ]);
+      await Promise.all(groups.map((group, i) => worker(group, syncKeys[i])));
       await updateDoc(doc(db, 'config', 'settings'), { lastSync: new Date().toISOString() });
-      alert('Sincronização Paralela (Dual-Sync) concluída com sucesso!');
+      alert(`Sincronização Multi-Sync (${n} chaves) concluída com sucesso!`);
     } catch (e: any) {
       alert('Erro na sincronização paralela: ' + e.message);
     } finally {
