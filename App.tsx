@@ -3828,6 +3828,7 @@ const AdminPanel = ({
   const [selectedResetCompId, setSelectedResetCompId] = useState<string>('');
   const [auditUserId, setAuditUserId] = useState<string | null>(null);
   const [auditDayFilter, setAuditDayFilter] = useState<string>('');
+  const [auditHandleFilter, setAuditHandleFilter] = useState<string>('all');
   const [selectedCompId, setSelectedCompId] = useState<string | null>(null);
   const [apifyKey, setApifyKey] = useState(settings.apifyKey);
   const [financeTab, setFinanceTab] = useState<'RESUMO' | 'PENDING' | 'REALIZED'>('RESUMO');
@@ -6509,9 +6510,15 @@ const AdminPanel = ({
                   });
                   const sortedDays = Object.keys(dayMap).sort((a, b) => b.localeCompare(a));
                   
-                  const filteredPosts = auditDayFilter
+                  let filteredPosts = auditDayFilter
                     ? (dayMap[auditDayFilter] || [])
                     : userPosts;
+
+                  if (auditHandleFilter !== 'all') {
+                    filteredPosts = filteredPosts.filter(p => p.accountHandle === auditHandleFilter);
+                  }
+
+                  const availableAuditHandles = Array.from(new Set(userPosts.map(p => p.accountHandle).filter(Boolean))) as string[];
 
                   return (
                     <>
@@ -6565,6 +6572,25 @@ const AdminPanel = ({
                           )}
                         </div>
                       )}
+                      
+                      {/* Filtro de Handle @ para o Administrador */}
+                      {availableAuditHandles.length > 0 && (
+                        <div className="mb-6 flex flex-col gap-2">
+                          <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+                            Filtrar por Perfil / @ Conta
+                          </label>
+                          <select
+                            value={auditHandleFilter}
+                            onChange={(e) => setAuditHandleFilter(e.target.value)}
+                            className="w-full md:w-1/2 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-xs font-bold text-white outline-none focus:border-amber-500 transition-all uppercase tracking-widest"
+                          >
+                            <option value="all">TODOS OS PERFIS (@)</option>
+                            {availableAuditHandles.map(handle => (
+                              <option key={handle} value={handle}>@{handle.replace(/^@/, '')}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
 
                       {/* Lista de posts */}
                       <div className="space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
@@ -6575,7 +6601,14 @@ const AdminPanel = ({
                                 post.platform === 'youtube' ? <TrendingUp className="w-6 h-6 text-red-500" /> :
                                   <Camera className="w-6 h-6 text-pink-500" />}
                               <div className="flex flex-col overflow-hidden max-w-[200px]">
-                                <p className="font-bold text-xs truncate text-zinc-300">{post.url}</p>
+                                <div className="flex items-center gap-2 mb-0.5">
+                                  <p className="font-bold text-xs truncate text-zinc-300">{post.url}</p>
+                                </div>
+                                {post.accountHandle && (
+                                  <span className="text-[10px] text-zinc-400 font-bold lowercase truncate max-w-full">
+                                    @{post.accountHandle.replace(/^@/, '')}
+                                  </span>
+                                )}
                                 <p className={`text-[10px] font-black uppercase ${post.status === 'approved' || post.status === 'synced' ? 'text-emerald-500' : post.status === 'rejected' || post.status === 'banned' ? 'text-red-500' : 'text-amber-500'}`}>
                                   STATUS: {post.status === 'approved' || post.status === 'synced' ? 'APROVADO' : post.status === 'rejected' || post.status === 'banned' ? 'RECUSADO' : 'EM TRIAGEM'}
                                 </p>
