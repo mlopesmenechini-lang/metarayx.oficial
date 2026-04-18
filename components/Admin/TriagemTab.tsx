@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Zap, 
   TrendingUp, 
@@ -41,6 +41,12 @@ export const TriagemTab: React.FC<TriagemTabProps> = ({
   setSelectedAdminHandle,
   adminHandles
 }) => {
+  const [selectedUserFilter, setSelectedUserFilter] = useState('all');
+
+  const availableUsers = Array.from(new Set(
+    posts.filter(p => p.competitionId === syncDetailCompId && p.status === 'pending').map(p => p.userName)
+  )).filter(Boolean).sort() as string[];
+
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
       {syncDetailCompId ? (
@@ -69,6 +75,21 @@ export const TriagemTab: React.FC<TriagemTabProps> = ({
                 </select>
               </div>
 
+              {/* Filtro por Nome de Usuário */}
+              <div className="flex flex-col gap-1.5 w-[200px]">
+                <label className="text-[9px] font-black text-zinc-500 uppercase tracking-widest ml-1">Filtrar por Usuário</label>
+                <select
+                  value={selectedUserFilter}
+                  onChange={(e) => setSelectedUserFilter(e.target.value)}
+                  className="bg-black border border-zinc-800 rounded-xl py-3 px-4 text-xs font-bold text-white outline-none focus:border-amber-500 transition-all appearance-none cursor-pointer truncate"
+                >
+                  <option value="all">Todos os Usuários</option>
+                  {availableUsers.map(u => (
+                    <option key={u} value={u}>{u}</option>
+                  ))}
+                </select>
+              </div>
+
               <button
                 onClick={() => setSyncDetailCompId(null)}
                 className="px-8 py-3 bg-zinc-800 text-white font-black rounded-2xl text-xs hover:bg-zinc-700 transition-all flex items-center gap-2 h-fit mt-auto"
@@ -83,7 +104,8 @@ export const TriagemTab: React.FC<TriagemTabProps> = ({
               const matchesComp = p.competitionId === syncDetailCompId;
               const matchesStatus = p.status === 'pending';
               const matchesHandle = selectedAdminHandle === 'all' || p.accountHandle === selectedAdminHandle;
-              return matchesComp && matchesStatus && matchesHandle;
+              const matchesUser = selectedUserFilter === 'all' || p.userName === selectedUserFilter;
+              return matchesComp && matchesStatus && matchesHandle && matchesUser;
             }).map(post => (
               <div key={post.id} className="p-6 rounded-3xl glass border border-zinc-800 flex flex-col md:flex-row items-center gap-6 group hover:border-amber-500/30 transition-all">
                 
