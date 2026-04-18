@@ -91,6 +91,8 @@ interface AdminPanelProps {
   onForceMonthly: (post: Post) => Promise<void>;
   onForceDaily: (post: Post) => Promise<void>;
   onResetToSync: (post: Post) => Promise<void>;
+  setRejectionReason: (val: string) => void;
+  setRejectionModal: (val: { isOpen: boolean; postId: string; status: any }) => void;
   
   // Handlers - Financeiro
   financeTab: 'RESUMO' | 'PENDING' | 'REALIZED';
@@ -146,7 +148,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   selectedResyncPostIds, setSelectedResyncPostIds, handleSyncCompetitionSequentially, handleSyncCompetitionParallel,
   handleSyncAllSequentially, handleSyncAllParallel, handleBulkForceMonthly, handleBulkForceDaily,
   handleBulkResetMetrics, handleBulkSyncSelected, syncingCompId, syncProgress, syncTotal, sessionSyncedIds, setSessionSyncedIds,
-  apifyKey, setApifyKey, handleSaveApiKey, handleDeleteApiKey, onForceMonthly, onForceDaily, onResetToSync,
+  apifyKey, setApifyKey, handleSaveApiKey, handleDeleteApiKey, onForceMonthly, onForceDaily,
+  onResetToSync,
+  setRejectionReason,
+  setRejectionModal,
   financeTab, setFinanceTab, financeCompId, setFinanceCompId, financeDateFilter, setFinanceDateFilter,
   handleMarkPaid, handleToggleManualPostValidation, validatedPostsLocal, setValidatedPostsLocal, onUpdatePixKey,
   handleExportExcel, handleDeleteUserPost, handleResetDailyRanking, handleResetRankingSimple,
@@ -389,10 +394,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             sessionSyncedIds={sessionSyncedIds} setSessionSyncedIds={setSessionSyncedIds} syncingPostId={syncingPostId} setSyncingPostId={setSyncingPostId}
             apifyKey={apifyKey} setApifyKey={setApifyKey} handleSaveApiKey={handleSaveApiKey} handleDeleteApiKey={handleDeleteApiKey}
             onForceMonthly={onForceMonthly} onForceDaily={onForceDaily} onResetToSync={onResetToSync} onSingleSync={onSingleSync}
+            setRejectionReason={setRejectionReason}
+            setRejectionModal={setRejectionModal}
             handleMovePostToCompetition={handleMovePostToCompetition}
             pendingMoves={pendingMoves}
             setPendingMoves={setPendingMoves}
-            setRejectionModal={() => {}}
             selectedAdminHandle={selectedAdminHandle}
             setSelectedAdminHandle={setSelectedAdminHandle}
             adminHandles={adminHandles}

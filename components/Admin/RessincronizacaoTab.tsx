@@ -57,6 +57,7 @@ interface RessincronizacaoTabProps {
   onForceDaily: (post: Post) => Promise<void>;
   onResetToSync: (post: Post) => Promise<void>;
   onSingleSync: (post: Post) => Promise<void>;
+  setRejectionReason: (val: string) => void;
   setRejectionModal: (val: { isOpen: boolean; postId: string; status: any }) => void;
   handleMovePostToCompetition: (postId: string, newCompId: string) => Promise<void>;
   pendingMoves: Record<string, string>;
