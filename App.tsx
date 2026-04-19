@@ -6520,7 +6520,7 @@ const AdminPanel = ({
                     filteredPosts = filteredPosts.filter(p => p.accountHandle && p.accountHandle.trim() === auditHandleFilter);
                   }
 
-                  const availableAuditHandles = Array.from(new Set(userPosts.map(p => p.accountHandle).filter(Boolean).map(h => h.trim()))) as string[];
+                  const availableAuditHandles = Array.from(new Set(userPosts.map(p => p.accountHandle).filter((h): h is string => !!h).map(h => h.trim()))) as string[];
 
                   return (
                     <>
