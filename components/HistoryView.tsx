@@ -59,7 +59,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   const availableHandles = React.useMemo(() => {
     const handles = new Set<string>();
     posts.forEach(p => {
-      if (p.accountHandle) handles.add(p.accountHandle);
+      if (p.accountHandle) handles.add(p.accountHandle.trim());
     });
     return Array.from(handles).sort();
   }, [posts]);

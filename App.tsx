@@ -2510,10 +2510,13 @@ const PostSubmit = ({ user, competitions, registrations, setView, lockedCompetit
             </button>
           </label>
           <div className="flex flex-wrap gap-2">
-            {(platform === 'tiktok' ? (Array.isArray(user.tiktok) ? user.tiktok : (user.tiktok ? [user.tiktok] : [])) :
+            {Array.from(new Set(
+              (platform === 'tiktok' ? (Array.isArray(user.tiktok) ? user.tiktok : (user.tiktok ? [user.tiktok] : [])) :
               platform === 'instagram' ? (Array.isArray(user.instagram) ? user.instagram : (user.instagram ? [user.instagram] : [])) :
-              (Array.isArray(user.youtube) ? user.youtube : (user.youtube ? [user.youtube] : []))
-            ).map((handle) => (
+              (Array.isArray(user.youtube) ? user.youtube : (user.youtube ? [user.youtube] : [])))
+              .filter(Boolean)
+              .map(h => h.trim())
+            )).map((handle) => (
               <button
                 key={handle}
                 type="button"
@@ -3854,7 +3857,7 @@ const AdminPanel = ({
   const adminHandles = useMemo(() => {
     const handles = new Set<string>();
     posts.forEach(p => {
-      if (p.accountHandle) handles.add(p.accountHandle);
+      if (p.accountHandle) handles.add(p.accountHandle.trim());
     });
     return Array.from(handles).sort();
   }, [posts]);
@@ -6514,10 +6517,10 @@ const AdminPanel = ({
                     : userPosts;
 
                   if (auditHandleFilter !== 'all') {
-                    filteredPosts = filteredPosts.filter(p => p.accountHandle === auditHandleFilter);
+                    filteredPosts = filteredPosts.filter(p => p.accountHandle && p.accountHandle.trim() === auditHandleFilter);
                   }
 
-                  const availableAuditHandles = Array.from(new Set(userPosts.map(p => p.accountHandle).filter(Boolean))) as string[];
+                  const availableAuditHandles = Array.from(new Set(userPosts.map(p => p.accountHandle).filter(Boolean).map(h => h.trim()))) as string[];
 
                   return (
                     <>
