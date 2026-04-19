@@ -1,0 +1,500 @@
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { toPng } from 'html-to-image';
+import * as XLSX from 'xlsx';
+import {
+  auth, db, googleProvider, signInWithPopup, signOut,
+  onSnapshot, collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, query, where, orderBy, limit,
+  OperationType, handleFirestoreError, createUserWithEmailAndPassword, signInWithEmailAndPassword, addDoc, serverTimestamp, onAuthStateChanged, writeBatch, deleteField
+} from './firebase';
+
+import { User, Post, Season, Announcement, Platform, PostStatus, Competition, CompetitionRegistration, UserRole, Transaction, Suggestion, Settings } from './types';
+import {
+  LayoutDashboard, Trophy, Send, History, Settings as SettingsIcon, LogOut,
+  ShieldCheck, AlertCircle, CheckCircle2, XCircle, Clock,
+  TrendingUp, Users, Zap, Calendar, MessageSquare, Menu, X, ChevronLeft, ExternalLink,
+  Mail, Lock, User as UserIcon, Eye, EyeOff, Loader2, RefreshCw, Crown, Trash2, Plus,
+  Heart, Share2, Bookmark, Bell, Check, Camera, BarChart3, ArrowLeft, ArrowRight, BookOpen, Shield, Star, ChevronRight, Target,
+  Award, UserX, Sparkles, CreditCard, Coins, DollarSign, Info, Archive, Download, RotateCcw, Pencil, PlusCircle, MinusCircle, Key
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { syncViewsWithApify, syncSinglePostWithApify, updateUserMetrics, repairAllUserMetrics } from './services/apifyService';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getAuth as getSecondaryAuth, createUserWithEmailAndPassword as createSecondaryUser, signOut as signSecondaryOut } from 'firebase/auth';
+
+// Componentes Extraídos
+import { InfoTooltip, ErrorBoundary, NavItem } from './components/Shared';
+import { AuthScreen } from './components/AuthScreen';
+import { WalletView } from './components/WalletView';
+import { Dashboard } from './components/Dashboard';
+import { CompetitionRegulamento, CompetitionsView, CompetitionDetailView } from './components/CompetitionViews';
+import { SettingsView } from './components/SettingsView';
+import { SuggestionsView } from './components/SuggestionsView';
+import { HistoryView } from './components/HistoryView';
+import { TriagemTab } from './components/Admin/TriagemTab';
+import { SincronizacaoTab } from './components/Admin/SincronizacaoTab';
+import { RessincronizacaoTab } from './components/Admin/RessincronizacaoTab';
+
+const sanitizeString = (text: string) => {
+  if (typeof text !== 'string') return text;
+  return text
+    .replace(/ÃƒÂ¡/g, 'á').replace(/ÃƒÂ£/g, 'ã').replace(/ÃƒÂ§/g, 'ç').replace(/ÃƒÂµ/g, 'õ')
+    .replace(/ÃƒÂ©/g, 'é').replace(/ÃƒÂª/g, 'ê').replace(/ÃƒÂ³/g, 'ó').replace(/ÃƒÂ­/g, 'í')
+    .replace(/TÃƒ-tulo/g, 'Título').replace(/Ã‚º/g, 'º').replace(/Ãƒº/g, 'ú').replace(/ÃƒÂ¢/g, 'â')
+    .replace(/Ãƒ\x8D/g, 'Í').replace(/Ãƒ\x87/g, 'Ç').replace(/Ãƒ\x95/g, 'Õ').replace(/Ãƒ\x81/g, 'Á')
+    .replace(/Ãƒ\x89/g, 'É').replace(/Ãƒ\x93/g, 'Ó').replace(/Ãƒ\x8A/g, 'Ê').replace(/Ãƒ\x9A/g, 'Ú')
+    .replace(/ANÃƒLISE/g, 'ANÁLISE').replace(/CONCLUÃƒDO/g, 'CONCLUÍDO').replace(/UsuÃƒÂ¡rio/g, 'Usuário')
+    .replace(/Ãƒâ‚¬/g, 'À').replace(/AÃƒÂ§ÃƒÂµes/g, 'Ações').replace(/USUÃƒÂ¡RIOS/g, 'USUÁRIOS')
+    .replace(/USUÃƒÂ¡RIO/g, 'USUÁRIO').replace(/NÃƒÂ£o/g, 'Não').replace(/Ãƒ-/g, 'í');
+};
+
+const sanitizeObject = (obj: any): any => {
+  if (typeof obj === 'string') return sanitizeString(obj);
+  if (Array.isArray(obj)) return obj.map(sanitizeObject);
+  if (obj && typeof obj === 'object') {
+    // Preserve Firestore Timestamps and other special objects
+    if (typeof obj.toDate === 'function') return obj;
+    
+    // Process plain objects
+    const newObj: any = {};
+    for (const key in obj) {
+      newObj[key] = sanitizeObject(obj[key]);
+    }
+    return newObj;
+  }
+  return obj;
+};
+import fbConfig from './firebase-applet-config.json';
+
+
+
+
+
+const normalizeUrl = (url: string) => {
+  try {
+    let clean = url.trim().toLowerCase();
+
+    // YouTube
+    if (clean.includes('youtube.com') || clean.includes('youtu.be')) {
+      let videoId = '';
+      if (clean.includes('v=')) {
+        videoId = clean.split('v=')[1]?.split('&')[0]?.split('?')[0];
+      } else if (clean.includes('/shorts/')) {
+        videoId = clean.split('/shorts/')[1]?.split('?')[0];
+      } else if (clean.includes('youtu.be/')) {
+        videoId = clean.split('youtu.be/')[1]?.split('?')[0];
+      }
+      if (videoId) return `youtube:${videoId}`;
+    }
+
+    // TikTok
+    if (clean.includes('tiktok.com')) {
+      if (clean.includes('/video/')) {
+        const videoId = clean.split('/video/')[1]?.split('?')[0]?.split('/')[0];
+        if (videoId) return `tiktok:${videoId}`;
+      }
+      // For mobile links like vm.tiktok.com/XYZ, we have to stick to the URL for now 
+      // as we can't resolve redirects client-side easily without a proxy
+    }
+
+    // Instagram
+    if (clean.includes('instagram.com')) {
+      const parts = clean.split('/');
+      const idIndex = parts.findIndex(p => p === 'p' || p === 'reels' || p === 'reel') + 1;
+      if (idIndex > 0) {
+        const id = parts[idIndex]?.split('?')[0];
+        if (id) return `instagram:${id}`;
+      }
+    }
+
+    // Fallback standard cleanup
+    return clean.split('?')[0].replace(/\/$/, '').replace(/^https?:\/\/(www\.)?/, '');
+  } catch {
+    return url.toLowerCase().trim();
+  }
+};
+
+const App: React.FC = () => {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [view, setView] = useState<'DASHBOARD' | 'RANKINGS' | 'POST' | 'HISTORY' | 'ADMIN' | 'SETTINGS' | 'WALLET' | 'SUGGESTIONS' | 'COMPETITIONS'>('DASHBOARD');
+  const [selectedActiveCompId, setSelectedActiveCompId] = useState<string | null>(null);
+
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [rankings, setRankings] = useState<User[]>([]);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [competitions, setCompetitions] = useState<Competition[]>([]);
+  const [registrations, setRegistrations] = useState<CompetitionRegistration[]>([]);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [pendingUsers, setPendingUsers] = useState<User[]>([]);
+  const [approvedUsers, setApprovedUsers] = useState<User[]>([]);
+  const [archivedUsers, setArchivedUsers] = useState<User[]>([]);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [globalSyncing, setGlobalSyncing] = useState(false);
+  const [settings, setSettings] = useState<Settings>({ apifyKey: '', apifyKeys: [], apifyKeysSync: [] });
+  const [sessionSyncedIds, setSessionSyncedIds] = useState<string[]>([]);
+  const [syncing, setSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState(0);
+  const [syncTotal, setSyncTotal] = useState(0);
+  const [syncingPostId, setSyncingPostId] = useState<string | null>(null);
+  const [syncingCompId, setSyncingCompId] = useState<string | null>(null);
+  const [timerConfig, setTimerConfig] = useState<{ enabled: boolean; endTime: number | null; targetTime: string; message: string }>({
+    enabled: false,
+    endTime: null,
+    targetTime: '20:15',
+    message: ''
+  });
+  const isAdmin = user?.role === 'admin';
+  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [postToDelete, setPostToDelete] = useState<string | null>(null);
+  const [compToDelete, setCompToDelete] = useState<string | null>(null);
+  const [pendingMoves, setPendingMoves] = useState<Record<string, string>>({});
+  const [editingCompId, setEditingCompId] = useState<string | null>(null);
+  const [showBalances, setShowBalances] = useState(true);
+  const [profileName, setProfileName] = useState('');
+  const [profileTiktok, setProfileTiktok] = useState<string[]>([]);
+  const [profileInstagram, setProfileInstagram] = useState<string[]>([]);
+  const [profileYoutube, setProfileYoutube] = useState<string[]>([]);
+  const [profilePhoto, setProfilePhoto] = useState('');
+  const [settingsTab, setSettingsTab] = useState<'PROFILE' | 'SOCIAL'>('PROFILE');
+  const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
+  const [apifyKeySync, setApifyKeySync] = useState('');
+  const [compTitle, setCompTitle] = useState('');
+  const [compRankingMetric, setCompRankingMetric] = useState<'views' | 'likes'>('views');
+  const [compGoalTarget, setCompGoalTarget] = useState<number>(0);
+  const [compGoalMetric, setCompGoalMetric] = useState<'views' | 'likes'>('views');
+  const [compDesc, setCompDesc] = useState('');
+  const [compRules, setCompRules] = useState('');
+  const [compHashtags, setCompHashtags] = useState('');
+  const [compMentions, setCompMentions] = useState('');
+  const [compBonuses, setCompBonuses] = useState('');
+  const [compInstaBonus, setCompInstaBonus] = useState('');
+  const [compViewBonus, setCompViewBonus] = useState<number>(0);
+  const [compStartDate, setCompStartDate] = useState('');
+  const [compEndDate, setCompEndDate] = useState('');
+  const [compBanner, setCompBanner] = useState('');
+  const [compPrizes, setCompPrizes] = useState<{ position: number; value: number; label: string; }[]>([
+    { position: 1, value: 0, label: '1º Lugar' },
+    { position: 2, value: 0, label: '2º Lugar' },
+    { position: 3, value: 0, label: '3º Lugar' }
+  ]);
+  const [compPositions, setCompPositions] = useState(3);
+  const [compPositionsDaily, setCompPositionsDaily] = useState(3);
+  const [compPrizesDaily, setCompPrizesDaily] = useState<{ position: number; value: number; label: string; }[]>([
+    { position: 1, value: 0, label: '1º Diário' },
+    { position: 2, value: 0, label: '2º Diário' },
+    { position: 3, value: 0, label: '3º Diário' }
+  ]);
+  const [compPositionsMonthly, setCompPositionsMonthly] = useState(3);
+  const [compPrizesMonthly, setCompPrizesMonthly] = useState<{ position: number; value: number; label: string; }[]>([
+    { position: 1, value: 0, label: '1º Mensal' },
+    { position: 2, value: 0, label: '2º Mensal' },
+    { position: 3, value: 0, label: '3º Mensal' }
+  ]);
+  const [compPositionsInstagram, setCompPositionsInstagram] = useState(3);
+  const [compPrizesInstagram, setCompPrizesInstagram] = useState<{ position: number; value: number; label: string; }[]>([
+    { position: 1, value: 0, label: '1º Insta' },
+    { position: 2, value: 0, label: '2º Insta' },
+    { position: 3, value: 0, label: '3º Insta' }
+  ]);
+  const [isCreatingComp, setIsCreatingComp] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editPass, setEditPass] = useState('');
+  const [editRole, setEditRole] = useState<'user' | 'auditor' | 'administrativo' | 'admin'>('user');
+  const [annTitle, setAnnTitle] = useState('');
+  const [annMsg, setAnnMsg] = useState('');
+  const [isCreatingAnn, setIsCreatingAnn] = useState(false);
+  const [acknowledgedAnnouncements, setAcknowledgedAnnouncements] = useState<string[]>(() => {
+    const saved = localStorage.getItem('acknowledgedAnnouncements');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [suggestionMsg, setSuggestionMsg] = useState('');
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => { },
+  });
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [rejectionModal, setRejectionModal] = useState<{ isOpen: boolean; postId: string; status: PostStatus }>({ isOpen: false, postId: '', status: 'rejected' });
+  const [removalModal, setRemovalModal] = useState<{ isOpen: boolean; postId: string; reason: string; consent: boolean }>({ isOpen: false, postId: '', reason: '', consent: false });
+
+
+  useEffect(() => {
+    if (user) {
+      console.log('Current User State:', {
+        uid: user.uid,
+        email: user.email,
+        role: user.role,
+        isApproved: user.isApproved
+      });
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (notification) {
+      const timer = setTimeout(() => setNotification(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [notification]);
+
+  useEffect(() => {
+    if (view === 'SETTINGS' && user) {
+      setProfileName(user.displayName || '');
+      setProfilePhoto(user.photoURL || '');
+      
+      // Handle potential legacy string or new array
+      const normalizeSocial = (val: any) => {
+        if (!val) return [];
+        if (Array.isArray(val)) return val;
+        return [val]; // Convert single string to [string]
+      };
+
+      setProfileTiktok(normalizeSocial(user.tiktok));
+      setProfileInstagram(normalizeSocial(user.instagram));
+      setProfileYoutube(normalizeSocial(user.youtube));
+    }
+  }, [view, user]);
+
+  // Auth Listener
+  useEffect(() => {
+    let unsubscribeUser: (() => void) | null = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
+      // Limpa listener anterior se houver
+      if (unsubscribeUser) {
+        unsubscribeUser();
+        unsubscribeUser = null;
+      }
+
+      if (firebaseUser) {
+        const timeout = setTimeout(() => {
+          if (loading) {
+            setLoadError('Tempo de conexão excedido. Verifique se o Database está ativo.');
+          }
+        }, 15000);
+
+        try {
+          const userRef = doc(db, 'users', firebaseUser.uid);
+          unsubscribeUser = onSnapshot(userRef, async (docSnap) => {
+            clearTimeout(timeout);
+            if (docSnap.exists()) {
+              const userData = docSnap.data() as User;
+              setUser(userData);
+              setProfileName(userData.displayName || '');
+              setProfilePhoto(userData.photoURL || '');
+            } else {
+              // Lógica de Primeiro Admin
+              const usersSnap = await getDocs(query(collection(db, 'users'), limit(1)));
+              const isFirstUser = usersSnap.empty;
+              const isAdminEmail = firebaseUser.email === 'matheusmenechini18@gmail.com' || firebaseUser.email === 'hypedosmemes@gmail.com';
+
+              const newUser: User = {
+                uid: firebaseUser.uid,
+                displayName: firebaseUser.displayName || 'USUÁRIO SEM NOME',
+                email: firebaseUser.email || '',
+                role: (isFirstUser || isAdminEmail) ? 'admin' : 'user',
+                isApproved: (isFirstUser || isAdminEmail),
+                balance: 0,
+                totalViews: 0,
+                totalLikes: 0,
+                totalComments: 0,
+                totalShares: 0,
+                totalSaves: 0,
+                totalPosts: 0,
+                dailyViews: 0,
+                dailyLikes: 0,
+                dailyComments: 0,
+                dailyShares: 0,
+                dailySaves: 0,
+                dailyPosts: 0,
+                photoURL: firebaseUser.photoURL || undefined
+              };
+              await setDoc(userRef, newUser);
+            }
+            setLoading(false);
+          }, (error) => {
+            clearTimeout(timeout);
+            console.error('Firestore Error:', error);
+            setLoadError(`Erro ao carregar perfil: ${error.message}`);
+            setLoading(false);
+          });
+        } catch (err: any) {
+          clearTimeout(timeout);
+          console.error('Auth logic error:', err);
+          setLoadError(err.message);
+          setLoading(false);
+        }
+      } else {
+        setUser(null);
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeUser) unsubscribeUser();
+    };
+  }, []);
+
+
+  // Real-time Data Listeners — dados públicos (carrega assim que autenticado)
+  useEffect(() => {
+    if (!user) return;
+
+    // Rankings Listener (público — não depende de aprovação)
+    const rankingsQuery = query(collection(db, 'users'), where('isApproved', '==', true));
+    const unsubRankings = onSnapshot(rankingsQuery, (snapshot) => {
+      setRankings(snapshot.docs.map(doc => sanitizeObject({ id: doc.id, ...doc.data() }) as User));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
+
+    // Announcements Listener (público)
+    const annQuery = query(collection(db, 'announcements'), orderBy('timestamp', 'desc'));
+    const unsubAnn = onSnapshot(annQuery, (snapshot) => {
+      setAnnouncements(snapshot.docs.map(doc => sanitizeObject({ id: doc.id, ...doc.data() }) as Announcement));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'announcements'));
+
+    // Competitions Listener (público)
+    const compQuery = query(collection(db, 'competitions'), orderBy('timestamp', 'desc'), limit(10));
+    const unsubComp = onSnapshot(compQuery, (snapshot) => {
+      setCompetitions(snapshot.docs.map(doc => sanitizeObject({ id: doc.id, ...doc.data() }) as Competition));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'competitions'));
+
+    // Timer Config Listener (público)
+    const unsubTimer = onSnapshot(doc(db, 'settings', 'timer'), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setTimerConfig({
+          enabled: data.enabled || false,
+          endTime: data.endTime || null,
+          targetTime: data.targetTime || '20:15',
+          message: data.message || ''
+        });
+      }
+    }, (error) => console.error('Erro ao carregar timer:', error));
+
+    return () => {
+      unsubRankings();
+      unsubAnn();
+      unsubComp();
+      unsubTimer();
+    };
+  }, [user?.uid]);
+
+  // Real-time Data Listeners ââ‚¬â€ dados privados (depende de aprovação)
+  useEffect(() => {
+    if (!user) return;
+    const isStaff = user.role === 'admin' || user.role === 'auditor' || user.role === 'administrativo';
+    if (!user.isApproved && !isStaff) return;
+
+    // Posts Listener (My Posts or All for Admin)
+    const postsQuery = (user.role === 'admin' || user.role === 'auditor' || user.role === 'administrativo')
+      ? query(collection(db, 'posts'), orderBy('timestamp', 'desc'), limit(10000))
+      : query(collection(db, 'posts'), where('userId', '==', user.uid), orderBy('timestamp', 'desc'), limit(500));
+
+    const unsubPosts = onSnapshot(postsQuery, (snapshot) => {
+      setPosts(snapshot.docs.map(doc => sanitizeObject({ id: doc.id, ...doc.data() }) as Post));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'posts'));
+
+    // Registrations Listener
+    const regQuery = user.role === 'admin'
+      ? query(collection(db, 'competition_registrations'), orderBy('timestamp', 'desc'))
+      : query(collection(db, 'competition_registrations'), where('userId', '==', user.uid));
+
+    const unsubReg = onSnapshot(regQuery, (snapshot) => {
+      setRegistrations(snapshot.docs.map(doc => sanitizeObject({ id: doc.id, ...doc.data() }) as CompetitionRegistration));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'competition_registrations'));
+
+    // Admin/Staff: Users Listeners
+    let unsubPendingUsers = () => { };
+    let unsubApprovedUsers = () => { };
+    let unsubArchivedUsers = () => { };
+    let unsubSettings = () => { };
+
+    if (isStaff) {
+      // Listener para as configurações globais (ex: chave API)
+      unsubSettings = onSnapshot(doc(db, 'config', 'settings'), (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          // Migração automática e suporte a múltiplas chaves
+          const keys = data.apifyKeys || (data.apifyKey ? [data.apifyKey] : []);
+          setSettings({
+            ...data,
+            apifyKey: data.apifyKey || (keys[0] || ''),
+            apifyKeys: keys
+          } as any);
+        }
+      }, (error) => console.error('Erro ao carregar configurações:', error));
+
+      // Listener para todos os usuários para distribuir por estado (mais simples que múltiplos filtros complexos no Firestore)
+      const usersQuery = query(collection(db, 'users'));
+      const unsubUsers = onSnapshot(usersQuery, (snapshot) => {
+        const allUsers = snapshot.docs.map(doc => sanitizeObject(doc.data()) as User);
+        
+        // PENDENTES: isApproved: false E não arquivado E não rejeitado
+        setPendingUsers(allUsers.filter(u => !u.isApproved && !u.isArchived && !(u as any).isRejected));
+        
+        // APROVADOS: isApproved: true E não arquivado
+        setApprovedUsers(allUsers.filter(u => u.isApproved && !u.isArchived));
+        
+        // ARQUIVADOS: isArchived: true
+        setArchivedUsers(allUsers.filter(u => u.isArchived));
+      }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
+      
+      unsubPendingUsers = unsubUsers; // Alias para manter a lógica de limpeza original
+    }
+
+    // Suggestions Listener
+    const suggestionsQuery = query(collection(db, 'suggestions'), orderBy('timestamp', 'desc'));
+    const unsubSuggestions = onSnapshot(suggestionsQuery, (snapshot) => {
+      setSuggestions(snapshot.docs.map(doc => sanitizeObject({ id: doc.id, ...doc.data() }) as Suggestion));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'suggestions'));
+
+    return () => {
+      unsubPosts();
+      unsubReg();
+      unsubPendingUsers();
+      unsubApprovedUsers();
+      unsubSuggestions();
+      unsubSettings();
+    };
+  }, [user, user?.role]);
+
+
+  const handleDeletePost = async (postId: string) => {
+    if (!user) return;
+
+    try {
+      const postRef = doc(db, 'posts', postId);
+      const postSnap = await getDoc(postRef);
+      if (!postSnap.exists()) return;
+
+      const postData = postSnap.data() as Post;
+      const authorId = postData.userId;
+      const cid = postData.competitionId;
+
+      // 1. Marca como deletado no Firestore
+      await updateDoc(postRef, { status: 'deleted' });
+
+      // 2. Subtrai IMEDIATAMENTE os stats do usuário sem depender de propagação de query
+      if (cid) {
+        const userRef = doc(db, 'users', authorId);
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+          const userData = userSnap.data() as any;
+          const compStats = userData.competitionStats?.[cid] || {};
+
+          const wasApproved = postData.status === 'approved' || postData.status === 'synced';
+          const viewsGain  = wasApproved ? Math.max(0, (postData.views    || 0) - (postData.viewsBaseline    || 0)) : 0;
+          const likesGain  = wasApproved ? Math.max(0, (postData.likes    || 0) - (postData.likesBaseline    || 0)) : 0;
+          const commGain   = wasApproved ? Math.max(0, (postData.comments || 0) - (postData.commentsBaseline || 0)) : 0;
+          const shrGain    = wasApproved ? Math.max(0, (postData.shares   || 0) - (postData.sharesBaseline   || 0)) : 0;
+          const savGain    = wasApproved ? Math.max(0, (postData.saves    || 0) - (postData.savesBaseline    || 0)) : 0;
+
+          const patch: any = {
