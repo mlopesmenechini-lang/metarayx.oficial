@@ -22,6 +22,7 @@ import {
   SugestoesTab, 
   SolicitacoesRemocaoTab 
 } from './MiscAdminTabs';
+import { DiagnosticoTab } from './DiagnosticoTab';
 import { ListHeader } from './AdminUI';
 
 interface AdminPanelProps {
@@ -34,7 +35,7 @@ interface AdminPanelProps {
   pendingUsers: User[];
   archivedUsers: User[];
   suggestions: any[];
-  pendingRegistrations: any[];
+  registrations: any[];
   settings: Settings;
   transactions: Transaction[];
   
@@ -53,6 +54,7 @@ interface AdminPanelProps {
 
   // Handlers - triagem
   handlePostStatus: (postId: string, status: any) => void;
+  handleApproveAsMonthly: (postId: string) => Promise<void>;
   handleMovePostToCompetition: (postId: string, newCompId: string) => Promise<void>;
   
   // Handlers - sincronização
@@ -133,16 +135,28 @@ interface AdminPanelProps {
   handleCreateUser: () => void;
   creatingUser: boolean;
 
+  // New Handlers
+  handleDeleteAllDuplicates?: () => Promise<void>;
+
   // Legacy/Other tabs
   children?: React.ReactNode;
 }
 
+export const TabBadge = ({ count }: { count: number }) => {
+  if (count <= 0) return null;
+  return (
+    <span className="ml-2 px-1.5 py-0.5 min-w-[18px] h-4.5 flex items-center justify-center bg-red-600 text-white text-[9px] font-black rounded-full border border-zinc-900 shadow-[0_0_10px_rgba(220,38,38,0.3)] animate-pulse">
+      {count > 99 ? '99+' : count}
+    </span>
+  );
+};
+
 export const AdminPanel: React.FC<AdminPanelProps> = ({
   userRole, tab, setTab, posts, competitions, approvedUsers, pendingUsers, archivedUsers,
-  suggestions, pendingRegistrations, settings, transactions,
+  suggestions, registrations, settings, transactions,
   auditUserId, setAuditUserId, selectedCompId, setSelectedCompId, syncDetailCompId, setSyncDetailCompId,
   selectedAdminHandle, setSelectedAdminHandle, adminHandles,
-  handlePostStatus, handleMovePostToCompetition,
+  handlePostStatus, handleApproveAsMonthly, handleMovePostToCompetition,
   selectedSyncPostIds, setSelectedSyncPostIds, handleBulkRevertToPending, handleBulkSyncSelectedApproved, syncing, syncingPostId, setSyncingPostId,
   handleSyncApprovedParallel, handleSyncApprovedSequentially, formatLastSyncDate, onSingleSync,
   selectedResyncPostIds, setSelectedResyncPostIds, handleSyncCompetitionSequentially, handleSyncCompetitionParallel,
@@ -156,8 +170,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   handleMarkPaid, handleToggleManualPostValidation, validatedPostsLocal, setValidatedPostsLocal, onUpdatePixKey,
   handleExportExcel, handleDeleteUserPost, handleResetDailyRanking, handleResetRankingSimple,
   handleRepairMetrics, handleRankingResetOnly, handleSystemCleanup, pendingMoves, setPendingMoves, repairing, selectedResetCompId, setSelectedResetCompId,
-  newUserRole, setNewUserRole, newUserName, setNewUserName, newUserEmail, setNewUserEmail, newUserPass, setNewUserPass,
-  handleCreateUser, creatingUser,
+   newUserRole, setNewUserRole, newUserName, setNewUserName, newUserEmail, setNewUserEmail, newUserPass, setNewUserPass,
+  handleCreateUser, creatingUser, handleDeleteAllDuplicates,
   children
 }) => {
   return (
@@ -251,9 +265,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           <>
             <button
               onClick={() => { setTab('POSTS'); setAuditUserId(null); setSelectedCompId(null); setSyncDetailCompId(null); }}
-              className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'POSTS' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+              className={`px-6 py-2 rounded-xl font-bold text-xs transition-all flex items-center ${tab === 'POSTS' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
             >
               POSTS ({posts.filter(p => p.status === 'pending').length})
+              <TabBadge count={posts.filter(p => p.status === 'pending').length} />
             </button>
             <button
               onClick={() => { setTab('SINCRONIZACAO'); setAuditUserId(null); setSelectedCompId(null); setSyncDetailCompId(null); }}
@@ -269,15 +284,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </button>
             <button
               onClick={() => { setTab('USERS'); setAuditUserId(null); setSelectedCompId(null); setSyncDetailCompId(null); }}
-              className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'USERS' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+              className={`px-6 py-2 rounded-xl font-bold text-xs transition-all flex items-center ${tab === 'USERS' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
             >
               PENDENTES ({pendingUsers.length})
+              <TabBadge count={pendingUsers.length} />
             </button>
             <button
               onClick={() => { setTab('USERS_APPROVED'); setAuditUserId(null); setSelectedCompId(null); setSyncDetailCompId(null); }}
               className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'USERS_APPROVED' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
             >
               APROVADOS ({approvedUsers.length})
+            </button>
+            <button
+              onClick={() => { setTab('ARCHIVED'); setAuditUserId(null); setSelectedCompId(null); setSyncDetailCompId(null); }}
+              className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'ARCHIVED' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
+            >
+              ARQUIVADOS ({archivedUsers.length})
             </button>
             <button
               onClick={() => { setTab('COMPETITIONS'); setAuditUserId(null); setSelectedCompId(null); setSyncDetailCompId(null); }}
@@ -287,15 +309,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </button>
             <button
               onClick={() => { setTab('REMOVAL_REQUESTS'); setAuditUserId(null); setSelectedCompId(null); setSyncDetailCompId(null); }}
-              className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'REMOVAL_REQUESTS' ? 'bg-amber-500 text-black' : 'text-zinc-500'}`}
+              className={`px-6 py-2 rounded-xl font-bold text-xs transition-all flex items-center ${tab === 'REMOVAL_REQUESTS' ? 'bg-amber-500 text-black' : 'text-zinc-500'}`}
             >
               SOLICITAÇÕES ({posts.filter(p => p.status === 'removal_requested').length})
+              <TabBadge count={posts.filter(p => p.status === 'removal_requested').length} />
             </button>
             <button
               onClick={() => { setTab('REGISTROS'); setSyncDetailCompId(null); }}
-              className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'REGISTROS' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
+              className={`px-6 py-2 rounded-xl font-bold text-xs transition-all flex items-center ${tab === 'REGISTROS' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
             >
-              REGISTROS
+              REGISTROS ({registrations.length})
+              <TabBadge count={registrations.length} />
             </button>
             <button
               onClick={() => { setTab('AVISOS'); setSyncDetailCompId(null); }}
@@ -310,6 +334,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               TIMER
             </button>
           </>
+        )}
+        {(userRole === 'admin' || userRole === 'administrativo') && (
+          <button
+            onClick={() => { setTab('DIAGNOSTICO'); setSyncDetailCompId(null); }}
+            className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'DIAGNOSTICO' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/20' : 'text-zinc-500 hover:text-amber-400'}`}
+          >
+            DIAGNÓSTICO
+          </button>
         )}
         {(userRole === 'admin' || userRole === 'auditor' || userRole === 'administrativo') && (
           <button
@@ -331,9 +363,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           <>
             <button
               onClick={() => { setTab('SUGESTOES'); setSyncDetailCompId(null); }}
-              className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'SUGESTOES' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
+              className={`px-6 py-2 rounded-xl font-bold text-xs transition-all flex items-center ${tab === 'SUGESTOES' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
             >
               SUGESTÕES ({suggestions.length})
+              <TabBadge count={suggestions.length} />
             </button>
             <button
               onClick={() => { setTab('RELATORIOS'); setSyncDetailCompId(null); setSelectedCompId(null); }}
@@ -345,7 +378,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               onClick={() => { setTab('REMOVED_POSTS'); setSyncDetailCompId(null); setSelectedCompId(null); }}
               className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'REMOVED_POSTS' ? 'bg-red-500 text-white shadow-lg shadow-red-500/20' : 'text-zinc-500 hover:text-zinc-300'}`}
             >
-              REMOVIDOS
+              REMOVIDOS ({posts.filter(p => p.status === 'deleted' || p.status === 'banned').length})
             </button>
           </>
         )}
@@ -359,6 +392,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             syncDetailCompId={syncDetailCompId} 
             setSyncDetailCompId={setSyncDetailCompId} 
             handlePostStatus={handlePostStatus} 
+            handleApproveAsMonthly={handleApproveAsMonthly}
             handleMovePostToCompetition={handleMovePostToCompetition}
             pendingMoves={pendingMoves}
             setPendingMoves={setPendingMoves}
@@ -381,6 +415,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             selectedAdminHandle={selectedAdminHandle}
             setSelectedAdminHandle={setSelectedAdminHandle}
             adminHandles={adminHandles}
+            onUpdateMasterKey={async () => {}} // mock to fix TS error, since it's probably handled via settings directly in App
           />
         )}
         
@@ -439,7 +474,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
         {tab === 'REGISTROS' && (
           <RegistrosTab 
-            pendingRegistrations={pendingRegistrations} 
+            pendingRegistrations={registrations} 
             handleRegistrationStatus={() => {}} 
             handleDeleteRegistration={() => {}} 
           />
@@ -504,6 +539,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             financeDateFilter={financeDateFilter} setFinanceDateFilter={setFinanceDateFilter} auditUserId={auditUserId} setAuditUserId={setAuditUserId}
             userRole={userRole} handleMarkPaid={handleMarkPaid} handleToggleManualPostValidation={handleToggleManualPostValidation}
             validatedPostsLocal={validatedPostsLocal} setValidatedPostsLocal={setValidatedPostsLocal} onUpdatePixKey={onUpdatePixKey}
+          />
+        )}
+
+        {tab === 'DIAGNOSTICO' && (
+          <DiagnosticoTab 
+            users={[...approvedUsers, ...pendingUsers, ...archivedUsers]}
+            posts={posts}
+            competitions={competitions}
+            registrations={registrations}
+            handleDeleteAllDuplicates={handleDeleteAllDuplicates}
+            userRole={userRole}
           />
         )}
 

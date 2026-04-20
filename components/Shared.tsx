@@ -55,15 +55,22 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
   }
 }
 
-export const NavItem = ({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) => (
+export const NavItem = ({ active, onClick, icon, label, badgeCount }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string, badgeCount?: number }) => (
   <button
     onClick={onClick}
     className={`
-      w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold text-sm
+      w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold text-sm relative
       ${active ? 'gold-bg text-black shadow-lg shadow-amber-500/20' : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900'}
     `}
   >
-    {React.cloneElement(icon as React.ReactElement<any>, { className: 'w-5 h-5 flex-shrink-0' })}
+    <div className="relative">
+      {React.cloneElement(icon as React.ReactElement<any>, { className: 'w-5 h-5 flex-shrink-0' })}
+      {badgeCount !== undefined && badgeCount > 0 && (
+        <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 flex items-center justify-center bg-red-600 text-white text-[9px] font-black rounded-full border border-black shadow-[0_0_8px_rgba(220,38,38,0.5)] px-1">
+          {badgeCount > 99 ? '99+' : badgeCount}
+        </span>
+      )}
+    </div>
     {label}
   </button>
 );

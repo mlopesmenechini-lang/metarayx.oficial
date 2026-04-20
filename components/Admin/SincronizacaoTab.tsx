@@ -36,6 +36,7 @@ interface SincronizacaoTabProps {
   selectedAdminHandle: string;
   setSelectedAdminHandle: (handle: string) => void;
   adminHandles: string[];
+  onUpdateMasterKey: (newKey: string) => void;
 }
 
 export const SincronizacaoTab: React.FC<SincronizacaoTabProps> = ({
@@ -60,8 +61,10 @@ export const SincronizacaoTab: React.FC<SincronizacaoTabProps> = ({
   setPendingMoves,
   selectedAdminHandle,
   setSelectedAdminHandle,
-  adminHandles
+  adminHandles,
+  onUpdateMasterKey
 }) => {
+  const [newMasterKey, setNewMasterKey] = React.useState('');
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
       {syncDetailCompId ? (
@@ -325,6 +328,56 @@ export const SincronizacaoTab: React.FC<SincronizacaoTabProps> = ({
                 <p className="text-zinc-500 font-black uppercase text-xs tracking-widest">Nenhuma competição com vídeos aguardando sincronização.</p>
               </div>
             )}
+           </div>
+        </div>
+      )}
+
+      {/* ── SECURITY SETTINGS ── */}
+      {!syncDetailCompId && (
+        <div className="bg-zinc-950 p-8 rounded-[40px] border border-red-500/10 space-y-6 relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-8 opacity-5">
+            <Zap className="w-32 h-32 text-red-500" />
+          </div>
+          
+          <div className="flex items-center gap-3 relative z-10">
+            <div className="p-2 rounded-xl bg-red-500/10 text-red-500">
+              <Zap className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-sm font-black uppercase text-white">Configurações de Segurança Crítica</h4>
+              <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-[0.2em]">Trava de segurança para atribuição de cargos administrativos</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 relative z-10">
+            <div className="space-y-4">
+              <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                Palavra-Chave Mestra (Atual: <span className="text-red-500">{settings.masterAdminKey ? settings.masterAdminKey.replace(/./g, '*') : 'PADRÃO'}</span>)
+              </label>
+              <div className="flex gap-3">
+                <input
+                  type="password"
+                  value={newMasterKey}
+                  onChange={(e) => setNewMasterKey(e.target.value)}
+                  placeholder="Nova palavra-chave..."
+                  className="flex-1 bg-black border border-zinc-800 rounded-2xl py-4 px-6 text-sm font-bold focus:border-red-500 outline-none transition-all shadow-inner"
+                />
+                <button
+                  onClick={() => {
+                    if (window.confirm('Tem certeza que deseja alterar a Master Key? Guarde-a bem, ela é necessária para criar novos admins.')) {
+                      onUpdateMasterKey(newMasterKey);
+                      setNewMasterKey('');
+                    }
+                  }}
+                  className="px-8 py-4 bg-red-600 text-white font-black rounded-2xl hover:bg-red-500 transition-all shadow-lg shadow-red-600/20 text-xs"
+                >
+                  SALVAR
+                </button>
+              </div>
+              <p className="text-[9px] text-zinc-600 font-bold uppercase tracking-widest leading-relaxed">
+                Esta chave será solicitada sempre que um usuário for promovido a ADMINISTRADOR.
+              </p>
+            </div>
           </div>
         </div>
       )}

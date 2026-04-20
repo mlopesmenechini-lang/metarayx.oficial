@@ -14,7 +14,7 @@ import {
   TrendingUp, Users, Zap, Calendar, MessageSquare, Menu, X, ChevronLeft, ExternalLink,
   Mail, Lock, User as UserIcon, Eye, EyeOff, Loader2, RefreshCw, Crown, Trash2, Plus,
   Heart, Share2, Bookmark, Bell, Check, Camera, BarChart3, ArrowLeft, ArrowRight, BookOpen, Shield, Star, ChevronRight, Target,
-  Award, UserX, Sparkles, CreditCard, Coins, DollarSign, Info, Archive, Download, RotateCcw, Pencil, PlusCircle, MinusCircle, Key
+  Award, UserX, Sparkles, CreditCard, Coins, DollarSign, Info, Archive, Download, RotateCcw, Pencil, PlusCircle, MinusCircle, Key, ShieldAlert
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { syncViewsWithApify, syncSinglePostWithApify, updateUserMetrics, repairAllUserMetrics } from './services/apifyService';
@@ -33,6 +33,7 @@ import { HistoryView } from './components/HistoryView';
 import { TriagemTab } from './components/Admin/TriagemTab';
 import { SincronizacaoTab } from './components/Admin/SincronizacaoTab';
 import { RessincronizacaoTab } from './components/Admin/RessincronizacaoTab';
+import { DiagnosticoTab } from './components/Admin/DiagnosticoTab';
 
 const sanitizeString = (text: string) => {
   if (typeof text !== 'string') return text;
@@ -65,7 +66,7 @@ const sanitizeObject = (obj: any): any => {
 };
 import fbConfig from './firebase-applet-config.json';
 
-export type AdminTab = 'VISAO_GERAL' | 'SYNC' | 'TIMER' | 'TRIAGEM' | 'SINCRONIZACAO' | 'RESSINCRONIZACAO' | 'FINANCEIRO' | 'ACESSOS' | 'SUGESTOES' | 'RELATORIOS' | 'REMOVED_POSTS' | 'REMOVAL_REQUESTS' | 'REGISTROS' | 'AVISOS' | 'ARCHIVED' | 'POSTS' | 'USERS' | 'USERS_APPROVED' | 'COMPETITIONS';
+export type AdminTab = 'VISAO_GERAL' | 'SYNC' | 'TIMER' | 'TRIAGEM' | 'SINCRONIZACAO' | 'RESSINCRONIZACAO' | 'FINANCEIRO' | 'ACESSOS' | 'SUGESTOES' | 'RELATORIOS' | 'REMOVED_POSTS' | 'REMOVAL_REQUESTS' | 'REGISTROS' | 'AVISOS' | 'ARCHIVED' | 'POSTS' | 'USERS' | 'USERS_APPROVED' | 'COMPETITIONS' | 'DIAGNOSTICO';
 
 const normalizeUrl = (url: string) => {
   try {
@@ -198,6 +199,15 @@ const App: React.FC = () => {
     { position: 2, value: 0, label: '2º Insta' },
     { position: 3, value: 0, label: '3º Insta' }
   ]);
+
+  // Role Security States
+  const [showRoleChallenge, setShowRoleChallenge] = useState(false);
+  const [roleChallengeInput, setRoleChallengeInput] = useState('');
+  const [pendingRoleAction, setPendingRoleAction] = useState<{
+    type: 'UPDATE' | 'EDIT';
+    uid?: string;
+    role: UserRole;
+  } | null>(null);
   const [isCreatingComp, setIsCreatingComp] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editName, setEditName] = useState('');
@@ -210,6 +220,12 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('acknowledgedAnnouncements');
     return saved ? JSON.parse(saved) : [];
   });
+  const [dismissedNotifications, setDismissedNotifications] = useState<string[]>(() => {
+    const saved = localStorage.getItem('dismissedNotifications');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [showNotifications, setShowNotifications] = useState(false);
+  const NOTIFICATION_ACTIVATION_TIME = 1776646000000; // 19/04/2026
   const [suggestionMsg, setSuggestionMsg] = useState('');
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
@@ -343,6 +359,24 @@ const App: React.FC = () => {
       if (unsubscribeUser) unsubscribeUser();
     };
   }, []);
+
+  const handleDismissNotification = (postId: string) => {
+    setDismissedNotifications(prev => {
+      const next = [...prev, postId];
+      localStorage.setItem('dismissedNotifications', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const notificationList = useMemo(() => {
+    if (!user) return [];
+    return posts.filter(p => 
+      p.userId === user.uid && 
+      p.status === 'rejected' && 
+      p.approvedAt && p.approvedAt > NOTIFICATION_ACTIVATION_TIME &&
+      !dismissedNotifications.includes(p.id)
+    );
+  }, [posts, user, dismissedNotifications]);
 
 
   // Real-time Data Listeners — dados públicos (carrega assim que autenticado)
@@ -590,6 +624,61 @@ const App: React.FC = () => {
     }
   };
 
+  const handleDeleteAllDuplicates = async () => {
+    if (!user || user.role !== 'admin') return;
+    
+    setNotification({ message: 'Iniciando limpeza de duplicados...', type: 'success' });
+    
+    try {
+      // 1. Agrupar posts por url normalizada em tempo real (ignorando banco legado)
+      const groups: Record<string, Post[]> = {};
+      posts.forEach(p => {
+        const norm = normalizeUrl(p.url);
+        if (!norm) return;
+        if (!groups[norm]) groups[norm] = [];
+        groups[norm].push(p);
+      });
+
+      const duplicateGroups = Object.values(groups).filter(g => g.length > 1);
+      if (duplicateGroups.length === 0) {
+        setNotification({ message: 'Nenhum link duplicado encontrado!', type: 'success' });
+        return;
+      }
+
+      const affectedUserIds = new Set<string>();
+      let deletedCount = 0;
+
+      for (const group of duplicateGroups) {
+        // Ordenar por timestamp e manter o mais antigo
+        const sorted = [...group].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+        const [keep, ...toDelete] = sorted;
+
+        for (const post of toDelete) {
+          // Marca como deletado no Firestore
+          await updateDoc(doc(db, 'posts', post.id), { status: 'deleted' });
+          affectedUserIds.add(post.userId);
+          deletedCount++;
+        }
+      }
+
+      // 2. Recalcular métricas de todos os usuários afetados
+      for (const uid of Array.from(affectedUserIds)) {
+        await updateUserMetrics(uid);
+      }
+
+      // 3. Reparo final opcional
+      await repairAllUserMetrics().catch(console.error);
+
+      setNotification({ 
+        message: `Limpeza concluída! ${deletedCount} posts duplicados foram removidos e os rankings atualizados.`, 
+        type: 'success' 
+      });
+    } catch (error) {
+      console.error('Erro na limpeza de duplicados:', error);
+      setNotification({ message: 'Erro fatal durante a limpeza de duplicados.', type: 'error' });
+    }
+  };
+
   if (loading) {
     return (
       <div className="h-screen w-screen flex flex-col items-center justify-center bg-black p-6 text-center">
@@ -735,6 +824,21 @@ const App: React.FC = () => {
     }
   };
 
+  const handleApproveAsMonthly = async (postId: string) => {
+    const post = posts.find(p => p.id === postId);
+    if (!post) return;
+    if (!window.confirm('Enviar diretamente para Ressincronização (Mensal)?\n\nEste link NÃO contará no ranking Diário — apenas no Mensal/Geral.')) return;
+    try {
+      await updateDoc(doc(db, 'posts', postId), {
+        status: 'synced',
+        forceMonthly: true,
+        approvedAt: Date.now()
+      });
+      if (post) await updateUserMetrics(post.userId);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `posts/${postId}`);
+    }
+  };
   const handleMovePostToCompetition = async (postId: string, newCompId: string) => {
     try {
       const postRef = doc(db, 'posts', postId);
@@ -1365,6 +1469,12 @@ const App: React.FC = () => {
   const handleEditUser = async () => {
     if (!editingUser) return;
     try {
+      if (editRole === 'admin') {
+        setPendingRoleAction({ type: 'EDIT', role: 'admin' });
+        setShowRoleChallenge(true);
+        return;
+      }
+
       const updates: any = { displayName: editName, role: editRole };
       if (editPass) updates.password = editPass;
 
@@ -1452,13 +1562,62 @@ const App: React.FC = () => {
     }
   };
 
-  const handleUpdateUserRole = async (uid: string, role: UserRole) => {
+  const handleUpdateUserRole = async (uid: string, role: UserRole, skipCheck = false) => {
     try {
+      if (role === 'admin' && !skipCheck) {
+        setPendingRoleAction({ type: 'UPDATE', uid, role });
+        setShowRoleChallenge(true);
+        return;
+      }
+
       await updateDoc(doc(db, 'users', uid), { role });
       alert('Cargo do usuário atualizado com sucesso!');
     } catch (error) {
       console.error('Error updating user role:', error);
       alert('Erro ao mudar cargo!');
+    }
+  };
+
+  const handleConfirmRoleChallenge = async () => {
+    if (!pendingRoleAction) return;
+
+    const masterKey = settings.masterAdminKey || 'METARAYX2024';
+    if (roleChallengeInput !== masterKey) {
+      alert('Palavra-chave incorreta! Acesso negado.');
+      setRoleChallengeInput('');
+      return;
+    }
+
+    try {
+      if (pendingRoleAction.type === 'UPDATE' && pendingRoleAction.uid) {
+        await handleUpdateUserRole(pendingRoleAction.uid, pendingRoleAction.role, true);
+      } else if (pendingRoleAction.type === 'EDIT' && editingUser) {
+        const updates: any = { displayName: editName, role: editRole };
+        if (editPass) updates.password = editPass;
+        await updateDoc(doc(db, 'users', editingUser.uid), updates);
+        setEditingUser(null);
+        alert('Usuário promovido a ADMINISTRADOR com sucesso!');
+      }
+    } catch (error) {
+      console.error('Role Challenge Error:', error);
+      alert('Erro crítico ao processar alteração de cargo.');
+    } finally {
+      setShowRoleChallenge(false);
+      setRoleChallengeInput('');
+      setPendingRoleAction(null);
+    }
+  };
+
+  const handleUpdateMasterKey = async (newKey: string) => {
+    if (!newKey.trim()) {
+      alert('A palavra-chave não pode ser vazia.');
+      return;
+    }
+    try {
+      await updateDoc(doc(db, 'config', 'settings'), { masterAdminKey: newKey.trim() });
+      alert('✅ Palavra-chave mestra atualizada com sucesso!');
+    } catch (error: any) {
+      alert(`❌ Erro ao atualizar palavra-chave: ${error.message}`);
     }
   };
 
@@ -1587,15 +1746,31 @@ const App: React.FC = () => {
                 Gerenciar Contas
               </button>
               {(user.role === 'admin' || user.role === 'auditor' || user.role === 'administrativo') && (
-                <NavItem active={view === 'ADMIN'} onClick={() => setView('ADMIN')} icon={<ShieldCheck />} label={
-                  user.role === 'admin' ? "Diretoria" :
-                    user.role === 'administrativo' ? "Administrativo" : "Gestão"
-                } />
+                <NavItem 
+                  active={view === 'ADMIN'} 
+                  onClick={() => setView('ADMIN')} 
+                  icon={<ShieldCheck />} 
+                  badgeCount={
+                    posts.filter(p => p.status === 'pending').length + 
+                    pendingUsers.length + 
+                    posts.filter(p => p.status === 'removal_requested').length
+                  }
+                  label={
+                    user.role === 'admin' ? "Diretoria" :
+                      user.role === 'administrativo' ? "Administrativo" : "Gestão"
+                  } 
+                />
               )}
               <NavItem active={view === 'SETTINGS'} onClick={() => setView('SETTINGS')} icon={<SettingsIcon />} label="Configurações" />
 
               <div className="pt-2">
-                <NavItem active={view === 'SUGGESTIONS'} onClick={() => setView('SUGGESTIONS')} icon={<MessageSquare />} label="Sugestões" />
+                <NavItem 
+                  active={view === 'SUGGESTIONS'} 
+                  onClick={() => setView('SUGGESTIONS')} 
+                  icon={<MessageSquare />} 
+                  label="Sugestões" 
+                  badgeCount={suggestions.length}
+                />
               </div>
             </nav>
 
@@ -1648,7 +1823,90 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-6">
+              {/* Notification Bell */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  className={`p-2.5 rounded-xl transition-all relative group ${showNotifications ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/20' : 'bg-zinc-900/50 text-zinc-400 hover:text-amber-500'}`}
+                >
+                  <Bell className="w-5 h-5" />
+                  {notificationList.length > 0 && (
+                    <motion.span
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      className="absolute -top-1 -right-1 w-5 h-5 bg-red-600 text-white text-[10px] font-black rounded-full flex items-center justify-center border-2 border-black"
+                    >
+                      {notificationList.length}
+                    </motion.span>
+                  )}
+                </button>
+
+                <AnimatePresence>
+                  {showNotifications && (
+                    <>
+                      <div 
+                        className="fixed inset-0 z-[140]" 
+                        onClick={() => setShowNotifications(false)} 
+                      />
+                      <motion.div
+                        initial={{ opacity: 0, y: 15, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                        className="absolute right-0 mt-4 w-80 glass border border-zinc-800 rounded-[32px] shadow-2xl p-6 z-[150] overflow-hidden"
+                      >
+                        <div className="flex items-center justify-between mb-6">
+                          <h4 className="text-xs font-black uppercase tracking-widest text-zinc-500">Notificações</h4>
+                          {notificationList.length > 0 && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-500 font-bold uppercase">Novas</span>
+                          )}
+                        </div>
+
+                        <div className="space-y-4 max-h-[400px] overflow-y-auto custom-scrollbar -mr-2 pr-2">
+                          {notificationList.length === 0 ? (
+                            <div className="py-10 text-center space-y-3">
+                              <div className="w-12 h-12 bg-zinc-900/50 rounded-2xl flex items-center justify-center mx-auto">
+                                <Check className="w-6 h-6 text-zinc-700" />
+                              </div>
+                              <p className="text-xs font-bold text-zinc-600">Nenhum aviso novo por aqui!</p>
+                            </div>
+                          ) : (
+                            notificationList.map(notif => (
+                              <motion.div
+                                key={notif.id}
+                                layout
+                                className="group bg-red-500/5 border border-red-500/10 hover:bg-red-500/10 rounded-2xl p-4 transition-all"
+                              >
+                                <div className="flex gap-3">
+                                  <div className="w-8 h-8 shrink-0 bg-red-500/20 rounded-xl flex items-center justify-center">
+                                    <ShieldAlert className="w-4 h-4 text-red-500" />
+                                  </div>
+                                  <div className="space-y-1 flex-1">
+                                    <h5 className="text-[11px] font-black uppercase tracking-tight text-red-500">Vídeo Desclassificado</h5>
+                                    <p className="text-xs font-bold text-zinc-300 leading-relaxed">
+                                      {notif.rejectionReason || 'Seu vídeo foi removido por não seguir as regras da competição.'}
+                                    </p>
+                                    <div className="flex items-center justify-between pt-2">
+                                      <span className="text-[9px] font-black text-zinc-600 uppercase">Verifique seus protocolos</span>
+                                      <button
+                                        onClick={() => handleDismissNotification(notif.id)}
+                                        className="text-[9px] font-black text-white px-2 py-1 bg-red-500 rounded-lg hover:bg-red-600 transition-colors"
+                                      >
+                                        OK, ENTENDI
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              </motion.div>
+                            ))
+                          )}
+                        </div>
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
+              </div>
+
               <div className="hidden md:flex flex-col text-right">
                 <span className="text-[10px] text-zinc-500 uppercase font-black tracking-widest">Status do Ciclo</span>
                 <span className="text-xs font-bold text-emerald-500 flex items-center gap-1 justify-end">
@@ -1745,6 +2003,7 @@ const App: React.FC = () => {
                     setSyncingCompId={setSyncingCompId}
                     timerConfig={timerConfig}
                     handleUpdateTimer={handleUpdateTimer}
+                    handleDeleteAllDuplicates={handleDeleteAllDuplicates}
                     onSettingsUpdate={(s) => setSettings(s)}
                     editingCompId={editingCompId}
                     setEditingCompId={setEditingCompId}
@@ -1769,8 +2028,17 @@ const App: React.FC = () => {
                     handleUpdateUserRole={handleUpdateUserRole}
                     handleApproveRemoval={handleApproveRemoval}
                     handleRejectRemoval={handleRejectRemoval}
+                    handleUpdateMasterKey={handleUpdateMasterKey}
+                    showRoleChallenge={showRoleChallenge}
+                    setShowRoleChallenge={setShowRoleChallenge}
+                    roleChallengeInput={roleChallengeInput}
+                    setRoleChallengeInput={setRoleChallengeInput}
+                    pendingRoleAction={pendingRoleAction}
+                    setPendingRoleAction={setPendingRoleAction}
+                    handleConfirmRoleChallenge={handleConfirmRoleChallenge}
                     handleRankingResetOnly={handleRankingResetOnly}
                     handleResetRankingSimple={handleResetRankingSimple}
+                    handleApproveAsMonthly={handleApproveAsMonthly}
                     handleMovePostToCompetition={handleMovePostToCompetition}
                     suggestions={suggestions}
                     compTitle={compTitle}
@@ -2329,6 +2597,11 @@ const PostSubmit = ({ user, competitions, registrations, setView, lockedCompetit
         const u = singleUrl.toLowerCase();
         if (platform === 'tiktok' && !u.includes('tiktok.com')) {
           setError(`Erro: O link "${singleUrl}" não é um vídeo do TikTok válido.`);
+          setSubmitting(false);
+          return;
+        }
+        if (platform === 'tiktok' && (u.includes('vt.tiktok.com') || u.includes('vm.tiktok.com'))) {
+          setError(`Link encurtado não permitido: "${singleUrl}"\n\nComo resolver: Cole esse link no navegador do celular ou computador. Quando a página abrir, copie o link completo que aparece na barra de endereço (ex: tiktok.com/@usuario/video/123...) e use esse link aqui.`);
           setSubmitting(false);
           return;
         }
@@ -3577,6 +3850,15 @@ const DailyTransactionRow = ({ transaction, users }: { transaction: Transaction,
 };
 
 
+const TabBadge = ({ count }: { count: number }) => {
+  if (count <= 0) return null;
+  return (
+    <span className="ml-2 px-1.5 py-0.5 bg-red-600 text-white text-[9px] font-black rounded-full min-w-[18px] h-[18px] flex items-center justify-center shadow-lg shadow-red-600/20 animate-pulse">
+      {count > 99 ? '99+' : count}
+    </span>
+  );
+};
+
 const AdminPanel = ({
   userRole,
   posts,
@@ -3615,6 +3897,14 @@ const AdminPanel = ({
   handleRejectRemoval,
   handleRankingResetOnly,
   handleResetRankingSimple,
+  handleUpdateMasterKey,
+  showRoleChallenge,
+  setShowRoleChallenge,
+  roleChallengeInput,
+  setRoleChallengeInput,
+  pendingRoleAction,
+  setPendingRoleAction,
+  handleConfirmRoleChallenge,
   suggestions,
   sessionSyncedIds,
   setSessionSyncedIds,
@@ -3689,11 +3979,13 @@ const AdminPanel = ({
   isCreatingAnn,
   setIsCreatingAnn,
   handleSystemCleanup,
+  handleDeleteAllDuplicates,
   rejectionReason,
   setRejectionReason,
   setRejectionModal,
   apifyKeySync,
   setApifyKeySync,
+  handleApproveAsMonthly,
   handleMovePostToCompetition,
   pendingMoves,
   setPendingMoves,
@@ -3751,6 +4043,15 @@ const AdminPanel = ({
   handleRejectRemoval: (postId: string) => void;
   handleRankingResetOnly: () => void;
   handleResetRankingSimple: (compId: string) => void;
+  handleUpdateMasterKey: (newKey: string) => Promise<void>;
+  showRoleChallenge: boolean;
+  setShowRoleChallenge: (val: boolean) => void;
+  roleChallengeInput: string;
+  setRoleChallengeInput: (val: string) => void;
+  pendingRoleAction: any;
+  setPendingRoleAction: (val: any) => void;
+  handleConfirmRoleChallenge: () => Promise<void>;
+  handleApproveAsMonthly: (postId: string) => Promise<void>;
   handleMovePostToCompetition: (postId: string, newCompId: string) => Promise<void>;
   suggestions: Suggestion[];
   compTitle: string;
@@ -3800,6 +4101,7 @@ const AdminPanel = ({
   isCreatingComp: boolean;
   setIsCreatingComp: (v: boolean) => void;
   handleSystemCleanup: () => void;
+  handleDeleteAllDuplicates: () => Promise<void>;
   editingUser: User | null;
   setEditingUser: (v: User | null) => void;
   editName: string;
@@ -4273,7 +4575,7 @@ const AdminPanel = ({
       setApifyKey(''); // Limpa o input após adicionar
       alert('âœ… Chave API adicionada com sucesso!');
     } catch (error: any) {
-      alert(`âŒ Erro ao salvar chave: ${error.message}`);
+      alert(`â Œ Erro ao salvar chave: ${error.message}`);
     }
   };
 
@@ -4287,9 +4589,10 @@ const AdminPanel = ({
       });
       alert('âœ… Chave removida.');
     } catch (error: any) {
-      alert(`âŒ Erro ao remover chave: ${error.message}`);
+      alert(`â Œ Erro ao remover chave: ${error.message}`);
     }
   };
+
 
   const handleSaveSyncKey = async () => {
     const trimmedKey = apifyKeySync.trim();
@@ -4307,7 +4610,7 @@ const AdminPanel = ({
       setApifyKeySync('');
       alert('âœ… Chave de Sincronização Inicial adicionada!');
     } catch (error: any) {
-      alert(`âŒ Erro ao salvar chave: ${error.message}`);
+      alert(`â Œ Erro ao salvar chave: ${error.message}`);
     }
   };
 
@@ -4318,7 +4621,7 @@ const AdminPanel = ({
       await updateDoc(doc(db, 'config', 'settings'), { apifyKeysSync: newKeys });
       alert('âœ… Chave removida.');
     } catch (error: any) {
-      alert(`âŒ Erro ao remover chave: ${error.message}`);
+      alert(`â Œ Erro ao remover chave: ${error.message}`);
     }
   };
 
@@ -5216,9 +5519,10 @@ const AdminPanel = ({
         {userRole === 'admin' && (
           <button
             onClick={() => { setTab('POSTS'); setAuditUserId(null); setSelectedCompId(null); setSyncDetailCompId(null); }}
-            className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'POSTS' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
+            className={`px-6 py-2 rounded-xl font-bold text-xs transition-all flex items-center ${tab === 'POSTS' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
           >
             POSTS ({posts.filter(p => p.status === 'pending').length})
+            <TabBadge count={posts.filter(p => p.status === 'pending').length} />
           </button>
         )}
         {/* SINCRONIZAÇÃO - visível apenas para admin */}
@@ -5243,9 +5547,10 @@ const AdminPanel = ({
         {userRole === 'admin' && (
           <button
             onClick={() => { setTab('USERS'); setAuditUserId(null); setSelectedCompId(null); setSyncDetailCompId(null); }}
-            className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'USERS' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
+            className={`px-6 py-2 rounded-xl font-bold text-xs transition-all flex items-center ${tab === 'USERS' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
           >
             PENDENTES ({pendingUsers.length})
+            <TabBadge count={pendingUsers.length} />
           </button>
         )}
         {/* APROVADOS - visível apenas para admin */}
@@ -5279,18 +5584,20 @@ const AdminPanel = ({
         {userRole === 'admin' && (
           <button
             onClick={() => { setTab('REMOVAL_REQUESTS'); setAuditUserId(null); setSelectedCompId(null); setSyncDetailCompId(null); }}
-            className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'REMOVAL_REQUESTS' ? 'bg-amber-500 text-black' : 'text-zinc-500'}`}
+            className={`px-6 py-2 rounded-xl font-bold text-xs transition-all flex items-center ${tab === 'REMOVAL_REQUESTS' ? 'bg-amber-500 text-black' : 'text-zinc-500'}`}
           >
             SOLICITAÇÕES ({posts.filter(p => p.status === 'removal_requested').length})
+            <TabBadge count={posts.filter(p => p.status === 'removal_requested').length} />
           </button>
         )}
         {/* REGISTROS - visível apenas para admin */}
         {userRole === 'admin' && (
           <button
             onClick={() => { setTab('REGISTROS'); setSyncDetailCompId(null); }}
-            className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'REGISTROS' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
+            className={`px-6 py-2 rounded-xl font-bold text-xs transition-all flex items-center ${tab === 'REGISTROS' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
           >
             REGISTROS ({pendingRegistrations.length})
+            <TabBadge count={pendingRegistrations.length} />
           </button>
         )}
         {/* AVISOS - visível apenas para admin */}
@@ -5320,6 +5627,15 @@ const AdminPanel = ({
             FINANCEIRO
           </button>
         )}
+        {/* DIAGNÓSTICO - visível apenas para admin e administrativo */}
+        {(userRole === 'admin' || userRole === 'administrativo') && (
+          <button
+            onClick={() => { setTab('DIAGNOSTICO'); setSyncDetailCompId(null); }}
+            className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'DIAGNOSTICO' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/20' : 'text-zinc-500 hover:text-amber-400'}`}
+          >
+            DIAGNÓSTICO
+          </button>
+        )}
         {/* CRIAR ACESSO - visível apenas para admin */}
         {userRole === 'admin' && (
           <button
@@ -5333,16 +5649,17 @@ const AdminPanel = ({
         {(userRole === 'admin' || userRole === 'auditor') && (
           <button
             onClick={() => { setTab('SUGESTOES'); setSyncDetailCompId(null); }}
-            className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'SUGESTOES' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
+            className={`px-6 py-2 rounded-xl font-bold text-xs transition-all flex items-center ${tab === 'SUGESTOES' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
           >
             SUGESTÕES ({suggestions.length})
+            <TabBadge count={suggestions.length} />
           </button>
         )}
         {/* RELATÓRIOS (LINKS) - visível para admin e auditor */}
         {(userRole === 'admin' || userRole === 'auditor') && (
           <button
             onClick={() => { setTab('RELATORIOS'); setSyncDetailCompId(null); setSelectedCompId(null); }}
-            className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'RELATORIOS' ? 'gold-bg text-black shadow-lg shadow-amber-500/20' : 'text-zinc-500 hover:text-zinc-300'}`}
+            className={`px-6 py-2 rounded-xl font-bold text-xs transition-all flex items-center ${tab === 'RELATORIOS' ? 'gold-bg text-black shadow-lg shadow-amber-500/20' : 'text-zinc-500 hover:text-zinc-300'}`}
           >
             RELATÓRIOS
           </button>
@@ -5773,8 +6090,8 @@ const AdminPanel = ({
                   className="w-full bg-black border border-zinc-800 px-4 py-3 rounded-xl focus:border-amber-500 outline-none transition-all font-bold text-sm text-zinc-300"
                 >
                   <option value="user">ðŸ‘¤ Usuário Comum (Criador de Conteúdo)</option>
-                  <option value="auditor">ðŸ” Gestor â€” Controle de Campanhas</option>
-                  <option value="administrativo">ðŸ¢ Administrativo â€” Gestão + Financeiro + Acesso como usuário</option>
+                  <option value="auditor">ðŸ”  Gestor â€” Controle de Campanhas</option>
+                  <option value="administrativo">ðŸ ¢ Administrativo â€” Gestão + Financeiro + Acesso como usuário</option>
                   <option value="admin">ðŸ‘‘ Administrador (Diretoria) â€” Acesso total</option>
                 </select>
               </div>
@@ -6340,6 +6657,16 @@ const AdminPanel = ({
 
 
 
+        {tab === 'DIAGNOSTICO' && (
+          <DiagnosticoTab 
+            users={[...approvedUsers, ...pendingUsers, ...archivedUsers]}
+            posts={posts}
+            competitions={competitions}
+            registrations={registrations}
+            handleDeleteAllDuplicates={handleDeleteAllDuplicates}
+          />
+        )}
+
         {tab === 'POSTS' ? (
           <TriagemTab 
             posts={posts}
@@ -6347,6 +6674,7 @@ const AdminPanel = ({
             syncDetailCompId={syncDetailCompId}
             setSyncDetailCompId={setSyncDetailCompId}
             handlePostStatus={handlePostStatus}
+            handleApproveAsMonthly={handleApproveAsMonthly}
             pendingMoves={pendingMoves}
             setPendingMoves={setPendingMoves}
             handleMovePostToCompetition={handleMovePostToCompetition}
@@ -6371,6 +6699,7 @@ const AdminPanel = ({
             handleSyncApprovedParallel={handleSyncApprovedParallel}
             handleSyncApprovedSequentially={handleSyncApprovedSequentially}
             onSingleSync={onSingleSync}
+            onUpdateMasterKey={handleUpdateMasterKey}
             formatLastSyncDate={formatLastSyncDate ?? ((d: any) => d?.toString())}
             handleMovePostToCompetition={handleMovePostToCompetition}
             pendingMoves={pendingMoves}
@@ -8105,6 +8434,17 @@ const AdminPanel = ({
           </div>
         ) : null}
       </div>
+      <AdminRoleChallengeModal
+        isOpen={showRoleChallenge}
+        inputValue={roleChallengeInput}
+        setInputValue={setRoleChallengeInput}
+        onConfirm={handleConfirmRoleChallenge}
+        onCancel={() => {
+          setShowRoleChallenge(false);
+          setRoleChallengeInput('');
+          setPendingRoleAction(null);
+        }}
+      />
     </div>
   );
 };
@@ -8160,6 +8500,79 @@ const ConfirmModal = ({
             <button
               onClick={onClose}
               className="w-full py-4 bg-zinc-900 text-zinc-400 font-black rounded-2xl hover:text-zinc-100 transition-all"
+            >
+              CANCELAR
+            </button>
+          </div>
+        </motion.div>
+      </div>
+    )}
+  </AnimatePresence>
+);
+
+const AdminRoleChallengeModal = ({
+  isOpen,
+  onConfirm,
+  onCancel,
+  inputValue,
+  setInputValue
+}: {
+  isOpen: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+  inputValue: string;
+  setInputValue: (val: string) => void;
+}) => (
+  <AnimatePresence>
+    {isOpen && (
+      <div className="fixed inset-0 z-[300] flex items-center justify-center p-6">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={onCancel}
+          className="absolute inset-0 bg-black/95 backdrop-blur-xl"
+        />
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.9, y: 20 }}
+          className="relative w-full max-w-md bg-zinc-950 p-10 rounded-[40px] border border-red-500/20 space-y-8 text-center shadow-2xl"
+        >
+          <div className="w-20 h-20 bg-red-500/10 rounded-[32px] flex items-center justify-center mx-auto border border-red-500/20">
+            <ShieldAlert className="w-10 h-10 text-red-500" />
+          </div>
+          
+          <div className="space-y-2">
+            <h3 className="text-2xl font-black tracking-tight uppercase text-white">Ação Restrita</h3>
+            <p className="text-zinc-500 font-bold text-xs uppercase tracking-widest leading-relaxed">
+              Você está tentando promover um usuário a <span className="text-red-500">ADMINISTRADOR</span>.
+              Digite a palavra-chave mestra para autorizar:
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <input
+              type="password"
+              autoFocus
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && onConfirm()}
+              placeholder="PALAVRA-CHAVE MESTRA"
+              className="w-full bg-black border border-zinc-800 rounded-2xl py-5 px-6 text-xl font-black text-center text-white tracking-[0.5em] focus:border-red-500 outline-none transition-all placeholder:tracking-normal placeholder:text-[10px]"
+            />
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={onConfirm}
+              className="w-full py-4 bg-red-600 text-white font-black rounded-2xl hover:bg-red-500 transition-all shadow-lg shadow-red-600/20"
+            >
+              AUTORIZAR MUDANÇA
+            </button>
+            <button
+              onClick={onCancel}
+              className="w-full py-4 bg-zinc-900/50 text-zinc-500 font-black rounded-2xl hover:text-zinc-300 transition-all"
             >
               CANCELAR
             </button>

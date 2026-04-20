@@ -181,4 +181,5 @@ export interface Settings {
   apifyKeysSync?: string[];
   lastSync?: string;
   lastResync?: string;
+  masterAdminKey?: string;
 }

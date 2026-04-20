@@ -9,7 +9,9 @@ import {
   History, 
   ChevronRight, 
   ShieldCheck,
-  Check
+  Check,
+  Calendar,
+  AlertTriangle
 } from 'lucide-react';
 import { Post, Competition, PostStatus } from '../../types';
 import { PostTagRow } from './AdminUI';
@@ -20,6 +22,7 @@ interface TriagemTabProps {
   syncDetailCompId: string | null;
   setSyncDetailCompId: (id: string | null) => void;
   handlePostStatus: (postId: string, status: PostStatus) => void;
+  handleApproveAsMonthly: (postId: string) => Promise<void>;
   handleMovePostToCompetition: (postId: string, newCompId: string) => Promise<void>;
   pendingMoves: Record<string, string>;
   setPendingMoves: (val: any) => void;
@@ -34,6 +37,7 @@ export const TriagemTab: React.FC<TriagemTabProps> = ({
   syncDetailCompId,
   setSyncDetailCompId,
   handlePostStatus,
+  handleApproveAsMonthly,
   handleMovePostToCompetition,
   pendingMoves,
   setPendingMoves,
@@ -46,6 +50,43 @@ export const TriagemTab: React.FC<TriagemTabProps> = ({
   const availableUsers = Array.from(new Set(
     posts.filter(p => p.competitionId === syncDetailCompId && p.status === 'pending').map(p => p.userName)
   )).filter(Boolean).sort() as string[];
+
+  const normalizeUrlLocal = (url: string) => {
+    try {
+      let clean = url.trim().toLowerCase();
+      if (clean.includes('youtube.com') || clean.includes('youtu.be')) {
+        let videoId = '';
+        if (clean.includes('v=')) videoId = clean.split('v=')[1]?.split('&')[0]?.split('?')[0];
+        else if (clean.includes('/shorts/')) videoId = clean.split('/shorts/')[1]?.split('?')[0];
+        else if (clean.includes('youtu.be/')) videoId = clean.split('youtu.be/')[1]?.split('?')[0];
+        if (videoId) return `youtube:${videoId}`;
+      }
+      if (clean.includes('tiktok.com')) {
+        if (clean.includes('/video/')) {
+          const videoId = clean.split('/video/')[1]?.split('?')[0]?.split('/')[0];
+          if (videoId) return `tiktok:${videoId}`;
+        }
+      }
+      if (clean.includes('instagram.com')) {
+        const parts = clean.split('/');
+        const pIndex = parts.indexOf('p');
+        const reelIndex = parts.indexOf('reel');
+        const parentIndex = pIndex !== -1 ? pIndex : reelIndex;
+        if (parentIndex !== -1 && parts.length > parentIndex + 1) {
+          return `instagram:${parts[parentIndex + 1].split('?')[0]}`;
+        }
+      }
+      // Fallback: limpa parâmetros de rastreio para qualquer outro tipo de link
+      return clean.split('?')[0].replace(/\/$/, '').replace(/^https?:\/\/(www\.)?/, '');
+    } catch { return url; }
+  };
+
+  const getDuplicateContext = (post: Post) => {
+    const norm = normalizeUrlLocal(post.url);
+    if (!norm) return false;
+    // Verifica se existe algum outro post com mesmo link (aprovado/synced ou mais antigo pendente)
+    return posts.some(p => p.id !== post.id && normalizeUrlLocal(p.url) === norm);
+  };
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -106,9 +147,17 @@ export const TriagemTab: React.FC<TriagemTabProps> = ({
               const matchesHandle = selectedAdminHandle === 'all' || p.accountHandle === selectedAdminHandle;
               const matchesUser = selectedUserFilter === 'all' || p.userName === selectedUserFilter;
               return matchesComp && matchesStatus && matchesHandle && matchesUser;
-            }).map(post => (
-              <div key={post.id} className="p-6 rounded-3xl glass border border-zinc-800 flex flex-col md:flex-row items-center gap-6 group hover:border-amber-500/30 transition-all">
+            }).map(post => {
+              const isDuplicated = getDuplicateContext(post);
+              return (
+              <div key={post.id} className={`relative p-6 rounded-3xl glass border ${isDuplicated ? 'border-red-500/50 shadow-[0_0_20px_rgba(239,68,68,0.15)] bg-red-500/5' : 'border-zinc-800'} flex flex-col md:flex-row items-center gap-6 group hover:border-amber-500/30 transition-all`}>
                 
+                {isDuplicated && (
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-red-600 text-white text-[10px] font-black uppercase px-3 py-1 rounded-full animate-pulse flex items-center gap-1.5 shadow-lg shadow-red-600/30">
+                    <AlertTriangle className="w-3 h-3" /> LINK DUPLICADO
+                  </div>
+                )}
+
                 {/* ── TARJAS ── */}
                 <PostTagRow postId={post.id} />
 
@@ -187,6 +236,13 @@ export const TriagemTab: React.FC<TriagemTabProps> = ({
                     <CheckCircle2 className="w-6 h-6" />
                   </button>
                   <button
+                    onClick={() => handleApproveAsMonthly(post.id)}
+                    className="p-3 rounded-xl bg-violet-500/10 text-violet-500 hover:bg-violet-500 hover:text-white transition-all focus:outline-none focus:ring-2 focus:ring-violet-500"
+                    title="Aprovar (Somente Mensal / Pula o Diário)"
+                  >
+                    <Calendar className="w-6 h-6" />
+                  </button>
+                  <button
                     onClick={() => handlePostStatus(post.id, 'rejected')}
                     className="p-3 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-black transition-all"
                     title="Rejeitar Link"
@@ -195,7 +251,7 @@ export const TriagemTab: React.FC<TriagemTabProps> = ({
                   </button>
                 </div>
               </div>
-            ))}
+            )})}
           </div>
         </div>
       ) : (
