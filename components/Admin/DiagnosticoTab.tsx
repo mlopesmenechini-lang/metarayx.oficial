@@ -276,7 +276,7 @@ export const DiagnosticoTab: React.FC<DiagnosticoTabProps> = ({
             );
             })}
             {duplicateGroups.length === 0 && (
-              <div className="md:col-span-2 py-20 text-center glass border-dashed border-zinc-900 rounded-[40px]">
+              <div className="md:col-span-2 py-20 text-center glass border-dashed border-zinc-900 rounded-[40px] ">
                 <ShieldAlert className="w-12 h-12 text-emerald-500/50 mx-auto mb-4" />
                 <p className="text-emerald-500 font-black uppercase tracking-widest text-sm">Banco de dados íntegro</p>
                 <p className="text-zinc-500 text-xs mt-2">Nenhuma duplicidade detectada no sistema no momento.</p>

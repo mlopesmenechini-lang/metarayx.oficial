@@ -14,7 +14,7 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { Post, Competition, PostStatus } from '../../types';
-import { PostTagRow } from './AdminUI';
+import { PostTagRow, CompliancePanel } from './AdminUI';
 
 interface TriagemTabProps {
   posts: Post[];
@@ -158,14 +158,18 @@ export const TriagemTab: React.FC<TriagemTabProps> = ({
                   </div>
                 )}
 
-                {/* ── TARJAS ── */}
-                <PostTagRow postId={post.id} />
+                <CompliancePanel 
+                  post={post} 
+                  competition={competitions.find(c => c.id === post.competitionId)} 
+                />
 
-                {/* ── ÍCONE PLATAFORMA ── */}
-                <div className="w-16 h-16 rounded-2xl bg-zinc-900 flex items-center justify-center shrink-0">
+                <div className="flex items-center gap-4 shrink-0">
+                  <PostTagRow postId={post.id} />
+                  <div className="w-16 h-16 rounded-2xl bg-zinc-900 border border-zinc-800/50 flex items-center justify-center shrink-0">
                   {post.platform === 'tiktok' ? <Zap className="w-8 h-8 text-amber-500" /> :
                     post.platform === 'youtube' ? <TrendingUp className="w-8 h-8 text-red-500" /> :
                       <Camera className="w-8 h-8 text-pink-500" />}
+                </div>
                 </div>
 
                 {/* ── INFOS ── */}

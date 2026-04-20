@@ -294,6 +294,7 @@ export const syncSinglePostWithApify = async (apiKeys: string | string[], post: 
       newComments = item.commentsCount || 0;
     }
 
+    // Métricas de engajamento
     const updateData: any = {
       views: newViews,
       likes: newLikes,
@@ -301,6 +302,36 @@ export const syncSinglePostWithApify = async (apiKeys: string | string[], post: 
       shares: newShares,
       saves: newSaves,
     };
+
+    // Metadados de conformidade
+    if (post.platform === 'tiktok') {
+      const rawCaption = item.text || item.description || '';
+      const hashtags = (item.hashtags || []).map((h: any) => (typeof h === 'string' ? h : h.name || h.title || '').toLowerCase().replace('#', ''));
+      const mentions = (item.mentions || []).map((m: any) => (typeof m === 'string' ? m : m.uniqueId || m.name || '').toLowerCase().replace('@', ''));
+      const postedAt = item.createTime ? (item.createTime * 1000) : (item.createTimeISO ? new Date(item.createTimeISO).getTime() : undefined);
+      if (rawCaption) updateData.caption = rawCaption;
+      if (hashtags.length) updateData.videoHashtags = hashtags;
+      if (mentions.length) updateData.videoMentions = mentions;
+      if (postedAt) updateData.postedAt = postedAt;
+    } else if (post.platform === 'youtube') {
+      const title = item.title || '';
+      const description = item.description || item.text || '';
+      const rawCaption = `${title}\n${description}`.trim();
+      const tags = item.tags || [];
+      const postedAt = item.uploadDate ? new Date(item.uploadDate).getTime() : (item.publishedAt ? new Date(item.publishedAt).getTime() : undefined);
+      if (rawCaption) updateData.caption = rawCaption;
+      if (tags.length) updateData.videoHashtags = tags.map((t: string) => t.toLowerCase().replace('#', ''));
+      if (postedAt) updateData.postedAt = postedAt;
+    } else if (post.platform === 'instagram') {
+      const rawCaption = item.caption || item.text || '';
+      const hashtags = (item.hashtags || []).map((h: any) => (typeof h === 'string' ? h : h.name || '').toLowerCase().replace('#', ''));
+      const mentions = (item.mentions || []).map((m: any) => (typeof m === 'string' ? m : m.username || '').toLowerCase().replace('@', ''));
+      const postedAt = item.timestamp ? new Date(item.timestamp).getTime() : undefined;
+      if (rawCaption) updateData.caption = rawCaption;
+      if (hashtags.length) updateData.videoHashtags = hashtags;
+      if (mentions.length) updateData.videoMentions = mentions;
+      if (postedAt) updateData.postedAt = postedAt;
+    }
 
     await updateDoc(doc(db, 'posts', post.id), updateData);
   }
@@ -366,6 +397,7 @@ export const syncViewsWithApify = async (apiKeys: string | string[]) => {
           newComments = item.commentsCount || 0;
         }
 
+        // Métricas de engajamento
         const updateData: any = {
           views: newViews,
           likes: newLikes,
@@ -373,6 +405,36 @@ export const syncViewsWithApify = async (apiKeys: string | string[]) => {
           shares: newShares,
           saves: newSaves,
         };
+
+        // Metadados de conformidade
+        if (platform === 'tiktok') {
+          const rawCaption = item.text || item.description || '';
+          const hashtags = (item.hashtags || []).map((h: any) => (typeof h === 'string' ? h : h.name || h.title || '').toLowerCase().replace('#', ''));
+          const mentions = (item.mentions || []).map((m: any) => (typeof m === 'string' ? m : m.uniqueId || m.name || '').toLowerCase().replace('@', ''));
+          const postedAt = item.createTime ? (item.createTime * 1000) : (item.createTimeISO ? new Date(item.createTimeISO).getTime() : undefined);
+          if (rawCaption) updateData.caption = rawCaption;
+          if (hashtags.length) updateData.videoHashtags = hashtags;
+          if (mentions.length) updateData.videoMentions = mentions;
+          if (postedAt) updateData.postedAt = postedAt;
+        } else if (platform === 'youtube') {
+          const title = item.title || '';
+          const description = item.description || item.text || '';
+          const rawCaption = `${title}\n${description}`.trim();
+          const tags = item.tags || [];
+          const postedAt = item.uploadDate ? new Date(item.uploadDate).getTime() : (item.publishedAt ? new Date(item.publishedAt).getTime() : undefined);
+          if (rawCaption) updateData.caption = rawCaption;
+          if (tags.length) updateData.videoHashtags = tags.map((t: string) => t.toLowerCase().replace('#', ''));
+          if (postedAt) updateData.postedAt = postedAt;
+        } else if (platform === 'instagram') {
+          const rawCaption = item.caption || item.text || '';
+          const hashtags = (item.hashtags || []).map((h: any) => (typeof h === 'string' ? h : h.name || '').toLowerCase().replace('#', ''));
+          const mentions = (item.mentions || []).map((m: any) => (typeof m === 'string' ? m : m.username || '').toLowerCase().replace('@', ''));
+          const postedAt = item.timestamp ? new Date(item.timestamp).getTime() : undefined;
+          if (rawCaption) updateData.caption = rawCaption;
+          if (hashtags.length) updateData.videoHashtags = hashtags;
+          if (mentions.length) updateData.videoMentions = mentions;
+          if (postedAt) updateData.postedAt = postedAt;
+        }
 
         await updateDoc(doc(db, 'posts', post.id), updateData);
       }

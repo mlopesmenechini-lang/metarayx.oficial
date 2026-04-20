@@ -79,7 +79,7 @@ export const Dashboard = ({ user, announcements, rankings, competitions, registr
 
   return (
     <div className="space-y-12 shrink-0">
-      {/* 🚀 Cockpit Pessoal */}
+      {/* ð Cockpit Pessoal */}
       <div className="space-y-6">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
@@ -141,7 +141,7 @@ export const Dashboard = ({ user, announcements, rankings, competitions, registr
         </div>
       </div>
 
-      {/* 🎯 Foco Central: Competições */}
+      {/* ð¯ Foco Central: Competições */}
       {competitions.length > 0 && (
         <div className="space-y-6">
           <div className="flex items-center justify-between">
@@ -240,7 +240,7 @@ export const Dashboard = ({ user, announcements, rankings, competitions, registr
         </div>
       )}
 
-      {/* 🏅 Competições e Pódio */}
+      {/* ð Competições e Pódio */}
       <div className="grid grid-cols-1 gap-6 items-start pb-10">
         
         {/* Elite do Mês */}
@@ -550,7 +550,7 @@ export const Dashboard = ({ user, announcements, rankings, competitions, registr
                 const platformConfig = {
                   tiktok: {
                     label: 'TikTok',
-                    emoji: '🎵',
+                    emoji: 'ðµ',
                     color: 'from-pink-500 to-rose-500',
                     border: 'border-pink-500/20',
                     glow: 'shadow-pink-500/20',
@@ -559,7 +559,7 @@ export const Dashboard = ({ user, announcements, rankings, competitions, registr
                   },
                   youtube: {
                     label: 'YouTube',
-                    emoji: '▶️',
+                    emoji: 'â¶ï¸',
                     color: 'from-red-500 to-orange-500',
                     border: 'border-red-500/20',
                     glow: 'shadow-red-500/20',
@@ -568,7 +568,7 @@ export const Dashboard = ({ user, announcements, rankings, competitions, registr
                   },
                   instagram: {
                     label: 'Instagram',
-                    emoji: '📸',
+                    emoji: 'ð¸',
                     color: 'from-purple-500 to-pink-500',
                     border: 'border-purple-500/20',
                     glow: 'shadow-purple-500/20',

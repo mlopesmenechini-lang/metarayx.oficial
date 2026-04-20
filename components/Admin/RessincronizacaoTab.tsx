@@ -22,7 +22,7 @@ import {
   Heart
 } from 'lucide-react';
 import { Post, Competition, Settings } from '../../types';
-import { PostTagRow } from './AdminUI';
+import { PostTagRow, CompliancePanel } from './AdminUI';
 
 interface RessincronizacaoTabProps {
   posts: Post[];
@@ -271,6 +271,13 @@ export const RessincronizacaoTab: React.FC<RessincronizacaoTabProps> = ({
                 }`}>
                   {selectedResyncPostIds.includes(post.id) && <Check className="w-4 h-4" strokeWidth={4} />}
                 </div>
+
+                {/* ── CONFORMIDADE ── */}
+                <CompliancePanel 
+                  post={post} 
+                  competition={competitions.find(c => c.id === post.competitionId)} 
+                  checkDailyCycle={false}
+                />
 
                 {/* ── TARJAS ── */}
                 <PostTagRow postId={post.id} />

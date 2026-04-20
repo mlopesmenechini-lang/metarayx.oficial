@@ -22,6 +22,66 @@ interface CompetitionsTabProps {
   userRole: UserRole;
   handleEditCompClick: (comp: Competition) => void;
   setCompToDelete: (id: string) => void;
+  // Competition Form Props
+  compTitle: string;
+  setCompTitle: (val: string) => void;
+  compRankingMetric: 'views' | 'likes';
+  setCompRankingMetric: (val: 'views' | 'likes') => void;
+  compGoalTarget: number;
+  setCompGoalTarget: (val: number) => void;
+  compGoalMetric: 'views' | 'likes';
+  setCompGoalMetric: (val: 'views' | 'likes') => void;
+  compDesc: string;
+  setCompDesc: (val: string) => void;
+  compRules: string;
+  setCompRules: (val: string) => void;
+  compHashtags: string;
+  setCompHashtags: (val: string) => void;
+  compMentions: string;
+  setCompMentions: (val: string) => void;
+  compRequiredHashtags: string;
+  setCompRequiredHashtags: (val: string) => void;
+  compRequiredMentions: string;
+  setCompRequiredMentions: (val: string) => void;
+  compBonuses: string;
+  setCompBonuses: (val: string) => void;
+  compInstaBonus: string;
+  setCompInstaBonus: (val: string) => void;
+  compViewBonus: number;
+  setCompViewBonus: (val: number) => void;
+  compStartDate: string;
+  setCompStartDate: (val: string) => void;
+  compEndDate: string;
+  setCompEndDate: (val: string) => void;
+  compDailyResetTime: string;
+  setCompDailyResetTime: (val: string) => void;
+  compRequiredMentionsTikTok: string;
+  setCompRequiredMentionsTikTok: (val: string) => void;
+  compRequiredMentionsYouTube: string;
+  setCompRequiredMentionsYouTube: (val: string) => void;
+  compRequiredMentionsInsta: string;
+  setCompRequiredMentionsInsta: (val: string) => void;
+  compBanner: string;
+  setCompBanner: (val: string) => void;
+  compPositions: number;
+  setCompPositions: (val: number) => void;
+  compPrizes: any[];
+  setCompPrizes: (val: any[]) => void;
+  compPositionsDaily: number;
+  setCompPositionsDaily: (val: number) => void;
+  compPrizesDaily: any[];
+  setCompPrizesDaily: (val: any[]) => void;
+  compPositionsMonthly: number;
+  setCompPositionsMonthly: (val: number) => void;
+  compPrizesMonthly: any[];
+  setCompPrizesMonthly: (val: any[]) => void;
+  compPositionsInstagram: number;
+  setCompPositionsInstagram: (val: number) => void;
+  compPrizesInstagram: any[];
+  setCompPrizesInstagram: (val: any[]) => void;
+  handleBannerUpload: (e: any) => void;
+  handleCreateCompetition: () => void;
+  editingCompId: string | null;
 }
 
 export const CompetitionsTab: React.FC<CompetitionsTabProps> = ({
@@ -33,7 +93,38 @@ export const CompetitionsTab: React.FC<CompetitionsTabProps> = ({
   setIsCreatingComp,
   userRole,
   handleEditCompClick,
-  setCompToDelete
+  setCompToDelete,
+  compTitle, setCompTitle,
+  compRankingMetric, setCompRankingMetric,
+  compGoalTarget, setCompGoalTarget,
+  compGoalMetric, setCompGoalMetric,
+  compDesc, setCompDesc,
+  compRules, setCompRules,
+  compHashtags, setCompHashtags,
+  compMentions, setCompMentions,
+  compRequiredHashtags, setCompRequiredHashtags,
+  compRequiredMentions, setCompRequiredMentions,
+  compBonuses, setCompBonuses,
+  compInstaBonus, setCompInstaBonus,
+  compViewBonus, setCompViewBonus,
+  compStartDate, setCompStartDate,
+  compEndDate, setCompEndDate,
+  compDailyResetTime, setCompDailyResetTime,
+  compRequiredMentionsTikTok, setCompRequiredMentionsTikTok,
+  compRequiredMentionsYouTube, setCompRequiredMentionsYouTube,
+  compRequiredMentionsInsta, setCompRequiredMentionsInsta,
+  compBanner, setCompBanner,
+  compPositions, setCompPositions,
+  compPrizes, setCompPrizes,
+  compPositionsDaily, setCompPositionsDaily,
+  compPrizesDaily, setCompPrizesDaily,
+  compPositionsMonthly, setCompPositionsMonthly,
+  compPrizesMonthly, setCompPrizesMonthly,
+  compPositionsInstagram, setCompPositionsInstagram,
+  compPrizesInstagram, setCompPrizesInstagram,
+  handleBannerUpload,
+  handleCreateCompetition,
+  editingCompId
 }) => {
   if (selectedCompId) {
     const comp = competitions.find(c => c.id === selectedCompId);

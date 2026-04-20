@@ -11,7 +11,7 @@ import {
   ChevronRight 
 } from 'lucide-react';
 import { Post, Competition, Settings } from '../../types';
-import { PostTagRow } from './AdminUI';
+import { PostTagRow, CompliancePanel } from './AdminUI';
 
 interface SincronizacaoTabProps {
   posts: Post[];
@@ -182,6 +182,12 @@ export const SincronizacaoTab: React.FC<SincronizacaoTabProps> = ({
                     {selectedSyncPostIds.includes(post.id) && <Check className="w-3.5 h-3.5 text-black stroke-[4]" />}
                   </div>
                   
+                  {/* ── CONFORMIDADE ── */}
+                  <CompliancePanel 
+                    post={post} 
+                    competition={competitions.find(c => c.id === post.competitionId)} 
+                  />
+
                   {/* ── TARJAS ── */}
                   <PostTagRow postId={post.id} />
 

@@ -93,6 +93,11 @@ export interface Post {
   removalRequestAt?: number;
   forceMonthly?: boolean;
   forceDaily?: boolean;
+  // Metadados de conformidade (preenchidos após sincronização com Apify)
+  caption?: string;
+  videoHashtags?: string[];
+  videoMentions?: string[];
+  postedAt?: number;
 }
 
 export interface Season {
@@ -152,6 +157,14 @@ export interface Competition {
   goalMetric?: 'views' | 'likes';
   instaBonus?: string;
   lastDailyReset?: number;
+  // Campos de conformidade obrigatória por competição
+  requiredHashtags?: string[];
+  requiredHashtagsYouTube?: string[];
+  requiredMentions?: string[];
+  requiredMentionsTikTok?: string[];
+  requiredMentionsYouTube?: string[];
+  requiredMentionsInstagram?: string[];
+  dailyResetTime?: string; // Formato "HH:mm"
 }
 
 export interface CompetitionRegistration {

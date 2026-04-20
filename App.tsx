@@ -37,15 +37,13 @@ import { DiagnosticoTab } from './components/Admin/DiagnosticoTab';
 
 const sanitizeString = (text: string) => {
   if (typeof text !== 'string') return text;
+  // Limpeza de caracteres corrompidos comuns (Mojibake UTF-8)
   return text
-    .replace(/ÃƒÂ¡/g, 'á').replace(/ÃƒÂ£/g, 'ã').replace(/ÃƒÂ§/g, 'ç').replace(/ÃƒÂµ/g, 'õ')
-    .replace(/é/g, 'é').replace(/ÃƒÂª/g, 'ê').replace(/ÃƒÂ³/g, 'ó').replace(/ÃƒÂ­/g, 'í')
-    .replace(/TÃƒ-tulo/g, 'Título').replace(/Ã‚º/g, 'º').replace(/Ãƒº/g, 'ú').replace(/ÃƒÂ¢/g, 'â')
-    .replace(/Ãƒ\x8D/g, 'Í').replace(/Ãƒ\x87/g, 'Ç').replace(/Ãƒ\x95/g, 'Õ').replace(/Ãƒ\x81/g, 'Á')
-    .replace(/Ãƒ\x89/g, 'É').replace(/Ãƒ\x93/g, 'Ó').replace(/Ãƒ\x8A/g, 'Ê').replace(/Ãƒ\x9A/g, 'Ú')
-    .replace(/ANÃƒLISE/g, 'ANÁLISE').replace(/CONCLUÍDO/g, 'CONCLUÍDO').replace(/UsuÃƒÂ¡rio/g, 'Usuário')
-    .replace(/Ãƒâ‚¬/g, 'À').replace(/AÃƒÂ§ÃƒÂµes/g, 'Ações').replace(/USUÃƒÂ¡RIOS/g, 'USUÁRIOS')
-    .replace(/USUÃƒÂ¡RIO/g, 'USUÁRIO').replace(/NÃƒÂ£o/g, 'Não').replace(/Ãƒ-/g, 'í');
+    .replace(/á/g, 'á').replace(/ã/g, 'ã').replace(/ç/g, 'ç').replace(/õ/g, 'õ')
+    .replace(/é/g, 'é').replace(/ê/g, 'ê').replace(/ó/g, 'ó').replace(/í/g, 'í')
+    .replace(/ú/g, 'ú').replace(/º/g, 'º').replace(/ÃÆ’\x81/g, 'Á').replace(/ÃÆ’\x89/g, 'É')
+    .replace(/ÃÆ’\x8D/g, 'á').replace(/ÃÆ’\x93/g, 'Ó').replace(/ÃÆ’\x9A/g, 'Ú').replace(/ÃÆ’\x87/g, 'Ç')
+    .replace(/ÃÆ’\x95/g, 'Õ').replace(/ÃÆ’Ã¢â€šÂ¬/g, 'À');
 };
 
 const sanitizeObject = (obj: any): any => {
@@ -169,6 +167,13 @@ const App: React.FC = () => {
   const [compRules, setCompRules] = useState('');
   const [compHashtags, setCompHashtags] = useState('');
   const [compMentions, setCompMentions] = useState('');
+  const [compRequiredHashtags, setCompRequiredHashtags] = useState('');
+  const [compReqHashtagsYouTube, setCompReqHashtagsYouTube] = useState('');
+  const [compRequiredMentions, setCompRequiredMentions] = useState('');
+  const [compReqTikTok, setCompReqTikTok] = useState('');
+  const [compReqYouTube, setCompReqYouTube] = useState('');
+  const [compReqInsta, setCompReqInsta] = useState('');
+  const [compDailyResetTime, setCompDailyResetTime] = useState('20:00');
   const [compBonuses, setCompBonuses] = useState('');
   const [compInstaBonus, setCompInstaBonus] = useState('');
   const [compViewBonus, setCompViewBonus] = useState<number>(0);
@@ -422,7 +427,7 @@ const App: React.FC = () => {
     };
   }, [user?.uid]);
 
-  // Real-time Data Listeners ââ‚¬â€ dados privados (depende de aprovação)
+  // Real-time Data Listeners á¢á¢Ã¢â‚¬Å¡Ã‚Â¬á¢Ã¢â€šÂ¬Ã‚Â dados privados (depende de aprovação)
   useEffect(() => {
     if (!user) return;
     const isStaff = user.role === 'admin' || user.role === 'auditor' || user.role === 'administrativo';
@@ -951,7 +956,7 @@ const App: React.FC = () => {
     setConfirmModal({
       isOpen: true,
       title: `Zerar Ranking Diário - ${targetComp.title}`,
-      message: `Isso calculará os vencedores do Dia e o Top 1 Insta para esta COMPETIÇÃO ESPECÍFICA, adicionará os prêmios ao Saldo, registrará as transações e zerará as estatísticas diárias DESTA COMPETIÇÃO. Deseja prosseguir?`,
+      message: `Isso calculará os vencedores do Dia e o Top 1 Insta para esta COMPETIÇÃO ESPECáFICA, adicionará os prêmios ao Saldo, registrará as transações e zerará as estatísticas diárias DESTA COMPETIÇÃO. Deseja prosseguir?`,
       onConfirm: async () => {
         try {
           const cid = targetComp.id;
@@ -983,7 +988,7 @@ const App: React.FC = () => {
             if (total > 0) {
               balanceIncrements[u.uid] = {
                 amount: (balanceIncrements[u.uid]?.amount || 0) + total,
-                desc: `PRÊMIO DIÁRIO ${targetComp.title.toUpperCase()} (${i + 1}º LUGAR)${bonusFromViews > 0 ? ' + BÔNUS' : ''}`
+                desc: `PRÃÅ MIO DIÁRIO ${targetComp.title.toUpperCase()} (${i + 1}º LUGAR)${bonusFromViews > 0 ? ' + Bá€NUS' : ''}`
               };
             }
           });
@@ -993,13 +998,13 @@ const App: React.FC = () => {
             const existing = balanceIncrements[quantityWinner.uid];
             if (existing) {
               existing.amount += prize;
-              if (!existing.desc.includes('+ BÔNUS')) {
-                existing.desc += ' + BÔNUS';
+              if (!existing.desc.includes('+ Bá€NUS')) {
+                existing.desc += ' + Bá€NUS';
               }
             } else {
               balanceIncrements[quantityWinner.uid] = {
                 amount: prize,
-                desc: `PRÊMIO QUANTIDADE ${targetComp.title.toUpperCase()} + BÔNUS`
+                desc: `PRÃÅ MIO QUANTIDADE ${targetComp.title.toUpperCase()} + Bá€NUS`
               };
             }
           }
@@ -1083,14 +1088,14 @@ const App: React.FC = () => {
             const msg = dailyViewWinners.length === 0 
                 ? 'Nenhum usuário com visualizações diárias registradas.' 
                 : 'Nenhum prêmio configurado nesta competição.';
-            alert(`⚠️ Reset realizado sem premiações:\n\n${msg}\n\nEstatísticas diárias foram zeradas mesmo assim.`);
+            alert(`Ã¢Å¡Â Ã¯Â¸Â Reset realizado sem premiações:\n\n${msg}\n\nEstatísticas diárias foram zeradas mesmo assim.`);
           } else {
             const auditMsg = Object.entries(balanceIncrements)
               .map(([uid, data]) => {
                 const u = approvedUsers.find(au => au.uid === uid);
                 return `- ${u?.displayName || uid}: R$ ${data.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
               }).join('\n');
-            alert(`✅ Ranking resetado!\n\n${Object.keys(balanceIncrements).length} usuário(s) premiados:\n${auditMsg}`);
+            alert(`Ã¢Å“â€¦ Ranking resetado!\n\n${Object.keys(balanceIncrements).length} usuário(s) premiados:\n${auditMsg}`);
           }
         } catch (error) {
           console.error('Error resetting rankings:', error);
@@ -1103,7 +1108,7 @@ const App: React.FC = () => {
   const handleRankingResetOnly = async () => {
     setConfirmModal({
       isOpen: true,
-      title: '⚠️ ZERAR GERAL (RESSINCRONIZAR)',
+      title: 'Ã¢Å¡Â Ã¯Â¸Â ZERAR GERAL (RESSINCRONIZAR)',
       message: 'Este procedimento zerará as estatísticas de TODOS os usuários e posts, mas MANTERÁ o status atual dos links. Os vídeos processados continuarão na aba de RESSINCRONIZAÇÃO, permitindo que você inicie uma nova coleta do zero com total controle. Deseja prosseguir?',
       onConfirm: async () => {
         try {
@@ -1177,7 +1182,7 @@ const App: React.FC = () => {
             await batch.commit();
           }
 
-          alert('âœ¨ Rankings resetados com sucesso! Os vídeos foram liberados para nova sincronização.');
+          alert('á¢Ã…â€œÃ‚Â¨ Rankings resetados com sucesso! Os vídeos foram liberados para nova sincronização.');
         } catch (error) {
           console.error('Error during ranking reset:', error);
           alert('Erro ao resetar rankings. Veja o console.');
@@ -1195,7 +1200,7 @@ const App: React.FC = () => {
 
     setConfirmModal({
       isOpen: true,
-      title: 'âš ï¸ LIMPAR RANKING (RESSINCRONIZAR)',
+      title: 'á¢Ã…Â¡Ã‚Â á¯Ã‚Â¸Ã‚Â LIMPAR RANKING (RESSINCRONIZAR)',
       message: `Deseja ZERAR apenas os contadores (views, likes, etc) da competição "${targetComp.title}"? \n\nIsso limpará os rankings DIÁRIO e MENSAL desta competição específica para você poder ressincronizar do zero. Nada mais será alterado.`,
       onConfirm: async () => {
         try {
@@ -1256,7 +1261,7 @@ const App: React.FC = () => {
             await batch.commit();
           }
 
-          alert('âœ¨ Ranking da competição limpo com sucesso! Agora você pode ressincronizar os vídeos.');
+          alert('á¢Ã…â€œÃ‚Â¨ Ranking da competição limpo com sucesso! Agora você pode ressincronizar os vídeos.');
         } catch (error: any) {
           console.error('Error clearing ranking:', error);
           alert('Erro ao limpar ranking: ' + error.message);
@@ -1270,8 +1275,8 @@ const App: React.FC = () => {
   const handleSystemCleanup = async () => {
     setConfirmModal({
       isOpen: true,
-      title: '🚨 LIMPEZA GERAL DO SISTEMA - PERIGO',
-      message: 'VOCÊ TEM CERTEZA? Esta operação apagará permanentemente TODOS OS LINKS, TRANSAÇÕES, REGISTROS E SALDOS. Esta ação não pode ser desfeita. Apenas os usuários e suas permissões serão mantidos.',
+      title: 'Ã°Å¸Å¡Â¨ LIMPEZA GERAL DO SISTEMA - PERIGO',
+      message: 'VOCÃÅ  TEM CERTEZA? Esta operação apagará permanentemente TODOS OS LINKS, TRANSAÇÕES, REGISTROS E SALDOS. Esta ação não pode ser desfeita. Apenas os usuários e suas permissões serão mantidos.',
       onConfirm: async () => {
         try {
           const batch = writeBatch(db);
@@ -1329,7 +1334,7 @@ const App: React.FC = () => {
           });
 
           await batch.commit();
-          alert('ðŸ”¥ðŸ”¥ðŸ”¥ SISTEMA FOI RESETADO COM SUCESSO! Todos os dados foram limpos.');
+          alert('á°Ã…Â¸Ã¢â‚¬ÂÃ‚Â¥á°Ã…Â¸Ã¢â‚¬ÂÃ‚Â¥á°Ã…Â¸Ã¢â‚¬ÂÃ‚Â¥ SISTEMA FOI RESETADO COM SUCESSO! Todos os dados foram limpos.');
         } catch (error) {
           console.error('Error during cleanup:', error);
           alert('Erro durante a limpeza do sistema. Veja o console.');
@@ -1362,6 +1367,13 @@ const App: React.FC = () => {
         rules: compRules,
         hashtags: compHashtags,
         mentions: compMentions,
+        requiredHashtags: compRequiredHashtags.split(/[\n,]+/).map(h => h.trim().replace(/^#/, '')).filter(Boolean),
+        requiredHashtagsYouTube: compReqHashtagsYouTube.split(/[\n,]+/).map(h => h.trim().replace(/^#/, '')).filter(Boolean),
+        requiredMentions: compRequiredMentions.split(/[\n,]+/).map(m => m.trim().replace(/^@/, '')).filter(Boolean),
+        requiredMentionsTikTok: compReqTikTok.split(/[\n,]+/).map(m => m.trim().replace(/^@/, '')).filter(Boolean),
+        requiredMentionsYouTube: compReqYouTube.split(/[\n,]+/).map(m => m.trim().replace(/^@/, '')).filter(Boolean),
+        requiredMentionsInstagram: compReqInsta.split(/[\n,]+/).map(m => m.trim().replace(/^@/, '')).filter(Boolean),
+        dailyResetTime: compDailyResetTime,
         bonuses: compBonuses,
         viewBonus: compViewBonus || 0,
         bannerUrl: compBanner,
@@ -1378,12 +1390,14 @@ const App: React.FC = () => {
         timestamp: Date.now()
       };
 
+      console.log('Salvando dados da competição:', compData);
+
       if (editingCompId) {
         await updateDoc(doc(db, 'competitions', editingCompId), compData);
-        alert('Competição atualizada com sucesso!');
+        setNotification({ message: 'Competição atualizada com sucesso!', type: 'success' });
       } else {
         await addDoc(collection(db, 'competitions'), compData);
-        alert('Competição criada com sucesso!');
+        setNotification({ message: 'Competição criada com sucesso!', type: 'success' });
       }
 
       setIsCreatingComp(false);
@@ -1396,6 +1410,13 @@ const App: React.FC = () => {
       setCompRules('');
       setCompHashtags('');
       setCompMentions('');
+      setCompRequiredHashtags('');
+      setCompReqHashtagsYouTube('');
+      setCompRequiredMentions('');
+      setCompReqTikTok('');
+      setCompReqYouTube('');
+      setCompReqInsta('');
+      setCompDailyResetTime('20:00');
       setCompBonuses('');
       setCompInstaBonus('');
       setCompViewBonus(0);
@@ -1442,6 +1463,13 @@ const App: React.FC = () => {
     setCompRules(comp.rules || '');
     setCompHashtags(comp.hashtags || '');
     setCompMentions(comp.mentions || '');
+    setCompRequiredHashtags((comp as any).requiredHashtags?.join(', ') || '');
+    setCompReqHashtagsYouTube((comp as any).requiredHashtagsYouTube?.join(', ') || '');
+    setCompRequiredMentions((comp as any).requiredMentions?.join(', ') || '');
+    setCompReqTikTok((comp as any).requiredMentionsTikTok?.join(', ') || '');
+    setCompReqYouTube((comp as any).requiredMentionsYouTube?.join(', ') || '');
+    setCompReqInsta((comp as any).requiredMentionsInstagram?.join(', ') || '');
+    setCompDailyResetTime(comp.dailyResetTime || '20:00');
     setCompBonuses(comp.bonuses || '');
     setCompViewBonus((comp as any).viewBonus || 0);
 
@@ -1615,9 +1643,9 @@ const App: React.FC = () => {
     }
     try {
       await updateDoc(doc(db, 'config', 'settings'), { masterAdminKey: newKey.trim() });
-      alert('✅ Palavra-chave mestra atualizada com sucesso!');
+      alert('Ã¢Å“â€¦ Palavra-chave mestra atualizada com sucesso!');
     } catch (error: any) {
-      alert(`❌ Erro ao atualizar palavra-chave: ${error.message}`);
+      alert(`Ã¢ÂÅ’ Erro ao atualizar palavra-chave: ${error.message}`);
     }
   };
 
@@ -2057,6 +2085,18 @@ const App: React.FC = () => {
                     setCompHashtags={setCompHashtags}
                     compMentions={compMentions}
                     setCompMentions={setCompMentions}
+                    compRequiredHashtags={compRequiredHashtags}
+                    setCompRequiredHashtags={setCompRequiredHashtags}
+                    compReqHashtagsYouTube={compReqHashtagsYouTube}
+                    setCompReqHashtagsYouTube={setCompReqHashtagsYouTube}
+                    compRequiredMentions={compRequiredMentions}
+                    setCompRequiredMentions={setCompRequiredMentions}
+                    compRequiredMentionsTikTok={compReqTikTok}
+                    setCompRequiredMentionsTikTok={setCompReqTikTok}
+                    compRequiredMentionsYouTube={compReqYouTube}
+                    setCompRequiredMentionsYouTube={setCompReqYouTube}
+                    compRequiredMentionsInsta={compReqInsta}
+                    setCompRequiredMentionsInsta={setCompReqInsta}
                     compBonuses={compBonuses}
                     setCompBonuses={setCompBonuses}
                     compInstaBonus={compInstaBonus}
@@ -2324,7 +2364,7 @@ const App: React.FC = () => {
                   onClick={() => handleDeletePost(postToDelete)}
                   className="w-full py-4 bg-red-500 text-white font-black rounded-2xl hover:bg-red-600 transition-all"
                 >
-                  SIM, EXCLUIR VÍDEO
+                  SIM, EXCLUIR VáDEO
                 </button>
                 <button
                   onClick={() => setPostToDelete(null)}
@@ -2416,7 +2456,7 @@ const App: React.FC = () => {
                 </div>
                 
                 <p className="text-zinc-400 font-bold text-sm leading-relaxed px-2">
-                  Você confirma que {protocolCount > 1 ? `estes ${protocolCount} links pertencem` : 'este link pertence'} <span className="text-white underline decoration-amber-500/50 underline-offset-4">de fato</span> à competição:
+                  Você confirma que {protocolCount > 1 ? `estes ${protocolCount} links pertencem` : 'este link pertence'} <span className="text-white underline decoration-amber-500/50 underline-offset-4">de fato</span> á  competição:
                   <span className="text-white text-xl block mt-3 font-black tracking-tighter bg-zinc-900 py-3 rounded-2xl border border-zinc-800 shadow-inner">
                     {competitions.find(c => c.id === selectedActiveCompId)?.title || "a esta competição"}
                   </span>
@@ -2877,11 +2917,11 @@ const PostSubmit = ({ user, competitions, registrations, setView, lockedCompetit
         <AlertCircle className="w-8 h-8 text-amber-500 shrink-0 transform group-hover:rotate-12 transition-transform duration-500" />
         <div className="space-y-3 relative z-10">
           <h3 className="text-lg font-black text-amber-500 uppercase tracking-widest leading-none">
-            AVISO CRÍTICO: REGRAS DE POSTAGEM!
+            AVISO CRáTICO: REGRAS DE POSTAGEM!
           </h3>
           <p className="text-[13px] font-bold text-zinc-100 leading-relaxed uppercase tracking-tight max-w-2xl">
             COLOQUE AS <span className="text-amber-500 underline decoration-2 underline-offset-4">HASHTAGS E MARCAÇÕES</span> CORRETAMENTE PARA ESTA COMPETIÇÃO. 
-            VÍDEOS SEM AS OBRIGATORIEDADES OU PRIVADOS SERÃO <span className="text-red-500">REJEITADOS</span>.
+            VáDEOS SEM AS OBRIGATORIEDADES OU PRIVADOS SERÃO <span className="text-red-500">REJEITADOS</span>.
           </p>
         </div>
       </div>
@@ -3051,7 +3091,7 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { r
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
 
-      {/* â”€â”€â”€ Informações da Competição (Timer + Meta) â”€â”€â”€ */}
+      {/* á¢Ã¢â‚¬ÂÃ¢â€šÂ¬á¢Ã¢â‚¬ÂÃ¢â€šÂ¬á¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Informações da Competição (Timer + Meta) á¢Ã¢â‚¬ÂÃ¢â€šÂ¬á¢Ã¢â‚¬ÂÃ¢â€šÂ¬á¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */}
       {selectedCompetition && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Timer */}
@@ -3119,7 +3159,7 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { r
         </div>
       )}
 
-      {/* â”€â”€â”€ Barra de Controle Unificada â”€â”€â”€ */}
+      {/* á¢Ã¢â‚¬ÂÃ¢â€šÂ¬á¢Ã¢â‚¬ÂÃ¢â€šÂ¬á¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Barra de Controle Unificada á¢Ã¢â‚¬ÂÃ¢â€šÂ¬á¢Ã¢â‚¬ÂÃ¢â€šÂ¬á¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */}
       <div className="glass border border-zinc-800/50 rounded-[24px] p-4 flex flex-col md:flex-row md:items-center gap-4">
         
         {/* Seletor de Competição */}
@@ -3197,7 +3237,7 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { r
                 : 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20'
             }`}>
               {selectedCompetition.rankingMetric === 'likes' ? <Heart className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-              {selectedCompetition.rankingMetric === 'likes' ? 'Rankeando por Curtidas' : 'Rankeando por Views'}
+                          ðŸ‘ï¸ POR VIEWS
             </span>
           )}
 
@@ -3215,7 +3255,7 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { r
         </div>
       </div>
 
-      {/* â”€â”€â”€ Tabela de Ranking â”€â”€â”€ */}
+      {/* á¢Ã¢â‚¬ÂÃ¢â€šÂ¬á¢Ã¢â‚¬ÂÃ¢â€šÂ¬á¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Tabela de Ranking á¢Ã¢â‚¬ÂÃ¢â€šÂ¬á¢Ã¢â‚¬ÂÃ¢â€šÂ¬á¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */}
       <div ref={rankingRef} className="space-y-3 relative bg-black/50 p-2 rounded-[2rem]">
         
         {/* Marca d'água oficial apenas para o print (visível sempre ou via CSS específico se preferir) */}
@@ -3226,7 +3266,7 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { r
             </div>
             <div>
               <h2 className="text-lg font-black gold-gradient uppercase leading-none">Ranking Oficial</h2>
-              <p className="text-[9px] font-black text-zinc-600 uppercase tracking-widest">{typeLabels[rankingType]} • {selectedCompetition?.title}</p>
+              <p className="text-[9px] font-black text-zinc-600 uppercase tracking-widest">{typeLabels[rankingType]} Ã¢â‚¬Â¢ {selectedCompetition?.title}</p>
             </div>
           </div>
         </div>
@@ -3646,7 +3686,7 @@ const FinancialRow = ({ user, onViewLinks, compId, isPaidView }: { user: User, o
         timestamp: Date.now(),
         status: type === 'subtract' ? 'cancelled' : 'credit',
         type: 'adjustment',
-        description: `AJUSTE MANUAL ADMIN (${type === 'subtract' ? 'ESTORNO' : 'BÔNUS'}): ${compId || 'GERAL'}`,
+        description: `AJUSTE MANUAL ADMIN (${type === 'subtract' ? 'ESTORNO' : 'Bá€NUS'}): ${compId || 'GERAL'}`,
         competitionId: compId
       });
 
@@ -3715,7 +3755,7 @@ const FinancialRow = ({ user, onViewLinks, compId, isPaidView }: { user: User, o
       <div className="text-center">
         {isPaidView ? (
           <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-500 text-[9px] font-black uppercase tracking-widest border border-emerald-500/20 shadow-lg shadow-emerald-500/5">
-            CONCLUÍDO
+            CONCLUáDO
           </span>
         ) : (
           <span className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${
@@ -3849,7 +3889,6 @@ const DailyTransactionRow = ({ transaction, users }: { transaction: Transaction,
   );
 };
 
-
 const TabBadge = ({ count }: { count: number }) => {
   if (count <= 0) return null;
   return (
@@ -3934,6 +3973,14 @@ const AdminPanel = ({
   setCompHashtags,
   compMentions,
   setCompMentions,
+  compRequiredHashtags,
+  setCompRequiredHashtags,
+  compReqHashtagsYouTube,
+  setCompReqHashtagsYouTube,
+  compRequiredMentions,
+  setCompRequiredMentions,
+  compDailyResetTime,
+  setCompDailyResetTime,
   compBonuses,
   setCompBonuses,
   compInstaBonus,
@@ -3989,10 +4036,16 @@ const AdminPanel = ({
   handleMovePostToCompetition,
   pendingMoves,
   setPendingMoves,
+  compRequiredMentionsTikTok: compReqTikTok,
+  setCompRequiredMentionsTikTok: setCompReqTikTok,
+  compRequiredMentionsYouTube: compReqYouTube,
+  setCompRequiredMentionsYouTube: setCompReqYouTube,
+  compRequiredMentionsInsta: compReqInsta,
+  setCompRequiredMentionsInsta: setCompReqInsta,
   setShowConfirmModal,
   setProtocolCount,
   setConfirmCallback,
-  setGlobalSelectedCompId: setAppSelectedCompId
+  setGlobalSelectedCompId
 }: {
   userRole: UserRole;
   posts: Post[];
@@ -4003,20 +4056,8 @@ const AdminPanel = ({
   competitions: Competition[];
   registrations: CompetitionRegistration[];
   announcements: Announcement[];
-  sessionSyncedIds: string[];
-  setSessionSyncedIds: (v: any) => void;
-  syncing: boolean;
-  setSyncing: (v: boolean) => void;
-  syncProgress: number;
-  setSyncProgress: (v: number) => void;
-  syncTotal: number;
-  setSyncTotal: (v: number) => void;
-  syncingPostId: string | null;
-  setSyncingPostId: (v: string | null) => void;
-  syncingCompId: string | null;
-  setSyncingCompId: (v: string | null) => void;
   timerConfig: { enabled: boolean; endTime: number | null; targetTime: string; message: string };
-  handleUpdateTimer: (config: { enabled: boolean; endTime: number | null; targetTime: string; message: string }) => Promise<void>;
+  handleUpdateTimer: (config: any) => Promise<void>;
   onSettingsUpdate: (s: Settings) => void;
   editingCompId: string | null;
   setEditingCompId: (val: string | null) => void;
@@ -4026,10 +4067,10 @@ const AdminPanel = ({
   handleUserApproval: (userId: string, isApproved: boolean) => void;
   handleDeleteUser: (userId: string) => void;
   handleArchiveUser: (userId: string, archive: boolean) => void;
-  handleRegistrationStatus: (regId: string, status: 'approved' | 'rejected' | 'pending') => void;
+  handleRegistrationStatus: (regId: string, status: any) => void;
   handleDeleteRegistration: (regId: string) => void;
   handleResetDailyRanking: (compId?: string) => void;
-  handleUpdateCompetitionStatus: (id: string, status: 'active' | 'inactive' | 'upcoming') => void;
+  handleUpdateCompetitionStatus: (id: string, status: any) => void;
   handleBannerUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleCreateCompetition: () => void;
   handleEditCompClick: (comp: Competition) => void;
@@ -4051,9 +4092,19 @@ const AdminPanel = ({
   pendingRoleAction: any;
   setPendingRoleAction: (val: any) => void;
   handleConfirmRoleChallenge: () => Promise<void>;
-  handleApproveAsMonthly: (postId: string) => Promise<void>;
-  handleMovePostToCompetition: (postId: string, newCompId: string) => Promise<void>;
   suggestions: Suggestion[];
+  sessionSyncedIds: string[];
+  setSessionSyncedIds: (v: any) => void;
+  syncing: boolean;
+  setSyncing: (v: boolean) => void;
+  syncProgress: number;
+  setSyncProgress: (v: number) => void;
+  syncTotal: number;
+  setSyncTotal: (v: number) => void;
+  syncingPostId: string | null;
+  setSyncingPostId: (v: string | null) => void;
+  syncingCompId: string | null;
+  setSyncingCompId: (v: string | null) => void;
   compTitle: string;
   setCompTitle: (v: string) => void;
   compRankingMetric: 'views' | 'likes';
@@ -4070,6 +4121,14 @@ const AdminPanel = ({
   setCompHashtags: (v: string) => void;
   compMentions: string;
   setCompMentions: (v: string) => void;
+  compRequiredHashtags: string;
+  setCompRequiredHashtags: (v: string) => void;
+  compReqHashtagsYouTube: string;
+  setCompReqHashtagsYouTube: (v: string) => void;
+  compRequiredMentions: string;
+  setCompRequiredMentions: (v: string) => void;
+  compDailyResetTime: string;
+  setCompDailyResetTime: (v: string) => void;
   compBonuses: string;
   setCompBonuses: (v: string) => void;
   compInstaBonus: string;
@@ -4085,23 +4144,21 @@ const AdminPanel = ({
   compPositions: number;
   setCompPositions: (v: number) => void;
   compPrizes: { position: number; value: number; label: string }[];
-  setCompPrizes: (v: { position: number; value: number; label: string }[]) => void;
+  setCompPrizes: (v: any[]) => void;
   compPositionsDaily: number;
   setCompPositionsDaily: (v: number) => void;
   compPrizesDaily: { position: number; value: number; label: string }[];
-  setCompPrizesDaily: (v: { position: number; value: number; label: string }[]) => void;
+  setCompPrizesDaily: (v: any[]) => void;
   compPositionsMonthly: number;
   setCompPositionsMonthly: (v: number) => void;
   compPrizesMonthly: { position: number; value: number; label: string }[];
-  setCompPrizesMonthly: (v: { position: number; value: number; label: string }[]) => void;
+  setCompPrizesMonthly: (v: any[]) => void;
   compPositionsInstagram: number;
   setCompPositionsInstagram: (v: number) => void;
   compPrizesInstagram: { position: number; value: number; label: string }[];
-  setCompPrizesInstagram: (v: { position: number; value: number; label: string }[]) => void;
+  setCompPrizesInstagram: (v: any[]) => void;
   isCreatingComp: boolean;
   setIsCreatingComp: (v: boolean) => void;
-  handleSystemCleanup: () => void;
-  handleDeleteAllDuplicates: () => Promise<void>;
   editingUser: User | null;
   setEditingUser: (v: User | null) => void;
   editName: string;
@@ -4116,13 +4173,23 @@ const AdminPanel = ({
   setAnnMsg: (v: string) => void;
   isCreatingAnn: boolean;
   setIsCreatingAnn: (v: boolean) => void;
+  handleSystemCleanup: () => void;
+  handleDeleteAllDuplicates: () => Promise<void>;
   rejectionReason: string;
   setRejectionReason: (v: string) => void;
-  setRejectionModal: (v: { isOpen: boolean; postId: string; status: PostStatus }) => void;
+  setRejectionModal: (v: any) => void;
   apifyKeySync: string;
   setApifyKeySync: (v: string) => void;
+  handleApproveAsMonthly: (postId: string) => Promise<void>;
+  handleMovePostToCompetition: (postId: string, newCompId: string) => Promise<void>;
   pendingMoves: Record<string, string>;
   setPendingMoves: (v: any) => void;
+  compRequiredMentionsTikTok: string;
+  setCompRequiredMentionsTikTok: (v: string) => void;
+  compRequiredMentionsYouTube: string;
+  setCompRequiredMentionsYouTube: (v: string) => void;
+  compRequiredMentionsInsta: string;
+  setCompRequiredMentionsInsta: (v: string) => void;
   setShowConfirmModal: (v: boolean) => void;
   setProtocolCount: (v: number) => void;
   setConfirmCallback: (v: any) => void;
@@ -4151,6 +4218,37 @@ const AdminPanel = ({
   const [validatedPostsLocal, setValidatedPostsLocal] = useState<string[]>([]);
   const [realizedPayments, setRealizedPayments] = useState<Transaction[]>([]);
   const [loadingFinancials, setLoadingFinancials] = useState(false);
+  const [localTimerEnabled, setLocalTimerEnabled] = useState(timerConfig.enabled);
+  const [localTimerTargetTime, setLocalTimerTargetTime] = useState(timerConfig.targetTime);
+  const [localTimerEndTime, setLocalTimerEndTime] = useState(timerConfig.endTime);
+  const [localTimerMessage, setLocalTimerMessage] = useState(timerConfig.message);
+
+  useEffect(() => {
+    // Sincroniza estados locais apenas uma vez ao carregar configurações globais,
+    // ou se o administrador resetar explicitamente. Isso evita que a digitação seja sobrescrita pelo snapshot.
+    if (!localTimerTargetTime || localTimerTargetTime === '20:15') {
+       setLocalTimerEnabled(timerConfig.enabled);
+       setLocalTimerTargetTime(timerConfig.targetTime);
+       setLocalTimerEndTime(timerConfig.endTime);
+       setLocalTimerMessage(timerConfig.message);
+    }
+  }, [timerConfig]); // Mantemos o objeto inteiro como gatilho, mas com guarda interna.
+
+  const onSaveTimerConfig = async () => {
+    try {
+      await handleUpdateTimer({
+        enabled: localTimerEnabled,
+        targetTime: localTimerTargetTime,
+        endTime: localTimerEndTime,
+        message: localTimerMessage
+      });
+      alert('Configurações do croná´metro salvas com sucesso!');
+    } catch (error) {
+      console.error('Erro ao salvar timer:', error);
+      alert('Erro ao salvar configurações do croná´metro.');
+    }
+  };
+
   const [selectedNetworkUserId, setSelectedNetworkUserId] = useState<string>('all');
   const [selectedResyncPostIds, setSelectedResyncPostIds] = useState<string[]>([]);
   const [selectedSyncPostIds, setSelectedSyncPostIds] = useState<string[]>([]);
@@ -4163,6 +4261,7 @@ const AdminPanel = ({
     });
     return Array.from(handles).sort();
   }, [posts]);
+
   const isSameDay = (timestamp: number, dateStr: string) => {
     if (!dateStr) return true;
     const date = new Date(timestamp);
@@ -4471,7 +4570,7 @@ const AdminPanel = ({
         photoURL: `https://ui-avatars.com/api/?name=${encodeURIComponent(newUserName.trim())}&background=random`
       });
 
-      alert(`âœ… Acesso criado com sucesso!\n\nNome: ${newUserName}\nCargo: ${newUserRole.toUpperCase()}\nEmail: ${newUserEmail}`);
+      alert(`á¢Ã…â€œÃ¢â‚¬Â¦ Acesso criado com sucesso!\n\nNome: ${newUserName}\nCargo: ${newUserRole.toUpperCase()}\nEmail: ${newUserEmail}`);
       setNewUserName('');
       setNewUserEmail('');
       setNewUserPass('');
@@ -4479,13 +4578,13 @@ const AdminPanel = ({
     } catch (e: any) {
       console.error('Erro criar usuário:', e);
       if (e.code === 'auth/email-already-in-use') {
-        alert('âŒ Este email já está cadastrado no sistema.');
+        alert('á¢Ã‚ÂÃ…â€™ Este email já está cadastrado no sistema.');
       } else if (e.code === 'auth/invalid-email') {
-        alert('âŒ Email inválido. Verifique o formato.');
+        alert('á¢Ã‚ÂÃ…â€™ Email inválido. Verifique o formato.');
       } else if (e.code === 'permission-denied' || e.message?.includes('permission')) {
-        alert('âŒ Sem permissão para gravar no banco.\n\nVocê precisa publicar as novas Regras de Segurança no Console do Firebase (aba Segurança do Firestore).');
+        alert('á¢Ã‚ÂÃ…â€™ Sem permissão para gravar no banco.\n\nVocê precisa publicar as novas Regras de Segurança no Console do Firebase (aba Segurança do Firestore).');
       } else {
-        alert(`âŒ Falha ao criar acesso:\n${e.message}`);
+        alert(`á¢Ã‚ÂÃ…â€™ Falha ao criar acesso:\n${e.message}`);
       }
     }
     setCreatingUser(false);
@@ -4517,7 +4616,7 @@ const AdminPanel = ({
       const qNorm = query(collection(db, 'posts'), where('normalizedUrl', 'in', [norm]));
       const snapNorm = await getDocs(qNorm);
       if (!snapNorm.empty) {
-        alert('âŒ Este link já existe no sistema!');
+        alert('á¢Ã‚ÂÃ…â€™ Este link já existe no sistema!');
         setAdminSubmitting(false);
         return;
       }
@@ -4544,10 +4643,10 @@ const AdminPanel = ({
       await setDoc(doc(db, 'posts', postId), newPost);
       await updateUserMetrics(targetUid);
 
-      alert('✅ Link adicionado com sucesso ao perfil de ' + targetDisplayName);
+      alert('Ã¢Å“â€¦ Link adicionado com sucesso ao perfil de ' + targetDisplayName);
       setAdminManualUrl('');
     } catch (error: any) {
-      alert('âŒ Erro ao adicionar link: ' + error.message);
+      alert('á¢Ã‚ÂÃ…â€™ Erro ao adicionar link: ' + error.message);
     } finally {
       setAdminSubmitting(false);
     }
@@ -4573,9 +4672,9 @@ const AdminPanel = ({
         apifyKey: trimmedKey // Mantém a última como principal por compatibilidade
       });
       setApifyKey(''); // Limpa o input após adicionar
-      alert('âœ… Chave API adicionada com sucesso!');
+      alert('á¢Ã…â€œÃ¢â‚¬Â¦ Chave API adicionada com sucesso!');
     } catch (error: any) {
-      alert(`â Œ Erro ao salvar chave: ${error.message}`);
+      alert(`á¢ Ã…â€™ Erro ao salvar chave: ${error.message}`);
     }
   };
 
@@ -4587,9 +4686,9 @@ const AdminPanel = ({
         apifyKeys: newKeys,
         apifyKey: newKeys[0] || '' // Atualiza a principal
       });
-      alert('âœ… Chave removida.');
+      alert('á¢Ã…â€œÃ¢â‚¬Â¦ Chave removida.');
     } catch (error: any) {
-      alert(`â Œ Erro ao remover chave: ${error.message}`);
+      alert(`á¢ Ã…â€™ Erro ao remover chave: ${error.message}`);
     }
   };
 
@@ -4608,9 +4707,9 @@ const AdminPanel = ({
       const newKeys = [...(settings.apifyKeysSync || []), trimmedKey];
       await updateDoc(doc(db, 'config', 'settings'), { apifyKeysSync: newKeys });
       setApifyKeySync('');
-      alert('âœ… Chave de Sincronização Inicial adicionada!');
+      alert('á¢Ã…â€œÃ¢â‚¬Â¦ Chave de Sincronização Inicial adicionada!');
     } catch (error: any) {
-      alert(`â Œ Erro ao salvar chave: ${error.message}`);
+      alert(`á¢ Ã…â€™ Erro ao salvar chave: ${error.message}`);
     }
   };
 
@@ -4619,9 +4718,9 @@ const AdminPanel = ({
     try {
       const newKeys = (settings.apifyKeysSync || []).filter(k => k !== keyToDelete);
       await updateDoc(doc(db, 'config', 'settings'), { apifyKeysSync: newKeys });
-      alert('âœ… Chave removida.');
+      alert('á¢Ã…â€œÃ¢â‚¬Â¦ Chave removida.');
     } catch (error: any) {
-      alert(`â Œ Erro ao remover chave: ${error.message}`);
+      alert(`á¢ Ã…â€™ Erro ao remover chave: ${error.message}`);
     }
   };
 
@@ -4641,7 +4740,7 @@ const AdminPanel = ({
     setRepairing(true);
     try {
       const res = await repairAllUserMetrics(true);
-      alert(`âœ… Reparo concluído!\n\nUsuários processados: ${res.total}\nSucesso: ${res.success}\nErros: ${res.error}`);
+      alert(`á¢Ã…â€œÃ¢â‚¬Â¦ Reparo concluído!\n\nUsuários processados: ${res.total}\nSucesso: ${res.success}\nErros: ${res.error}`);
     } catch (error: any) {
       alert(`Erro no reparo: ${error.message}`);
     } finally {
@@ -5208,7 +5307,7 @@ const AdminPanel = ({
     try {
       await updateDoc(doc(db, 'posts', post.id), { forceMonthly: !isAlreadyForced, forceDaily: false });
       await updateUserMetrics(post.userId);
-      alert(isAlreadyForced ? 'Revertido! Link voltou ao comportamento normal.' : 'âœ… Link forçado para o Mensal! Stats diários removidos.');
+      alert(isAlreadyForced ? 'Revertido! Link voltou ao comportamento normal.' : 'á¢Ã…â€œÃ¢â‚¬Â¦ Link forçado para o Mensal! Stats diários removidos.');
     } catch(e: any) { alert('Erro: ' + e.message); }
   };
 
@@ -5225,7 +5324,7 @@ const AdminPanel = ({
     try {
       await updateDoc(doc(db, 'posts', post.id), { forceDaily: !isAlreadyForcedDaily, forceMonthly: false });
       await updateUserMetrics(post.userId);
-      alert(isAlreadyForcedDaily ? 'Revertido! Link voltou ao comportamento normal.' : 'âœ… Link forçado para o Diário! Stats integrados imediatamente.');
+      alert(isAlreadyForcedDaily ? 'Revertido! Link voltou ao comportamento normal.' : 'á¢Ã…â€œÃ¢â‚¬Â¦ Link forçado para o Diário! Stats integrados imediatamente.');
     } catch(e: any) { alert('Erro: ' + e.message); }
   };
 
@@ -5312,7 +5411,7 @@ const AdminPanel = ({
       const userObj = allUsers.find(u => u.uid === post.userId);
       return {
         'PLATAFORMA': post.platform,
-        'LINK DO VÍDEO': post.url,
+        'LINK DO VáDEO': post.url,
         'NOME DO USUÁRIO': post.userName || '',
         'CURTIDAS': post.likes || 0,
         'VIEWS': post.views || 0,
@@ -5325,7 +5424,7 @@ const AdminPanel = ({
     const worksheet = XLSX.utils.json_to_sheet(rows);
     worksheet['!cols'] = [
       { wch: 12 }, // PLATAFORMA
-      { wch: 55 }, // LINK DO VÍDEO
+      { wch: 55 }, // LINK DO VáDEO
       { wch: 28 }, // NOME DO USUÁRIO
       { wch: 12 }, // CURTIDAS
       { wch: 12 }, // VIEWS
@@ -5873,7 +5972,7 @@ const AdminPanel = ({
                       </div>
                       {stat.trend && (
                         <div className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest flex items-center gap-1 ${stat.trend === 'up' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
-                          {stat.trend === 'up' ? 'â†‘ Crescendo' : 'â†“ Estável'}
+                          {stat.trend === 'up' ? '↑ Crescendo' : '→ Estável'}
                         </div>
                       )}
                     </div>
@@ -6089,10 +6188,10 @@ const AdminPanel = ({
                   onChange={e => setNewUserRole(e.target.value as any)}
                   className="w-full bg-black border border-zinc-800 px-4 py-3 rounded-xl focus:border-amber-500 outline-none transition-all font-bold text-sm text-zinc-300"
                 >
-                  <option value="user">ðŸ‘¤ Usuário Comum (Criador de Conteúdo)</option>
-                  <option value="auditor">ðŸ”  Gestor â€” Controle de Campanhas</option>
-                  <option value="administrativo">ðŸ ¢ Administrativo â€” Gestão + Financeiro + Acesso como usuário</option>
-                  <option value="admin">ðŸ‘‘ Administrador (Diretoria) â€” Acesso total</option>
+                  <option value="user">Usuário Comum (Criador de Conteúdo)</option>
+                  <option value="auditor">Gestor — Controle de Campanhas</option>
+                  <option value="administrativo">Administrativo — Gestão + Financeiro + Acesso como usuário</option>
+                  <option value="admin">Administrador (Diretoria) — Acesso total</option>
                 </select>
               </div>
 
@@ -6129,7 +6228,7 @@ const AdminPanel = ({
                 className="w-full mt-6 flex justify-center items-center gap-2 gold-bg text-black font-black uppercase tracking-widest py-4 rounded-xl hover:scale-[1.02] transition-all disabled:opacity-50"
               >
                 {creatingUser ? <RefreshCw className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5" />}
-                {creatingUser ? 'CRIANDO...' : 'REGISTRAR ACESSO NO BANDO DE DADOS'}
+                {creatingUser ? 'CRIANDO...' : 'REGISTRAR ACESSO NO BANCO DE DADOS'}
               </button>
             </div>
           </div>
@@ -6363,7 +6462,7 @@ const AdminPanel = ({
                               <Zap className="w-6 h-6" />
                             </div>
                             <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-1 flex items-center">
-                              PROJEÇÃO DE SAÍDA (PENDENTE) <InfoTooltip text="Total acumulado nos saldos dos usuários aguardando pagamento ou saque." />
+                              PROJEÇÃO DE SAáDA (PENDENTE) <InfoTooltip text="Total acumulado nos saldos dos usuários aguardando pagamento ou saque." />
                             </p>
                             <h4 className="text-3xl font-black text-amber-500 tracking-tight">R$ {totalPendingGlobal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h4>
                           </div>
@@ -6404,7 +6503,7 @@ const AdminPanel = ({
                                     </div>
                                     <div>
                                       <p className="text-xs font-black text-zinc-200 uppercase">{u.displayName}</p>
-                                      <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">{u.totalViewsCount?.toLocaleString()} views totais • {u.postsCount || 0} posts</p>
+                                      <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">{u.totalViewsCount?.toLocaleString()} views totais Ã¢â‚¬Â¢ {u.postsCount || 0} posts</p>
                                     </div>
                                   </div>
                                   <div className="text-right">
@@ -6438,7 +6537,7 @@ const AdminPanel = ({
                                       <div>
                                         <p className="text-xs font-black text-zinc-200 uppercase">{u.displayName}</p>
                                         <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">
-                                          {u.email.split('@')[0]} • {posts.filter(p => p.userId === u.uid && (p.status === 'approved' || p.status === 'synced')).length} posts
+                                          {u.email.split('@')[0]} Ã¢â‚¬Â¢ {posts.filter(p => p.userId === u.uid && (p.status === 'approved' || p.status === 'synced')).length} posts
                                         </p>
                                       </div>
                                     </div>
@@ -6486,7 +6585,7 @@ const AdminPanel = ({
                                     <div className="text-right">
                                       <p className="text-xs font-black text-white">R$ {compTotal.toLocaleString('pt-BR')}</p>
                                       <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest flex items-center justify-end">
-                                        {compViews.toLocaleString()} VIEWS • CPM R$ {compCpm.toFixed(2)}
+                                        {compViews.toLocaleString()} VIEWS Ã¢â‚¬Â¢ CPM R$ {compCpm.toFixed(2)}
                                         <InfoTooltip text="CPM (Custo por Mil): Indica quanto a competição custou para cada 1.000 visualizações geradas." />
                                       </p>
                                       <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest mt-1">{Math.round(percent)}% Pago</p>
@@ -6888,9 +6987,9 @@ const AdminPanel = ({
                                   <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
                                   <span className={`text-xl font-black mt-0.5 ${isSelected ? 'text-amber-500' : 'text-white'}`}>{dayPosts.length}</span>
                                   <div className="flex items-center gap-2 mt-1">
-                                    {approved > 0 && <span className="text-[8px] font-black text-emerald-500">{approved}âœ“</span>}
-                                    {pending > 0 && <span className="text-[8px] font-black text-amber-400">{pending}â³</span>}
-                                    {rejected > 0 && <span className="text-[8px] font-black text-red-500">{rejected}âœ—</span>}
+                                    {approved > 0 && <span className="text-[8px] font-black text-emerald-500">{approved}á¢Ã…â€œÃ¢â‚¬Å“</span>}
+                                    {pending > 0 && <span className="text-[8px] font-black text-amber-400">{pending}á¢Ã‚ÂÃ‚Â³</span>}
+                                    {rejected > 0 && <span className="text-[8px] font-black text-red-500">{rejected}á¢Ã…â€œ—</span>}
                                   </div>
                                 </button>
                               );
@@ -7035,11 +7134,11 @@ const AdminPanel = ({
                         className="w-full bg-black border border-zinc-800 rounded-2xl py-4 px-6 text-sm font-bold focus:border-amber-500 outline-none transition-all text-zinc-300 cursor-pointer"
                       >
                         <option value="user">USUÁRIO COMUM (CRIADOR DE CONTEÚDO)</option>
-                        <option value="auditor">AUDITOR â€” REVISA VÍDEOS POSTADOS</option>
-                        <option value="administrativo">ADMINISTRATIVO â€” FINANCEIRO + COMPETIÇÕES</option>
-                        <option value="admin">ADMINISTRADOR (DIRETORIA) â€” ACESSO TOTAL</option>
+                        <option value="auditor">AUDITOR á¢Ã¢â€šÂ¬Ã¢â‚¬Â REVISA VáDEOS POSTADOS</option>
+                        <option value="administrativo">ADMINISTRATIVO á¢Ã¢â€šÂ¬Ã¢â‚¬Â FINANCEIRO + COMPETIÇÕES</option>
+                        <option value="admin">ADMINISTRADOR (DIRETORIA) á¢Ã¢â€šÂ¬Ã¢â‚¬Â ACESSO TOTAL</option>
                       </select>
-                      <p className="text-[9px] text-zinc-600 font-bold ml-1">âš ï¸ Alterar a função afeta imediatamente o acesso do usuário</p>
+                      <p className="text-[9px] text-zinc-600 font-bold ml-1">á¢Ã…Â¡Ã‚Â á¯Ã‚Â¸Ã‚Â Alterar a função afeta imediatamente o acesso do usuário</p>
                     </div>
                     <div className="space-y-2">
                       <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Nova Senha (opcional)</label>
@@ -7161,7 +7260,7 @@ const AdminPanel = ({
               const cpm = 0;
               const goalPercent = comp.goalTarget ? Math.min((stats.views / comp.goalTarget) * 100, 100) : 0;
 
-              // Ranking Top 10 por Views nesta competição
+              // RANKING POR VIEWS
               const rankingData = compPosts.reduce((acc: any, p) => {
                 if (!acc[p.userId]) {
                   acc[p.userId] = {
@@ -7289,7 +7388,7 @@ const AdminPanel = ({
                           </div>
                         ))}
                         {sortedRanking.length === 0 && (
-                          <p className="text-center py-10 text-zinc-600 font-bold">NENHUM DADO DE RANKING DISPONÍVEL.</p>
+                          <p className="text-center py-10 text-zinc-600 font-bold">NENHUM DADO DE RANKING DISPONáVEL.</p>
                         )}
                       </div>
                     </div>
@@ -7318,12 +7417,12 @@ const AdminPanel = ({
                           <h5 className="text-xs font-black uppercase tracking-widest text-zinc-400">Tabela de Premiação</h5>
                         </div>
                         <div className="grid grid-cols-1 gap-2">
-                          {/* BÀ destaque especial */}
+                          {/* BÀÃ‚Â destaque especial */}
                           {(comp as any).viewBonus > 0 && (
                             <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 to-transparent border border-amber-500/30 flex items-center gap-3">
                               <Eye className="w-5 h-5 text-amber-500 shrink-0" />
                               <div>
-                                <p className="text-[9px] font-black text-amber-500 uppercase">BÃ´nus por 1 Milhão de Views</p>
+                                <p className="text-[9px] font-black text-amber-500 uppercase">Bônus por 1 Milhão de Views</p>
                                 <p className="text-lg font-black text-white">R$ {(comp as any).viewBonus.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                                 <p className="text-[9px] text-zinc-500 font-bold">Pago a cada 1.000.000 views atingidas por vídeo</p>
                               </div>
@@ -7331,7 +7430,7 @@ const AdminPanel = ({
                           )}
                           {comp.prizesMonthly && comp.prizesMonthly.length > 0 && (
                             <div className="p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800/50">
-                              <p className="text-[9px] font-black text-amber-500 uppercase mb-2">RANKING MENSAL (ACUMULADO DO PERÍODO)</p>
+                              <p className="text-[9px] font-black text-amber-500 uppercase mb-2">RANKING MENSAL (ACUMULADO DO PERáODO)</p>
                               <div className="flex flex-wrap gap-2">
                                 {comp.prizesMonthly.map((p, idx) => (
                                   <span key={idx} className="text-[10px] font-bold bg-black px-2 py-1 rounded-lg border border-zinc-800">
@@ -7462,7 +7561,7 @@ const AdminPanel = ({
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Hashtags (#)</label>
+                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Hashtags Informativas (#)</label>
                         <input
                           type="text"
                           value={compHashtags}
@@ -7472,7 +7571,7 @@ const AdminPanel = ({
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Marcações (@)</label>
+                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Marcações Informativas (@)</label>
                         <input
                           type="text"
                           value={compMentions}
@@ -7480,6 +7579,96 @@ const AdminPanel = ({
                           placeholder="@metarayx_oficial"
                           className="w-full bg-black border border-zinc-800 rounded-2xl py-4 px-6 text-sm font-bold focus:border-amber-500 outline-none transition-all"
                         />
+                      </div>
+                    </div>
+
+                    <div className="p-8 rounded-[32px] bg-amber-500/5 border border-amber-500/20 space-y-6">
+                      <div className="flex items-center gap-3">
+                        <ShieldCheck className="w-5 h-5 text-amber-500" />
+                        <div>
+                          <h4 className="text-sm font-black uppercase gold-gradient">Validação Automatizada</h4>
+                          <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Configure os itens obrigatórios para o painel de triagem</p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="space-y-4">
+                            <div className="space-y-2">
+                              <label className="text-[10px] font-black text-amber-500 uppercase tracking-widest ml-1">Hashtags OBRIGATÓRIAS - Global</label>
+                              <input
+                                type="text"
+                                value={compRequiredHashtags}
+                                onChange={(e) => setCompRequiredHashtags(e.target.value)}
+                                placeholder="Ex: zefelipe, musica (separe por vírgula)"
+                                className="w-full bg-black border border-amber-500/20 rounded-2xl py-4 px-6 text-sm font-bold focus:border-amber-500 outline-none transition-all"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-[10px] font-black text-red-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                                <Zap className="w-3 h-3" /> YouTube Hashtags (Título ou Descrição)
+                              </label>
+                              <input
+                                type="text"
+                                value={compReqHashtagsYouTube}
+                                onChange={(e) => setCompReqHashtagsYouTube(e.target.value)}
+                                placeholder="Hashtags específicas YouTube (separe por vírgula)"
+                                className="w-full bg-black border border-red-500/20 rounded-2xl py-4 px-6 text-sm font-bold focus:border-red-500 outline-none transition-all"
+                              />
+                            </div>
+                            <p className="text-[9px] text-zinc-600 px-1 font-bold italic">* hashtags sem o símbolo # que o sistema deve validar na sincronização</p>
+                          </div>
+                        <div className="space-y-4">
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-black text-amber-500 uppercase tracking-widest ml-1">Menções OBRIGATÓRIAS - Global (@)</label>
+                            <input
+                              type="text"
+                              value={compRequiredMentions}
+                              onChange={(e) => setCompRequiredMentions(e.target.value)}
+                              placeholder="Ex: zefelipe, metarayx (separe por vírgula)"
+                              className="w-full bg-black border border-amber-500/20 rounded-2xl py-4 px-6 text-sm font-bold focus:border-amber-500 outline-none transition-all"
+                            />
+                            <p className="text-[9px] text-zinc-600 px-1 font-bold italic">* Aplicado se o campo da plataforma estiver vazio</p>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="space-y-2">
+                              <label className="text-[9px] font-black text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                                <Zap className="w-3 h-3 text-amber-500" /> TikTok
+                              </label>
+                              <input
+                                type="text"
+                                value={compReqTikTok}
+                                onChange={(e) => setCompReqTikTok(e.target.value)}
+                                placeholder="Perfil TikTok"
+                                className="w-full bg-black border border-zinc-800 rounded-xl py-3 px-4 text-xs font-bold focus:border-amber-500 outline-none transition-all"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-[9px] font-black text-red-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                                <Zap className="w-3 h-3 text-red-500" /> YouTube (Título ou Descrição)
+                              </label>
+                              <input
+                                type="text"
+                                value={compReqYouTube}
+                                onChange={(e) => setCompReqYouTube(e.target.value)}
+                                placeholder="Marking em Título/Desc"
+                                className="w-full bg-black border border-zinc-800 rounded-xl py-3 px-4 text-xs font-bold focus:border-amber-500 outline-none transition-all"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-[9px] font-black text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                                <Camera className="w-3 h-3 text-pink-500" /> Instagram
+                              </label>
+                              <input
+                                type="text"
+                                value={compReqInsta}
+                                onChange={(e) => setCompReqInsta(e.target.value)}
+                                placeholder="Perfil Instagram"
+                                className="w-full bg-black border border-zinc-800 rounded-xl py-3 px-4 text-xs font-bold focus:border-amber-500 outline-none transition-all"
+                              />
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     </div>
 
@@ -7527,7 +7716,7 @@ const AdminPanel = ({
                                 : 'text-zinc-500 hover:text-zinc-300'
                             }`}
                           >
-                            ðŸ‘ï¸ Views
+                            👁️ Views
                           </button>
                           <button
                             type="button"
@@ -7538,7 +7727,7 @@ const AdminPanel = ({
                                 : 'text-zinc-500 hover:text-zinc-300'
                             }`}
                           >
-                            â¤ï¸ Curtidas
+                            ❤️ Curtidas
                           </button>
                         </div>
                         <div className="relative">
@@ -7557,7 +7746,7 @@ const AdminPanel = ({
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">BÃ´nus (Texto Livre)</label>
+                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Bônus (Texto Livre)</label>
                         <input
                           type="text"
                           value={compBonuses}
@@ -7569,7 +7758,7 @@ const AdminPanel = ({
                       <div className="space-y-2">
                         <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-2">
                           <span className="px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-500 text-[9px] font-black">R$</span>
-                          BÃ´nus por 1 Milhão de Views
+                          Bônus por 1 Milhão de Views
                         </label>
                         <div className="relative">
                           <span className="absolute left-4 top-1/2 -translate-y-1/2 text-amber-500 font-black text-sm">R$</span>
@@ -7712,7 +7901,7 @@ const AdminPanel = ({
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                       <div className="space-y-2">
                         <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Início da Competição</label>
                         <input
@@ -7730,6 +7919,19 @@ const AdminPanel = ({
                           onChange={(e) => setCompEndDate(e.target.value)}
                           className="w-full bg-black border border-zinc-800 rounded-2xl py-4 px-6 text-sm font-bold focus:border-amber-500 outline-none transition-all"
                         />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-amber-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                          <Clock className="w-3 h-3" />
+                          Reset Diário (20h á s 20h)
+                        </label>
+                        <input
+                          type="time"
+                          value={compDailyResetTime}
+                          onChange={(e) => setCompDailyResetTime(e.target.value)}
+                          className="w-full bg-black border border-amber-500/20 rounded-2xl py-4 px-6 text-sm font-bold focus:border-amber-500 outline-none transition-all text-amber-500"
+                        />
+                        <p className="text-[9px] text-zinc-600 px-1 font-bold italic">* Horário que fecha a contagem do dia</p>
                       </div>
                     </div>
 
@@ -8119,7 +8321,7 @@ const AdminPanel = ({
                       <option value="pendente">PENDENTE</option>
                       <option value="analise">EM ANÁLISE</option>
                       <option value="desenvolvimento">TRABALHANDO</option>
-                      <option value="concluido">CONCLUÍDO</option>
+                      <option value="concluido">CONCLUáDO</option>
                     </select>
                     <button
                       onClick={() => handleDeleteSuggestion(s.id)}
@@ -8141,7 +8343,7 @@ const AdminPanel = ({
         ) : tab === 'TIMER' ? (
           <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="flex flex-col gap-2">
-              <h3 className="text-2xl font-black uppercase tracking-tight gold-gradient">Configuração do Cronômetro</h3>
+              <h3 className="text-2xl font-black uppercase tracking-tight gold-gradient">Configuração do Croná´metro</h3>
               <p className="text-zinc-500 font-bold text-[10px] uppercase tracking-widest">Configure o contador regressivo global.</p>
             </div>
 
@@ -8156,13 +8358,14 @@ const AdminPanel = ({
                     <Zap className="w-3 h-3 text-amber-500" /> Status do Timer
                   </label>
                   <div 
-                    onClick={() => handleUpdateTimer({ ...timerConfig, enabled: !timerConfig.enabled })}
-                    className={`w-full p-6 rounded-3xl border cursor-pointer transition-all flex items-center justify-between ${timerConfig.enabled ? 'bg-amber-500/10 border-amber-500/50' : 'bg-zinc-900/50 border-zinc-800 hover:border-zinc-700'}`}
+                    onClick={() => setLocalTimerEnabled(!localTimerEnabled)}
+                    className={`w-full p-6 rounded-3xl border cursor-pointer transition-all flex items-center justify-between ${localTimerEnabled ? 'bg-amber-500/10 border-amber-500/50' : 'bg-zinc-900/50 border-zinc-800 hover:border-zinc-700'}`}
                   >
                     <div className="space-y-1">
-                      <p className={`text-sm font-black uppercase ${timerConfig.enabled ? 'text-amber-500' : 'text-zinc-500'}`}>
-                        {timerConfig.enabled ? 'Timer Ativado' : 'Timer Desativado'}
+                      <p className={`text-sm font-black uppercase ${localTimerEnabled ? 'text-amber-500' : 'text-zinc-500'}`}>
+                        {localTimerEnabled ? 'Timer Ativado' : 'Timer Desativado'}
                       </p>
+
                       <p className="text-[10px] font-bold text-zinc-600 uppercase">Visível para todos os usuários</p>
                     </div>
                     <div className={`w-12 h-6 rounded-full relative transition-all ${timerConfig.enabled ? 'bg-amber-500' : 'bg-zinc-800'}`}>
@@ -8177,13 +8380,14 @@ const AdminPanel = ({
                   </label>
                   <input
                     type="time"
-                    value={timerConfig.targetTime || '20:15'}
+                    value={localTimerTargetTime || '20:15'}
                     onChange={(e) => {
-                      handleUpdateTimer({ ...timerConfig, targetTime: e.target.value, endTime: null });
+                      setLocalTimerTargetTime(e.target.value);
+                      setLocalTimerEndTime(null);
                     }}
                     className="w-full bg-black border border-zinc-800 rounded-3xl py-6 px-8 text-xl font-black text-amber-500 focus:border-amber-500 outline-none transition-all shadow-inner text-center"
                   />
-                  <p className="text-[9px] text-zinc-600 font-bold uppercase tracking-widest px-1 text-center">O cronômetro reiniciará automaticamente todos os dias neste horário.</p>
+                  <p className="text-[9px] text-zinc-600 font-bold uppercase tracking-widest px-1 text-center">O croná´metro reiniciará automaticamente todos os dias neste horário.</p>
                 </div>
               </div>
 
@@ -8194,10 +8398,11 @@ const AdminPanel = ({
                   </label>
                   <input
                     type="datetime-local"
-                    value={timerConfig.endTime ? new Date(timerConfig.endTime).toISOString().slice(0, 16) : ''}
+                    value={localTimerEndTime ? new Date(localTimerEndTime).toISOString().slice(0, 16) : ''}
                     onChange={(e) => {
                       const date = e.target.value ? new Date(e.target.value).getTime() : null;
-                      handleUpdateTimer({ ...timerConfig, endTime: date, targetTime: '' });
+                      setLocalTimerEndTime(date);
+                      setLocalTimerTargetTime(''); // Reseta o targetTime ao usar data fixa
                     }}
                     className="w-full bg-zinc-900/30 border border-zinc-800/50 rounded-3xl py-4 px-6 text-xs text-zinc-500 font-bold focus:border-amber-500/50 outline-none transition-all"
                   />
@@ -8209,13 +8414,24 @@ const AdminPanel = ({
                   </label>
                   <input
                     type="text"
-                    value={timerConfig.message}
-                    onChange={(e) => handleUpdateTimer({ ...timerConfig, message: e.target.value })}
+                    value={localTimerMessage}
+                    onChange={(e) => setLocalTimerMessage(e.target.value)}
                     placeholder="Ex: Novos desafios liberados em:"
                     className="w-full bg-black border border-zinc-800 rounded-3xl py-6 px-8 text-sm font-bold focus:border-amber-500 outline-none transition-all shadow-inner"
                   />
                 </div>
               </div>
+
+              <div className="flex flex-col gap-4 relative z-10 pt-4 border-t border-zinc-800/50">
+                <button
+                  onClick={onSaveTimerConfig}
+                  className="w-full py-5 bg-amber-500 text-black font-black rounded-[28px] hover:scale-[1.01] transition-all flex items-center justify-center gap-3 shadow-xl shadow-amber-500/20"
+                >
+                  <Save className="w-5 h-5" />
+                  SALVAR CONFIGURAÇÕES DO TIMER
+                </button>
+              </div>
+
 
               <div className="pt-4 border-t border-zinc-900/50 flex items-center gap-4 relative z-10">
                 <div className={`p-4 rounded-2xl ${timerConfig.enabled ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'} border border-current/20 flex items-center gap-3 flex-1`}>
@@ -8224,7 +8440,7 @@ const AdminPanel = ({
                       <CheckCircle2 className="w-5 h-5" />
                       <div>
                         <p className="text-[10px] font-black uppercase">Sistema Ativo</p>
-                        <p className="text-[9px] font-bold opacity-70">O timer está configurado para resetar às {timerConfig.targetTime || '20:15'}.</p>
+                        <p className="text-[9px] font-bold opacity-70">O timer está configurado para resetar á s {timerConfig.targetTime || '20:15'}.</p>
                       </div>
                     </>
                   ) : (
@@ -8275,7 +8491,7 @@ const AdminPanel = ({
                 <div className="space-y-4">
                   <div className="overflow-x-auto">
                     <div className="min-w-[800px]">
-                      <ListHeader columns={['PLATAFORMA', 'LINK DO VÍDEO', 'USUÁRIO CRIADOR', 'CURTIDAS', 'VIEWS', 'STATUS DO LINK']} gridClass="grid-cols-[100px_minmax(0,1.5fr)_minmax(0,1fr)_100px_100px_120px]" />
+                      <ListHeader columns={['PLATAFORMA', 'LINK DO VáDEO', 'USUÁRIO CRIADOR', 'CURTIDAS', 'VIEWS', 'STATUS DO LINK']} gridClass="grid-cols-[100px_minmax(0,1.5fr)_minmax(0,1fr)_100px_100px_120px]" />
                       <div className="mt-4 space-y-2 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
                         {posts.filter(p => p.competitionId === selectedCompId).length === 0 ? (
                           <div className="py-20 text-center border border-dashed border-zinc-800 rounded-2xl">
@@ -8410,7 +8626,7 @@ const AdminPanel = ({
                             <p className="text-[9px] text-red-400/70 font-bold uppercase truncate">Motivo: {post.rejectionReason}</p>
                           ) : (
                             <p className={`text-[9px] font-bold uppercase ${post.status === 'deleted' ? 'text-zinc-500' : 'text-amber-500/50'}`}>
-                              STATUS: {post.status === 'deleted' ? 'EXCLUÍDO MANUALMENTE' : 'REJEITADO'}
+                              STATUS: {post.status === 'deleted' ? 'EXCLUáDO MANUALMENTE' : 'REJEITADO'}
                             </p>
                           )}
                         </div>

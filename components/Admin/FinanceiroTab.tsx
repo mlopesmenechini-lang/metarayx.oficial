@@ -76,7 +76,7 @@ export const FinanceiroTab: React.FC<FinanceiroTabProps> = ({
               className="bg-black border border-zinc-800 rounded-xl py-2 px-4 text-[10px] font-black text-amber-500 outline-none focus:border-amber-500 transition-all min-w-[220px] cursor-pointer hover:bg-zinc-900"
             >
               {competitions.map(c => (
-                <option key={c.id} value={c.id}>{c.title} {c.isActive ? '• ATIVA' : ''}</option>
+                <option key={c.id} value={c.id}>{c.title} {c.isActive ? 'â¢ ATIVA' : ''}</option>
               ))}
             </select>
           </div>

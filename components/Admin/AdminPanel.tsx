@@ -6,6 +6,7 @@ import {
   Shield 
 } from 'lucide-react';
 import { Post, Competition, User, Settings, Transaction, UserRole } from '../../types';
+import { PostTagRow } from './AdminUI';
 import { TriagemTab } from './TriagemTab';
 import { SincronizacaoTab } from './SincronizacaoTab';
 import { RessincronizacaoTab } from './RessincronizacaoTab';
@@ -121,7 +122,7 @@ interface AdminPanelProps {
   setPendingMoves: (val: any) => void;
   repairing: boolean;
   selectedResetCompId: string;
-  setSelectedResetCompId: (id: string) => void;
+  setSelectedResetCompId: (id: string | null) => void;
   
   // Acessos
   newUserRole: UserRole;
@@ -138,7 +139,72 @@ interface AdminPanelProps {
   // New Handlers
   handleDeleteAllDuplicates?: () => Promise<void>;
 
-  // Legacy/Other tabs
+  // Competition Form Props
+  compTitle: string;
+  setCompTitle: (val: string) => void;
+  compRankingMetric: 'views' | 'likes';
+  setCompRankingMetric: (val: 'views' | 'likes') => void;
+  compGoalTarget: number;
+  setCompGoalTarget: (val: number) => void;
+  compGoalMetric: 'views' | 'likes';
+  setCompGoalMetric: (val: 'views' | 'likes') => void;
+  compDesc: string;
+  setCompDesc: (val: string) => void;
+  compRules: string;
+  setCompRules: (val: string) => void;
+  compHashtags: string;
+  setCompHashtags: (val: string) => void;
+  compMentions: string;
+  setCompMentions: (val: string) => void;
+  compRequiredHashtags: string;
+  setCompRequiredHashtags: (val: string) => void;
+  compRequiredMentions: string;
+  setCompRequiredMentions: (val: string) => void;
+  compRequiredMentionsTikTok: string;
+  setCompRequiredMentionsTikTok: (val: string) => void;
+  compRequiredMentionsYouTube: string;
+  setCompRequiredMentionsYouTube: (val: string) => void;
+  compRequiredMentionsInsta: string;
+  setCompRequiredMentionsInsta: (val: string) => void;
+  compBonuses: string;
+  setCompBonuses: (val: string) => void;
+  compInstaBonus: string;
+  setCompInstaBonus: (val: string) => void;
+  compViewBonus: number;
+  setCompViewBonus: (val: number) => void;
+  compStartDate: string;
+  setCompStartDate: (val: string) => void;
+  compEndDate: string;
+  setCompEndDate: (val: string) => void;
+  compDailyResetTime: string;
+  setCompDailyResetTime: (val: string) => void;
+  compBanner: string;
+  setCompBanner: (val: string) => void;
+  compPositions: number;
+  setCompPositions: (val: number) => void;
+  compPrizes: any[];
+  setCompPrizes: (val: any[]) => void;
+  compPositionsDaily: number;
+  setCompPositionsDaily: (val: number) => void;
+  compPrizesDaily: any[];
+  setCompPrizesDaily: (val: any[]) => void;
+  compPositionsMonthly: number;
+  setCompPositionsMonthly: (val: number) => void;
+  compPrizesMonthly: any[];
+  setCompPrizesMonthly: (val: any[]) => void;
+  compPositionsInstagram: number;
+  setCompPositionsInstagram: (val: number) => void;
+  compPrizesInstagram: any[];
+  setCompPrizesInstagram: (val: any[]) => void;
+  isCreatingComp: boolean;
+  setIsCreatingComp: (val: boolean) => void;
+  editingCompId: string | null;
+  setEditingCompId: (val: string | null) => void;
+  setCompToDelete: (val: Competition | null) => void;
+  handleCreateCompetition: () => void;
+  handleEditCompClick: (comp: Competition) => void;
+  handleBannerUpload: (e: any) => void;
+
   children?: React.ReactNode;
 }
 
@@ -172,6 +238,40 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   handleRepairMetrics, handleRankingResetOnly, handleSystemCleanup, pendingMoves, setPendingMoves, repairing, selectedResetCompId, setSelectedResetCompId,
    newUserRole, setNewUserRole, newUserName, setNewUserName, newUserEmail, setNewUserEmail, newUserPass, setNewUserPass,
   handleCreateUser, creatingUser, handleDeleteAllDuplicates,
+  compTitle, setCompTitle,
+  compRankingMetric, setCompRankingMetric,
+  compGoalTarget, setCompGoalTarget,
+  compGoalMetric, setCompGoalMetric,
+  compDesc, setCompDesc,
+  compRules, setCompRules,
+  compHashtags, setCompHashtags,
+  compMentions, setCompMentions,
+  compRequiredHashtags, setCompRequiredHashtags,
+  compRequiredMentions, setCompRequiredMentions,
+  compRequiredMentionsTikTok, setCompRequiredMentionsTikTok,
+  compRequiredMentionsYouTube, setCompRequiredMentionsYouTube,
+  compRequiredMentionsInsta, setCompRequiredMentionsInsta,
+  compBonuses, setCompBonuses,
+  compInstaBonus, setCompInstaBonus,
+  compViewBonus, setCompViewBonus,
+  compStartDate, setCompStartDate,
+  compEndDate, setCompEndDate,
+  compDailyResetTime, setCompDailyResetTime,
+  compBanner, setCompBanner,
+  compPositions, setCompPositions,
+  compPrizes, setCompPrizes,
+  compPositionsDaily, setCompPositionsDaily,
+  compPrizesDaily, setCompPrizesDaily,
+  compPositionsMonthly, setCompPositionsMonthly,
+  compPrizesMonthly, setCompPrizesMonthly,
+  compPositionsInstagram, setCompPositionsInstagram,
+  compPrizesInstagram, setCompPrizesInstagram,
+  isCreatingComp, setIsCreatingComp,
+  editingCompId, setEditingCompId,
+  setCompToDelete,
+  handleCreateCompetition,
+  handleEditCompClick,
+  handleBannerUpload,
   children
 }) => {
   return (
@@ -467,8 +567,39 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         {tab === 'COMPETITIONS' && (
           <CompetitionsTab 
             competitions={competitions} posts={posts} selectedCompId={selectedCompId} setSelectedCompId={setSelectedCompId}
-            isCreatingComp={false} setIsCreatingComp={() => {}} userRole={userRole}
-            handleEditCompClick={() => {}} setCompToDelete={() => {}}
+            isCreatingComp={isCreatingComp} setIsCreatingComp={setIsCreatingComp} userRole={userRole}
+            handleEditCompClick={handleEditCompClick} setCompToDelete={setCompToDelete}
+            compTitle={compTitle} setCompTitle={setCompTitle}
+            compRankingMetric={compRankingMetric} setCompRankingMetric={setCompRankingMetric}
+            compGoalTarget={compGoalTarget} setCompGoalTarget={setCompGoalTarget}
+            compGoalMetric={compGoalMetric} setCompGoalMetric={setCompGoalMetric}
+            compDesc={compDesc} setCompDesc={setCompDesc}
+            compRules={compRules} setCompRules={setCompRules}
+            compHashtags={compHashtags} setCompHashtags={setCompHashtags}
+            compMentions={compMentions} setCompMentions={setCompMentions}
+            compRequiredHashtags={compRequiredHashtags} setCompRequiredHashtags={setCompRequiredHashtags}
+            compRequiredMentions={compRequiredMentions} setCompRequiredMentions={setCompRequiredMentions}
+            compRequiredMentionsTikTok={compRequiredMentionsTikTok} setCompRequiredMentionsTikTok={setCompRequiredMentionsTikTok}
+            compRequiredMentionsYouTube={compRequiredMentionsYouTube} setCompRequiredMentionsYouTube={setCompRequiredMentionsYouTube}
+            compRequiredMentionsInsta={compRequiredMentionsInsta} setCompRequiredMentionsInsta={setCompRequiredMentionsInsta}
+            compBonuses={compBonuses} setCompBonuses={setCompBonuses}
+            compInstaBonus={compInstaBonus} setCompInstaBonus={setCompInstaBonus}
+            compViewBonus={compViewBonus} setCompViewBonus={setCompViewBonus}
+            compStartDate={compStartDate} setCompStartDate={setCompStartDate}
+            compEndDate={compEndDate} setCompEndDate={setCompEndDate}
+            compDailyResetTime={compDailyResetTime} setCompDailyResetTime={setCompDailyResetTime}
+            compBanner={compBanner} setCompBanner={setCompBanner}
+            compPositions={compPositions} setCompPositions={setCompPositions}
+            compPrizes={compPrizes} setCompPrizes={setCompPrizes}
+            compPositionsDaily={compPositionsDaily} setCompPositionsDaily={setCompPositionsDaily}
+            compPrizesDaily={compPrizesDaily} setCompPrizesDaily={setCompPrizesDaily}
+            compPositionsMonthly={compPositionsMonthly} setCompPositionsMonthly={setCompPositionsMonthly}
+            compPrizesMonthly={compPrizesMonthly} setCompPrizesMonthly={setCompPrizesMonthly}
+            compPositionsInstagram={compPositionsInstagram} setCompPositionsInstagram={setCompPositionsInstagram}
+            compPrizesInstagram={compPrizesInstagram} setCompPrizesInstagram={setCompPrizesInstagram}
+            handleBannerUpload={handleBannerUpload}
+            handleCreateCompetition={handleCreateCompetition}
+            editingCompId={editingCompId}
           />
         )}
 

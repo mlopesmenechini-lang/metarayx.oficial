@@ -24,7 +24,7 @@ export const StatCard = ({ label, value, icon: Icon, colorClass, trend }: any) =
   </div>
 );
 
-// ─── Sistema de Tarjas Administrativas ───────────────────────────────────────
+// ─── Sistema de Tarjas Administrativas ────────────────────────────────────────
 export type TagColor = 'yellow' | 'red' | 'green' | null;
 export type PostTags = { tag1: TagColor; tag2: TagColor };
 
@@ -109,6 +109,124 @@ export const PostTagRow = ({ postId }: { postId: string }) => {
     <div className="flex flex-col gap-1.5 items-center shrink-0" title="Tarjas de organização (Local)">
       <TagPicker postId={postId} tagIndex={1} value={tags.tag1} onChange={c => updateTag('tag1', c)} />
       <TagPicker postId={postId} tagIndex={2} value={tags.tag2} onChange={c => updateTag('tag2', c)} />
+    </div>
+  );
+};
+
+// ─── Validação de Conformidade (Triagem/Sincronização) ──────────────────
+import { Hash, AtSign, Clock as ClockIcon, Check as CheckIcon, X as XIcon } from 'lucide-react';
+import { Post, Competition } from '../../types';
+
+export const CompliancePanel = ({ post, competition, checkDailyCycle = true }: { post: Post, competition?: Competition, checkDailyCycle?: boolean }) => {
+  if (!competition) return null;
+
+  const normalize = (s: string) => s.toLowerCase().trim().replace(/[#@]/g, '');
+  
+  const postHashtags = (post.videoHashtags || []).map(normalize);
+  const postMentions = (post.videoMentions || []).map(normalize);
+  let platformHashtags: string[] = [];
+  if (post.platform === 'youtube' && competition.requiredHashtagsYouTube?.length) {
+    platformHashtags = competition.requiredHashtagsYouTube;
+  } else {
+    platformHashtags = competition.requiredHashtags || [];
+  }
+
+  const requiredHashtags = platformHashtags.map(normalize);
+  
+  // Seleção dinâmica de menções por plataforma
+  let platformMentions: string[] = [];
+  if (post.platform === 'tiktok' && competition.requiredMentionsTikTok?.length) {
+    platformMentions = competition.requiredMentionsTikTok;
+  } else if (post.platform === 'youtube' && competition.requiredMentionsYouTube?.length) {
+    platformMentions = competition.requiredMentionsYouTube;
+  } else if (post.platform === 'instagram' && competition.requiredMentionsInstagram?.length) {
+    platformMentions = competition.requiredMentionsInstagram;
+  } else {
+    platformMentions = competition.requiredMentions || [];
+  }
+
+  const requiredMentions = platformMentions.map(normalize);
+
+  // Validação flexível para YouTube: busca no caption (título + descrição) se não achar nos arrays
+  const normalizedCaption = normalize(post.caption || '');
+  
+  const missingHashtags = requiredHashtags.filter(h => {
+    const inArray = postHashtags.includes(h);
+    if (inArray) return false;
+    // Se for YouTube, tenta procurar no texto do título/descrição (caption)
+    if (post.platform === 'youtube' && normalizedCaption.includes(h)) return false;
+    return true;
+  });
+
+  const missingMentions = requiredMentions.filter(m => {
+    const inArray = postMentions.includes(m);
+    if (inArray) return false;
+    // Para todas as plataformas, buscador de texto no caption como redundância
+    if (normalizedCaption.includes(m)) return false;
+    return true;
+  });
+
+  // Lógica de Ciclo Diário (20h às 20h)
+  const getLatestResetTimestamp = (resetTime: string) => {
+    const [h, m] = (resetTime || '20:00').split(':').map(Number);
+    const now = new Date();
+    const lastReset = new Date(now);
+    lastReset.setHours(h, m, 0, 0);
+
+    // Se o horário de reset hoje ainda não passou, o último reset foi às 20h de ontem
+    if (now.getTime() < lastReset.getTime()) {
+      lastReset.setDate(lastReset.getDate() - 1);
+    }
+    return lastReset.getTime();
+  };
+
+  const lastResetTs = getLatestResetTimestamp(competition.dailyResetTime || '20:00');
+  const isAfterGlobalStart = post.postedAt && competition.startDate && post.postedAt >= competition.startDate;
+  
+  // Se checkDailyCycle for false, ignoramos a verificação do reset diário
+  const isWithinCurrentCycle = checkDailyCycle 
+    ? (post.postedAt && post.postedAt >= lastResetTs)
+    : true;
+  
+  const isTimeOk = isAfterGlobalStart && isWithinCurrentCycle;
+
+  const timeStatusText = !post.postedAt ? 'Data de postagem não encontrada' :
+                        !isAfterGlobalStart ? 'Postado antes do início da competição' :
+                        (checkDailyCycle && !isWithinCurrentCycle) ? 'Postado em um ciclo diário anterior (Link Antigo)' :
+                        'Horário de postagem OK';
+
+  return (
+    <div className="flex flex-wrap items-center gap-3 px-4 py-2 bg-black/40 rounded-2xl border border-zinc-800/50">
+      {/* Hashtags */}
+      <div className="flex items-center gap-1.5" title={missingHashtags.length > 0 ? `Faltando: ${missingHashtags.join(', ')}` : 'Hashtags OK'}>
+        <div className={`p-1 rounded-md ${missingHashtags.length === 0 ? 'bg-emerald-500/20 text-emerald-500' : 'bg-red-500/20 text-red-500'}`}>
+          <Hash className="w-3 h-3" />
+        </div>
+        {missingHashtags.length === 0 ? <CheckIcon className="w-3 h-3 text-emerald-500" /> : <XIcon className="w-3 h-3 text-red-500" />}
+      </div>
+
+      <div className="w-px h-3 bg-zinc-800" />
+
+      {/* Menções */}
+      <div className="flex items-center gap-1.5" title={missingMentions.length > 0 ? `Faltando: ${missingMentions.join(', ')}` : 'Menções OK'}>
+        <div className={`p-1 rounded-md ${missingMentions.length === 0 ? 'bg-emerald-500/20 text-emerald-500' : 'bg-red-500/20 text-red-500'}`}>
+          <AtSign className="w-3 h-3" />
+        </div>
+        {missingMentions.length === 0 ? <CheckIcon className="w-3 h-3 text-emerald-500" /> : <XIcon className="w-3 h-3 text-red-500" />}
+      </div>
+
+      <div className="w-px h-3 bg-zinc-800" />
+
+      {/* Horário */}
+      <div 
+        className="flex items-center gap-1.5 cursor-help" 
+        title={`${timeStatusText}${post.postedAt ? ` \nPostado em: ${new Date(post.postedAt).toLocaleString('pt-BR')}` : ''}`}
+      >
+        <div className={`p-1 rounded-md ${isTimeOk ? 'bg-emerald-500/20 text-emerald-500' : 'bg-red-500/20 text-red-500'}`}>
+          <ClockIcon className="w-3 h-3" />
+        </div>
+        {isTimeOk ? <CheckIcon className="w-3 h-3 text-emerald-500" /> : <XIcon className="w-3 h-3 text-red-500" />}
+      </div>
     </div>
   );
 };

@@ -26,7 +26,7 @@ export const WalletView = ({ user, competitions, showBalances }: WalletViewProps
     setIsSavingPix(true);
     try {
       await updateDoc(doc(db, 'users', user.uid), { pixKey });
-      alert('✅ Chave PIX salva com sucesso!');
+      alert('â Chave PIX salva com sucesso!');
     } catch (error) {
       console.error('Erro ao salvar PIX:', error);
       alert('Erro ao salvar chave PIX.');
@@ -177,7 +177,7 @@ export const WalletView = ({ user, competitions, showBalances }: WalletViewProps
             <button onClick={() => setFilter('all')} className={`px-4 py-2 rounded-lg font-bold text-xs transition-all ${filter === 'all' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}>TUDO</button>
             <button onClick={() => setFilter('day')} className={`px-4 py-2 rounded-lg font-bold text-xs transition-all ${filter === 'day' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}>HOJE</button>
             <button onClick={() => setFilter('week')} className={`px-4 py-2 rounded-lg font-bold text-xs transition-all ${filter === 'week' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}>SEMANA</button>
-            <button onClick={() => setFilter('month')} className={`px-4 py-2 rounded-lg font-bold text-xs transition-all ${filter === 'month' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}>MÊS</button>
+            <button onClick={() => setFilter('month')} className={`px-4 py-2 rounded-lg font-bold text-xs transition-all ${filter === 'month' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}>MÃS</button>
           </div>
         </div>
 
@@ -192,7 +192,7 @@ export const WalletView = ({ user, competitions, showBalances }: WalletViewProps
                 <div className="flex flex-col gap-1.5 z-10 w-full md:w-auto">
                   <div className="flex items-center justify-between md:justify-start gap-3">
                     {t.status === 'credit' ? (
-                      <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 text-[10px] font-black uppercase tracking-widest inline-block border border-amber-500/20">PRÊMIO CONTABILIZADO</span>
+                      <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 text-[10px] font-black uppercase tracking-widest inline-block border border-amber-500/20">PRÃMIO CONTABILIZADO</span>
                     ) : (
                       <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 text-[10px] font-black uppercase tracking-widest inline-block border border-emerald-500/20">REPASSE RECEBIDO</span>
                     )}
@@ -202,7 +202,7 @@ export const WalletView = ({ user, competitions, showBalances }: WalletViewProps
                     {t.description || (t.status === 'credit' ? 'Premiação por desempenho' : 'Pagamento via PIX')}
                   </h4>
                   <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-                    {new Date(t.timestamp).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })} às {new Date(t.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                    {new Date(t.timestamp).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })} Ã s {new Date(t.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>
                 <div className="flex flex-col items-end z-10 w-full md:w-auto border-t md:border-t-0 border-zinc-900 pt-4 md:pt-0">
