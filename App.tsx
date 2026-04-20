@@ -14,7 +14,8 @@ import {
   TrendingUp, Users, Zap, Calendar, MessageSquare, Menu, X, ChevronLeft, ExternalLink,
   Mail, Lock, User as UserIcon, Eye, EyeOff, Loader2, RefreshCw, Crown, Trash2, Plus,
   Heart, Share2, Bookmark, Bell, Check, Camera, BarChart3, ArrowLeft, ArrowRight, BookOpen, Shield, Star, ChevronRight, Target,
-  Award, UserX, Sparkles, CreditCard, Coins, DollarSign, Info, Archive, Download, RotateCcw, Pencil, PlusCircle, MinusCircle, Key, ShieldAlert
+  Award, UserX, Sparkles, CreditCard, Coins, DollarSign, Info, Archive, Download, RotateCcw, Pencil, PlusCircle, MinusCircle, Key, ShieldAlert,
+  Save
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { syncViewsWithApify, syncSinglePostWithApify, updateUserMetrics, repairAllUserMetrics } from './services/apifyService';
@@ -1979,7 +1980,7 @@ const App: React.FC = () => {
                       comp={competitions.find(c => c.id === selectedActiveCompId)!}
                       user={user}
                       rankings={rankings}
-                      posts={posts.filter(p => isAdmin || p.userId === user.uid)}
+                      posts={posts}
                       registrations={registrations}
                       onBack={() => setSelectedActiveCompId(null)}
                       setView={setView}
@@ -2017,21 +2018,8 @@ const App: React.FC = () => {
                     competitions={competitions}
                     registrations={registrations}
                     announcements={announcements}
-                    sessionSyncedIds={sessionSyncedIds}
-                    setSessionSyncedIds={setSessionSyncedIds}
-                    syncing={syncing}
-                    setSyncing={setSyncing}
-                    syncProgress={syncProgress}
-                    setSyncProgress={setSyncProgress}
-                    syncTotal={syncTotal}
-                    setSyncTotal={setSyncTotal}
-                    syncingPostId={syncingPostId}
-                    setSyncingPostId={setSyncingPostId}
-                    syncingCompId={syncingCompId}
-                    setSyncingCompId={setSyncingCompId}
                     timerConfig={timerConfig}
                     handleUpdateTimer={handleUpdateTimer}
-                    handleDeleteAllDuplicates={handleDeleteAllDuplicates}
                     onSettingsUpdate={(s) => setSettings(s)}
                     editingCompId={editingCompId}
                     setEditingCompId={setEditingCompId}
@@ -2056,6 +2044,8 @@ const App: React.FC = () => {
                     handleUpdateUserRole={handleUpdateUserRole}
                     handleApproveRemoval={handleApproveRemoval}
                     handleRejectRemoval={handleRejectRemoval}
+                    handleRankingResetOnly={handleRankingResetOnly}
+                    handleResetRankingSimple={handleResetRankingSimple}
                     handleUpdateMasterKey={handleUpdateMasterKey}
                     showRoleChallenge={showRoleChallenge}
                     setShowRoleChallenge={setShowRoleChallenge}
@@ -2064,11 +2054,19 @@ const App: React.FC = () => {
                     pendingRoleAction={pendingRoleAction}
                     setPendingRoleAction={setPendingRoleAction}
                     handleConfirmRoleChallenge={handleConfirmRoleChallenge}
-                    handleRankingResetOnly={handleRankingResetOnly}
-                    handleResetRankingSimple={handleResetRankingSimple}
-                    handleApproveAsMonthly={handleApproveAsMonthly}
-                    handleMovePostToCompetition={handleMovePostToCompetition}
                     suggestions={suggestions}
+                    sessionSyncedIds={sessionSyncedIds}
+                    setSessionSyncedIds={setSessionSyncedIds}
+                    syncing={syncing}
+                    setSyncing={setSyncing}
+                    syncProgress={syncProgress}
+                    setSyncProgress={setSyncProgress}
+                    syncTotal={syncTotal}
+                    setSyncTotal={setSyncTotal}
+                    syncingPostId={syncingPostId}
+                    setSyncingPostId={setSyncingPostId}
+                    syncingCompId={syncingCompId}
+                    setSyncingCompId={setSyncingCompId}
                     compTitle={compTitle}
                     setCompTitle={setCompTitle}
                     compRankingMetric={compRankingMetric}
@@ -2091,12 +2089,8 @@ const App: React.FC = () => {
                     setCompReqHashtagsYouTube={setCompReqHashtagsYouTube}
                     compRequiredMentions={compRequiredMentions}
                     setCompRequiredMentions={setCompRequiredMentions}
-                    compRequiredMentionsTikTok={compReqTikTok}
-                    setCompRequiredMentionsTikTok={setCompReqTikTok}
-                    compRequiredMentionsYouTube={compReqYouTube}
-                    setCompRequiredMentionsYouTube={setCompReqYouTube}
-                    compRequiredMentionsInsta={compReqInsta}
-                    setCompRequiredMentionsInsta={setCompReqInsta}
+                    compDailyResetTime={compDailyResetTime}
+                    setCompDailyResetTime={setCompDailyResetTime}
                     compBonuses={compBonuses}
                     setCompBonuses={setCompBonuses}
                     compInstaBonus={compInstaBonus}
@@ -2129,8 +2123,6 @@ const App: React.FC = () => {
                     setIsCreatingComp={setIsCreatingComp}
                     editingUser={editingUser}
                     setEditingUser={setEditingUser}
-                    apifyKeySync={apifyKeySync}
-                    setApifyKeySync={setApifyKeySync}
                     editName={editName}
                     setEditName={setEditName}
                     editPass={editPass}
@@ -2144,11 +2136,22 @@ const App: React.FC = () => {
                     isCreatingAnn={isCreatingAnn}
                     setIsCreatingAnn={setIsCreatingAnn}
                     handleSystemCleanup={handleSystemCleanup}
+                    handleDeleteAllDuplicates={handleDeleteAllDuplicates}
                     rejectionReason={rejectionReason}
                     setRejectionReason={setRejectionReason}
                     setRejectionModal={setRejectionModal}
+                    apifyKeySync={apifyKeySync}
+                    setApifyKeySync={setApifyKeySync}
+                    handleApproveAsMonthly={handleApproveAsMonthly}
+                    handleMovePostToCompetition={handleMovePostToCompetition}
                     pendingMoves={pendingMoves}
                     setPendingMoves={setPendingMoves}
+                    compRequiredMentionsTikTok={compReqTikTok}
+                    setCompRequiredMentionsTikTok={setCompReqTikTok}
+                    compRequiredMentionsYouTube={compReqYouTube}
+                    setCompRequiredMentionsYouTube={setCompReqYouTube}
+                    compRequiredMentionsInsta={compReqInsta}
+                    setCompRequiredMentionsInsta={setCompReqInsta}
                     setShowConfirmModal={setShowConfirmModal}
                     setProtocolCount={setProtocolCount}
                     setConfirmCallback={setConfirmCallback}
@@ -4600,7 +4603,7 @@ const AdminPanel = ({
     if (!targetUser) return;
 
     // Trigger confirmation modal for admin too
-    setAppSelectedCompId(adminManualCompId); // Use the renamed prop to set App state
+    setGlobalSelectedCompId(adminManualCompId); // Use the renamed prop to set App state
     setProtocolCount(1);
     setConfirmCallback(() => () => performAdminSubmit(targetUser.uid, targetUser.displayName));
     setShowConfirmModal(true);

@@ -21,7 +21,7 @@ interface CompetitionsTabProps {
   setIsCreatingComp: (v: boolean) => void;
   userRole: UserRole;
   handleEditCompClick: (comp: Competition) => void;
-  setCompToDelete: (id: string) => void;
+  setCompToDelete: (id: string | null) => void;
   // Competition Form Props
   compTitle: string;
   setCompTitle: (val: string) => void;

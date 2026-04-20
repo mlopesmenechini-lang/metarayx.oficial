@@ -200,7 +200,7 @@ interface AdminPanelProps {
   setIsCreatingComp: (val: boolean) => void;
   editingCompId: string | null;
   setEditingCompId: (val: string | null) => void;
-  setCompToDelete: (val: Competition | null) => void;
+  setCompToDelete: (id: string | null) => void;
   handleCreateCompetition: () => void;
   handleEditCompClick: (comp: Competition) => void;
   handleBannerUpload: (e: any) => void;
