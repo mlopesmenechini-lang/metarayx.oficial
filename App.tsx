@@ -378,13 +378,37 @@ const App: React.FC = () => {
 
   const notificationList = useMemo(() => {
     if (!user) return [];
-    return posts.filter(p => 
+    
+    // Personal Notifications (Rejected Posts)
+    const personal = posts.filter(p => 
       p.userId === user.uid && 
       p.status === 'rejected' && 
       p.approvedAt && p.approvedAt > NOTIFICATION_ACTIVATION_TIME &&
       !dismissedNotifications.includes(p.id)
-    );
-  }, [posts, user, dismissedNotifications]);
+    ).map(p => ({
+      id: p.id,
+      type: 'personal' as const,
+      title: 'Vídeo Desclassificado',
+      message: p.rejectionReason || 'Seu vídeo foi removido por não seguir as regras da competição.',
+      timestamp: p.approvedAt!,
+      badge: 'Alerta'
+    }));
+
+    // Global Notifications (Announcements)
+    const global = announcements.filter(a => 
+      a.isActive !== false && 
+      !acknowledgedAnnouncements.includes(a.id)
+    ).map(a => ({
+      id: a.id,
+      type: 'global' as const,
+      title: a.title,
+      message: a.message,
+      timestamp: a.timestamp,
+      badge: 'Aviso'
+    }));
+
+    return [...personal, ...global].sort((a, b) => b.timestamp - a.timestamp);
+  }, [posts, announcements, user, dismissedNotifications, acknowledgedAnnouncements]);
 
 
   // Real-time Data Listeners — dados públicos (carrega assim que autenticado)
@@ -1832,7 +1856,7 @@ const App: React.FC = () => {
             onAcknowledge={handleAcknowledgeAnnouncement}
           />
           {/* Header */}
-          <header className="h-20 glass border-b border-zinc-800/50 flex items-center justify-between px-6 lg:px-10 shrink-0">
+          <header className="h-20 glass border-b border-zinc-800/50 flex items-center justify-between px-6 lg:px-10 shrink-0 z-50">
             <button className="lg:hidden" onClick={() => setIsSidebarOpen(true)}>
               <Menu className="w-6 h-6" />
             </button>
@@ -1902,26 +1926,51 @@ const App: React.FC = () => {
                               <p className="text-xs font-bold text-zinc-600">Nenhum aviso novo por aqui!</p>
                             </div>
                           ) : (
-                            notificationList.map(notif => (
+                            notificationList.map(item => (
                               <motion.div
-                                key={notif.id}
+                                key={item.id}
                                 layout
-                                className="group bg-red-500/5 border border-red-500/10 hover:bg-red-500/10 rounded-2xl p-4 transition-all"
+                                className={`group rounded-2xl p-4 transition-all border ${
+                                  item.type === 'personal' 
+                                    ? 'bg-red-500/5 border-red-500/10 hover:bg-red-500/10' 
+                                    : 'bg-amber-500/5 border-amber-500/10 hover:bg-amber-500/10'
+                                }`}
                               >
                                 <div className="flex gap-3">
-                                  <div className="w-8 h-8 shrink-0 bg-red-500/20 rounded-xl flex items-center justify-center">
-                                    <ShieldAlert className="w-4 h-4 text-red-500" />
+                                  <div className={`w-8 h-8 shrink-0 rounded-xl flex items-center justify-center ${
+                                    item.type === 'personal' ? 'bg-red-500/20' : 'bg-amber-500/20'
+                                  }`}>
+                                    {item.type === 'personal' ? (
+                                      <ShieldAlert className="w-4 h-4 text-red-500" />
+                                    ) : (
+                                      <Bell className="w-4 h-4 text-amber-500" />
+                                    )}
                                   </div>
                                   <div className="space-y-1 flex-1">
-                                    <h5 className="text-[11px] font-black uppercase tracking-tight text-red-500">Vídeo Desclassificado</h5>
+                                    <div className="flex items-center justify-between">
+                                      <h5 className={`text-[11px] font-black uppercase tracking-tight ${
+                                        item.type === 'personal' ? 'text-red-500' : 'text-amber-500'
+                                      }`}>
+                                        {item.title}
+                                      </h5>
+                                      <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-black uppercase ${
+                                        item.type === 'personal' ? 'bg-red-500/10 text-red-500' : 'bg-amber-500/10 text-amber-500'
+                                      }`}>
+                                        {item.badge}
+                                      </span>
+                                    </div>
                                     <p className="text-xs font-bold text-zinc-300 leading-relaxed">
-                                      {notif.rejectionReason || 'Seu vídeo foi removido por não seguir as regras da competição.'}
+                                      {item.message}
                                     </p>
                                     <div className="flex items-center justify-between pt-2">
-                                      <span className="text-[9px] font-black text-zinc-600 uppercase">Verifique seus protocolos</span>
+                                      <span className="text-[9px] font-black text-zinc-600 uppercase">
+                                        {item.type === 'personal' ? 'Verifique seus protocolos' : 'Mantenha-se informado'}
+                                      </span>
                                       <button
-                                        onClick={() => handleDismissNotification(notif.id)}
-                                        className="text-[9px] font-black text-white px-2 py-1 bg-red-500 rounded-lg hover:bg-red-600 transition-colors"
+                                        onClick={() => item.type === 'personal' ? handleDismissNotification(item.id) : handleAcknowledgeAnnouncement(item.id)}
+                                        className={`text-[9px] font-black px-2 py-1 rounded-lg transition-colors ${
+                                          item.type === 'personal' ? 'bg-red-500 text-white hover:bg-red-600' : 'gold-bg text-black hover:scale-105'
+                                        }`}
                                       >
                                         OK, ENTENDI
                                       </button>
