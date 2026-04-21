@@ -14,8 +14,7 @@ import {
   TrendingUp, Users, Zap, Calendar, MessageSquare, Menu, X, ChevronLeft, ExternalLink,
   Mail, Lock, User as UserIcon, Eye, EyeOff, Loader2, RefreshCw, Crown, Trash2, Plus,
   Heart, Share2, Bookmark, Bell, Check, Camera, BarChart3, ArrowLeft, ArrowRight, BookOpen, Shield, Star, ChevronRight, Target,
-  Award, UserX, Sparkles, CreditCard, Coins, DollarSign, Info, Archive, Download, RotateCcw, Pencil, PlusCircle, MinusCircle, Key, ShieldAlert,
-  Save
+  Award, UserX, Sparkles, CreditCard, Coins, DollarSign, Info, Archive, Download, RotateCcw, Pencil, PlusCircle, MinusCircle, Key, ShieldAlert
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { syncViewsWithApify, syncSinglePostWithApify, updateUserMetrics, repairAllUserMetrics } from './services/apifyService';
@@ -38,15 +37,13 @@ import { DiagnosticoTab } from './components/Admin/DiagnosticoTab';
 
 const sanitizeString = (text: string) => {
   if (typeof text !== 'string') return text;
-  
   // Limpeza de caracteres corrompidos comuns (Mojibake UTF-8)
   return text
-    .replace(/á/g, 'á').replace(/ã/g, 'ã').replace(/ç/g, 'ç').replace(/Ãõ/g, 'õ')
+    .replace(/á/g, 'á').replace(/ã/g, 'ã').replace(/ç/g, 'ç').replace(/õ/g, 'õ')
     .replace(/é/g, 'é').replace(/ê/g, 'ê').replace(/ó/g, 'ó').replace(/í/g, 'í')
-    .replace(/ú/g, 'ú').replace(/â/g, 'â').replace(/à/g, 'à').replace(/È/g, 'È')
-    .replace(/Ê/g, 'Ê').replace(/À/g, 'À').replace(/º/g, 'º')
-    .replace(/Ã\x81/g, 'Á').replace(/Ã\x89/g, 'É').replace(/Ã\x8D/g, 'Í').replace(/Ã\x93/g, 'Ó')
-    .replace(/Ã\x9A/g, 'Ú').replace(/Ã\x87/g, 'Ç').replace(/Ã\x95/g, 'Õ');
+    .replace(/ú/g, 'ú').replace(/ÃƒÆ’Ã¢â‚¬Å¡º/g, 'º').replace(/ÃƒÆ’\x81/g, 'á').replace(/ÃƒÆ’\x89/g, 'É')
+    .replace(/ÃƒÆ’\x8D/g, 'á').replace(/ÃƒÆ’\x93/g, 'Ó').replace(/ÃƒÆ’\x9A/g, 'ÃƒÅ¡').replace(/ÃƒÆ’\x87/g, 'Ç')
+    .replace(/ÃƒÆ’\x95/g, 'Õ').replace(/ÃƒÆ’Ã¢â€šÂ¬/g, 'À');
 };
 
 const sanitizeObject = (obj: any): any => {
@@ -322,7 +319,7 @@ const App: React.FC = () => {
 
               const newUser: User = {
                 uid: firebaseUser.uid,
-                displayName: firebaseUser.displayName || 'USUÁRIO SEM NOME',
+                displayName: firebaseUser.displayName || 'USUáRIO SEM NOME',
                 email: firebaseUser.email || '',
                 role: (isFirstUser || isAdminEmail) ? 'admin' : 'user',
                 isApproved: (isFirstUser || isAdminEmail),
@@ -387,11 +384,11 @@ const App: React.FC = () => {
   }, [posts, user, dismissedNotifications]);
 
 
-  // Real-time Data Listeners — dados públicos (carrega assim que autenticado)
+  // Real-time Data Listeners Ã¢â‚¬â€ dados públicos (carrega assim que autenticado)
   useEffect(() => {
     if (!user) return;
 
-    // Rankings Listener (público — não depende de aprovação)
+    // Rankings Listener (público Ã¢â‚¬â€ não depende de aprovação)
     const rankingsQuery = query(collection(db, 'users'), where('isApproved', '==', true));
     const unsubRankings = onSnapshot(rankingsQuery, (snapshot) => {
       setRankings(snapshot.docs.map(doc => sanitizeObject({ id: doc.id, ...doc.data() }) as User));
@@ -430,7 +427,7 @@ const App: React.FC = () => {
     };
   }, [user?.uid]);
 
-  // Real-time Data Listeners á¢á¢ââ‚¬Å¡Ã‚Â¬á¢ââ€šÂ¬Ã‚Â dados privados (depende de aprovação)
+  // Real-time Data Listeners á¢á¢Ã¢â‚¬Å¡Ã‚Â¬á¢Ã¢â€šÂ¬Ã‚Â dados privados (depende de aprovação)
   useEffect(() => {
     if (!user) return;
     const isStaff = user.role === 'admin' || user.role === 'auditor' || user.role === 'administrativo';
@@ -835,7 +832,7 @@ const App: React.FC = () => {
   const handleApproveAsMonthly = async (postId: string) => {
     const post = posts.find(p => p.id === postId);
     if (!post) return;
-    if (!window.confirm('Enviar diretamente para Ressincronização (Mensal)?\n\nEste link NÃO contará no ranking Diário — apenas no Mensal/Geral.')) return;
+    if (!window.confirm('Enviar diretamente para Ressincronização (Mensal)?\n\nEste link NÃƒÆ’O contará no ranking Diário Ã¢â‚¬â€ apenas no Mensal/Geral.')) return;
     try {
       await updateDoc(doc(db, 'posts', postId), {
         status: 'synced',
@@ -903,8 +900,8 @@ const App: React.FC = () => {
   const handleDeleteUser = async (userId: string) => {
     setConfirmModal({
       isOpen: true,
-      title: 'EXCLUIR USUÁRIO',
-      message: 'TEM CERTEZA QUE DESEJA APAGAR PERMANENTEMENTE ESTE USUÁRIO E TODOS OS SEUS DADOS? ESTA AÇÃO NÃO PODE SER DESFEITA.',
+      title: 'EXCLUIR USUáRIO',
+      message: 'TEM CERTEZA QUE DESEJA APAGAR PERMANENTEMENTE ESTE USUáRIO E TODOS OS SEUS DADOS? ESTA AÇÃƒÆ’O NÃƒÆ’O PODE SER DESFEITA.',
       onConfirm: async () => {
         try {
           await deleteDoc(doc(db, 'users', userId));
@@ -914,7 +911,7 @@ const App: React.FC = () => {
           if (error.code === 'permission-denied') {
             try {
               await updateDoc(doc(db, 'users', userId), { isApproved: false, isRejected: true });
-              alert('O usuário não pôde ser excluído totalmente, mas foi marcado como rejeitado.');
+              alert('O usuário não pá´de ser excluído totalmente, mas foi marcado como rejeitado.');
             } catch (e2) {
               alert('Erro ao remover usuário. Verifique as regras do Firebase.');
             }
@@ -929,10 +926,10 @@ const App: React.FC = () => {
   const handleArchiveUser = async (userId: string, archive: boolean) => {
     setConfirmModal({
       isOpen: true,
-      title: archive ? 'ARQUIVAR USUÁRIO' : 'RESTAURAR USUÁRIO',
+      title: archive ? 'ARQUIVAR USUáRIO' : 'RESTAURAR USUáRIO',
       message: archive 
-        ? 'TEM CERTEZA QUE DESEJA ARQUIVAR ESTE USUÁRIO? ELE NÃO APARECERÁ MAIS NAS LISTAS ATIVAS, MAS SEUS DADOS SERÃO PRESERVADOS.' 
-        : 'DESEJA RESTAURAR ESTE USUÁRIO PARA A LISTA DE SOLICITAÇÕES PENDENTES?',
+        ? 'TEM CERTEZA QUE DESEJA ARQUIVAR ESTE USUáRIO? ELE NÃƒÆ’O APARECERá MAIS NAS LISTAS ATIVAS, MAS SEUS DADOS SERÃƒÆ’O PRESERVADOS.' 
+        : 'DESEJA RESTAURAR ESTE USUáRIO PARA A LISTA DE SOLICITAÇÕES PENDENTES?',
       onConfirm: async () => {
         try {
           await updateDoc(doc(db, 'users', userId), { 
@@ -959,7 +956,7 @@ const App: React.FC = () => {
     setConfirmModal({
       isOpen: true,
       title: `Zerar Ranking Diário - ${targetComp.title}`,
-      message: `Isso calculará os vencedores do Dia e o Top 1 Insta para esta COMPETIÇÃO ESPECáFICA, adicionará os prêmios ao Saldo, registrará as transações e zerará as estatísticas diárias DESTA COMPETIÇÃO. Deseja prosseguir?`,
+      message: `Isso calculará os vencedores do Dia e o Top 1 Insta para esta COMPETIÇÃƒÆ’O ESPECáFICA, adicionará os prêmios ao Saldo, registrará as transações e zerará as estatísticas diárias DESTA COMPETIÇÃƒÆ’O. Deseja prosseguir?`,
       onConfirm: async () => {
         try {
           const cid = targetComp.id;
@@ -991,7 +988,7 @@ const App: React.FC = () => {
             if (total > 0) {
               balanceIncrements[u.uid] = {
                 amount: (balanceIncrements[u.uid]?.amount || 0) + total,
-                desc: `PRÃÅ MIO DIÁRIO ${targetComp.title.toUpperCase()} (${i + 1}º LUGAR)${bonusFromViews > 0 ? ' + Bá€NUS' : ''}`
+                desc: `PRÃƒÅ MIO DIáRIO ${targetComp.title.toUpperCase()} (${i + 1}º LUGAR)${bonusFromViews > 0 ? ' + Bá€NUS' : ''}`
               };
             }
           });
@@ -1007,7 +1004,7 @@ const App: React.FC = () => {
             } else {
               balanceIncrements[quantityWinner.uid] = {
                 amount: prize,
-                desc: `PRÃÅ MIO QUANTIDADE ${targetComp.title.toUpperCase()} + Bá€NUS`
+                desc: `PRÃƒÅ MIO QUANTIDADE ${targetComp.title.toUpperCase()} + Bá€NUS`
               };
             }
           }
@@ -1091,14 +1088,14 @@ const App: React.FC = () => {
             const msg = dailyViewWinners.length === 0 
                 ? 'Nenhum usuário com visualizações diárias registradas.' 
                 : 'Nenhum prêmio configurado nesta competição.';
-            alert(`âÅ¡Â Ã¯Â¸Â Reset realizado sem premiações:\n\n${msg}\n\nEstatísticas diárias foram zeradas mesmo assim.`);
+            alert(`Ã¢Å¡Â Ã¯Â¸Â Reset realizado sem premiações:\n\n${msg}\n\nEstatísticas diárias foram zeradas mesmo assim.`);
           } else {
             const auditMsg = Object.entries(balanceIncrements)
               .map(([uid, data]) => {
                 const u = approvedUsers.find(au => au.uid === uid);
                 return `- ${u?.displayName || uid}: R$ ${data.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
               }).join('\n');
-            alert(`âÅ“â€¦ Ranking resetado!\n\n${Object.keys(balanceIncrements).length} usuário(s) premiados:\n${auditMsg}`);
+            alert(`Ã¢Å“â€¦ Ranking resetado!\n\n${Object.keys(balanceIncrements).length} usuário(s) premiados:\n${auditMsg}`);
           }
         } catch (error) {
           console.error('Error resetting rankings:', error);
@@ -1111,8 +1108,8 @@ const App: React.FC = () => {
   const handleRankingResetOnly = async () => {
     setConfirmModal({
       isOpen: true,
-      title: 'âÅ¡Â Ã¯Â¸Â ZERAR GERAL (RESSINCRONIZAR)',
-      message: 'Este procedimento zerará as estatísticas de TODOS os usuários e posts, mas MANTERÁ o status atual dos links. Os vídeos processados continuarão na aba de RESSINCRONIZAÇÃO, permitindo que você inicie uma nova coleta do zero com total controle. Deseja prosseguir?',
+      title: 'Ã¢Å¡Â Ã¯Â¸Â ZERAR GERAL (RESSINCRONIZAR)',
+      message: 'Este procedimento zerará as estatísticas de TODOS os usuários e posts, mas MANTERá o status atual dos links. Os vídeos processados continuarão na aba de RESSINCRONIZAÇÃƒÆ’O, permitindo que você inicie uma nova coleta do zero com total controle. Deseja prosseguir?',
       onConfirm: async () => {
         try {
           let batch = writeBatch(db);
@@ -1127,7 +1124,7 @@ const App: React.FC = () => {
               comments: 0,
               shares: 0,
               saves: 0
-              // status: 'approved' REMOVIDO PARA MANTER NA ABA DE RESSINCRONIZAÇÃO
+              // status: 'approved' REMOVIDO PARA MANTER NA ABA DE RESSINCRONIZAÇÃƒÆ’O
             });
             count++;
             if (count >= 400) {
@@ -1185,7 +1182,7 @@ const App: React.FC = () => {
             await batch.commit();
           }
 
-          alert('✅ Rankings resetados com sucesso! Os vídeos foram liberados para nova sincronização.');
+          alert('á¢Ã…â€œÃ‚Â¨ Rankings resetados com sucesso! Os vídeos foram liberados para nova sincronização.');
         } catch (error) {
           console.error('Error during ranking reset:', error);
           alert('Erro ao resetar rankings. Veja o console.');
@@ -1203,8 +1200,8 @@ const App: React.FC = () => {
 
     setConfirmModal({
       isOpen: true,
-      title: '⚠️ LIMPAR RANKING (RESSINCRONIZAR)',
-      message: `Deseja ZERAR apenas os contadores (views, likes, etc) da competição "${targetComp.title}"? \n\nIsso limpará os rankings DIÁRIO e MENSAL desta competição específica para você poder ressincronizar do zero. Nada mais será alterado.`,
+      title: 'á¢Ã…Â¡Ã‚Â á¯Ã‚Â¸Ã‚Â LIMPAR RANKING (RESSINCRONIZAR)',
+      message: `Deseja ZERAR apenas os contadores (views, likes, etc) da competição "${targetComp.title}"? \n\nIsso limpará os rankings DIáRIO e MENSAL desta competição específica para você poder ressincronizar do zero. Nada mais será alterado.`,
       onConfirm: async () => {
         try {
           let batch = writeBatch(db);
@@ -1279,7 +1276,7 @@ const App: React.FC = () => {
     setConfirmModal({
       isOpen: true,
       title: 'Ã°Å¸Å¡Â¨ LIMPEZA GERAL DO SISTEMA - PERIGO',
-      message: 'VOCÃÅ  TEM CERTEZA? Esta operação apagará permanentemente TODOS OS LINKS, TRANSAÇÕES, REGISTROS E SALDOS. Esta ação não pode ser desfeita. Apenas os usuários e suas permissões serão mantidos.',
+      message: 'VOCÃƒÅ  TEM CERTEZA? Esta operação apagará permanentemente TODOS OS LINKS, TRANSAÇÕES, REGISTROS E SALDOS. Esta ação não pode ser desfeita. Apenas os usuários e suas permissões serão mantidos.',
       onConfirm: async () => {
         try {
           const batch = writeBatch(db);
@@ -1337,7 +1334,7 @@ const App: React.FC = () => {
           });
 
           await batch.commit();
-          alert('á°Ã…Â¸ââ‚¬ÂÃ‚Â¥á°Ã…Â¸ââ‚¬ÂÃ‚Â¥á°Ã…Â¸ââ‚¬ÂÃ‚Â¥ SISTEMA FOI RESETADO COM SUCESSO! Todos os dados foram limpos.');
+          alert('á°Ã…Â¸Ã¢â‚¬ÂÃ‚Â¥á°Ã…Â¸Ã¢â‚¬ÂÃ‚Â¥á°Ã…Â¸Ã¢â‚¬ÂÃ‚Â¥ SISTEMA FOI RESETADO COM SUCESSO! Todos os dados foram limpos.');
         } catch (error) {
           console.error('Error during cleanup:', error);
           alert('Erro durante a limpeza do sistema. Veja o console.');
@@ -1646,9 +1643,9 @@ const App: React.FC = () => {
     }
     try {
       await updateDoc(doc(db, 'config', 'settings'), { masterAdminKey: newKey.trim() });
-      alert('âÅ“â€¦ Palavra-chave mestra atualizada com sucesso!');
+      alert('Ã¢Å“â€¦ Palavra-chave mestra atualizada com sucesso!');
     } catch (error: any) {
-      alert(`âÂÅ’ Erro ao atualizar palavra-chave: ${error.message}`);
+      alert(`Ã¢ÂÅ’ Erro ao atualizar palavra-chave: ${error.message}`);
     }
   };
 
@@ -1723,7 +1720,7 @@ const App: React.FC = () => {
         <div className="w-24 h-24 gold-bg rounded-3xl flex items-center justify-center mb-8 shadow-2xl">
           <Clock className="w-12 h-12 text-black" />
         </div>
-        <h1 className="text-3xl font-black gold-gradient mb-4">AGUARDANDO APROVAÇÃO</h1>
+        <h1 className="text-3xl font-black gold-gradient mb-4">AGUARDANDO APROVAÇÃƒÆ’O</h1>
         <p className="text-zinc-400 max-w-sm mb-8">
           Sua conta foi criada com sucesso! Agora a diretoria precisa aprovar seu acesso ao Hub MetaRayx.
         </p>
@@ -1732,7 +1729,7 @@ const App: React.FC = () => {
             onClick={() => window.location.reload()}
             className="w-full px-8 py-4 gold-bg text-black font-black rounded-xl hover:scale-[1.02] transition-all shadow-xl"
           >
-            JÁ FUI APROVADO? RECARREGAR
+            Já FUI APROVADO? RECARREGAR
           </button>
           <button
             onClick={handleLogout}
@@ -1982,7 +1979,7 @@ const App: React.FC = () => {
                       comp={competitions.find(c => c.id === selectedActiveCompId)!}
                       user={user}
                       rankings={rankings}
-                      posts={posts}
+                      posts={posts.filter(p => isAdmin || p.userId === user.uid)}
                       registrations={registrations}
                       onBack={() => setSelectedActiveCompId(null)}
                       setView={setView}
@@ -2020,8 +2017,21 @@ const App: React.FC = () => {
                     competitions={competitions}
                     registrations={registrations}
                     announcements={announcements}
+                    sessionSyncedIds={sessionSyncedIds}
+                    setSessionSyncedIds={setSessionSyncedIds}
+                    syncing={syncing}
+                    setSyncing={setSyncing}
+                    syncProgress={syncProgress}
+                    setSyncProgress={setSyncProgress}
+                    syncTotal={syncTotal}
+                    setSyncTotal={setSyncTotal}
+                    syncingPostId={syncingPostId}
+                    setSyncingPostId={setSyncingPostId}
+                    syncingCompId={syncingCompId}
+                    setSyncingCompId={setSyncingCompId}
                     timerConfig={timerConfig}
                     handleUpdateTimer={handleUpdateTimer}
+                    handleDeleteAllDuplicates={handleDeleteAllDuplicates}
                     onSettingsUpdate={(s) => setSettings(s)}
                     editingCompId={editingCompId}
                     setEditingCompId={setEditingCompId}
@@ -2046,8 +2056,6 @@ const App: React.FC = () => {
                     handleUpdateUserRole={handleUpdateUserRole}
                     handleApproveRemoval={handleApproveRemoval}
                     handleRejectRemoval={handleRejectRemoval}
-                    handleRankingResetOnly={handleRankingResetOnly}
-                    handleResetRankingSimple={handleResetRankingSimple}
                     handleUpdateMasterKey={handleUpdateMasterKey}
                     showRoleChallenge={showRoleChallenge}
                     setShowRoleChallenge={setShowRoleChallenge}
@@ -2056,19 +2064,11 @@ const App: React.FC = () => {
                     pendingRoleAction={pendingRoleAction}
                     setPendingRoleAction={setPendingRoleAction}
                     handleConfirmRoleChallenge={handleConfirmRoleChallenge}
+                    handleRankingResetOnly={handleRankingResetOnly}
+                    handleResetRankingSimple={handleResetRankingSimple}
+                    handleApproveAsMonthly={handleApproveAsMonthly}
+                    handleMovePostToCompetition={handleMovePostToCompetition}
                     suggestions={suggestions}
-                    sessionSyncedIds={sessionSyncedIds}
-                    setSessionSyncedIds={setSessionSyncedIds}
-                    syncing={syncing}
-                    setSyncing={setSyncing}
-                    syncProgress={syncProgress}
-                    setSyncProgress={setSyncProgress}
-                    syncTotal={syncTotal}
-                    setSyncTotal={setSyncTotal}
-                    syncingPostId={syncingPostId}
-                    setSyncingPostId={setSyncingPostId}
-                    syncingCompId={syncingCompId}
-                    setSyncingCompId={setSyncingCompId}
                     compTitle={compTitle}
                     setCompTitle={setCompTitle}
                     compRankingMetric={compRankingMetric}
@@ -2091,8 +2091,12 @@ const App: React.FC = () => {
                     setCompReqHashtagsYouTube={setCompReqHashtagsYouTube}
                     compRequiredMentions={compRequiredMentions}
                     setCompRequiredMentions={setCompRequiredMentions}
-                    compDailyResetTime={compDailyResetTime}
-                    setCompDailyResetTime={setCompDailyResetTime}
+                    compRequiredMentionsTikTok={compReqTikTok}
+                    setCompRequiredMentionsTikTok={setCompReqTikTok}
+                    compRequiredMentionsYouTube={compReqYouTube}
+                    setCompRequiredMentionsYouTube={setCompReqYouTube}
+                    compRequiredMentionsInsta={compReqInsta}
+                    setCompRequiredMentionsInsta={setCompReqInsta}
                     compBonuses={compBonuses}
                     setCompBonuses={setCompBonuses}
                     compInstaBonus={compInstaBonus}
@@ -2125,6 +2129,8 @@ const App: React.FC = () => {
                     setIsCreatingComp={setIsCreatingComp}
                     editingUser={editingUser}
                     setEditingUser={setEditingUser}
+                    apifyKeySync={apifyKeySync}
+                    setApifyKeySync={setApifyKeySync}
                     editName={editName}
                     setEditName={setEditName}
                     editPass={editPass}
@@ -2138,22 +2144,11 @@ const App: React.FC = () => {
                     isCreatingAnn={isCreatingAnn}
                     setIsCreatingAnn={setIsCreatingAnn}
                     handleSystemCleanup={handleSystemCleanup}
-                    handleDeleteAllDuplicates={handleDeleteAllDuplicates}
                     rejectionReason={rejectionReason}
                     setRejectionReason={setRejectionReason}
                     setRejectionModal={setRejectionModal}
-                    apifyKeySync={apifyKeySync}
-                    setApifyKeySync={setApifyKeySync}
-                    handleApproveAsMonthly={handleApproveAsMonthly}
-                    handleMovePostToCompetition={handleMovePostToCompetition}
                     pendingMoves={pendingMoves}
                     setPendingMoves={setPendingMoves}
-                    compRequiredMentionsTikTok={compReqTikTok}
-                    setCompRequiredMentionsTikTok={setCompReqTikTok}
-                    compRequiredMentionsYouTube={compReqYouTube}
-                    setCompRequiredMentionsYouTube={setCompReqYouTube}
-                    compRequiredMentionsInsta={compReqInsta}
-                    setCompRequiredMentionsInsta={setCompReqInsta}
                     setShowConfirmModal={setShowConfirmModal}
                     setProtocolCount={setProtocolCount}
                     setConfirmCallback={setConfirmCallback}
@@ -2257,7 +2252,7 @@ const App: React.FC = () => {
                   className="w-full py-4 bg-red-500 text-white font-black rounded-2xl hover:bg-red-600 transition-all flex items-center justify-center gap-2"
                 >
                   <XCircle className="w-4 h-4" />
-                  CONFIRMAR REMOÇÃO
+                  CONFIRMAR REMOÇÃƒÆ’O
                 </button>
                 <button
                   onClick={() => setRejectionModal({ isOpen: false, postId: '', status: 'rejected' })}
@@ -2286,7 +2281,7 @@ const App: React.FC = () => {
                   <Trash2 className="w-8 h-8 text-red-500" />
                 </div>
                 <div className="space-y-1">
-                  <h3 className="text-3xl font-black uppercase tracking-tighter text-white">SOLICITAR REMOÇÃO</h3>
+                  <h3 className="text-3xl font-black uppercase tracking-tighter text-white">SOLICITAR REMOÇÃƒÆ’O</h3>
                   <p className="text-zinc-500 font-bold text-[10px] uppercase tracking-widest leading-relaxed text-left">
                     Você pode solicitar a remoção deste vídeo por motivos excepcionais. 
                     <br />O administrador irá analisar seu pedido.
@@ -2296,7 +2291,7 @@ const App: React.FC = () => {
 
               <div className="space-y-6">
                 <div className="space-y-3">
-                  <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 ml-1 text-left">MOTIVO DA REMOÇÃO</label>
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 ml-1 text-left">MOTIVO DA REMOÇÃƒÆ’O</label>
                   <textarea
                     value={removalModal.reason}
                     onChange={(e) => setRemovalModal(prev => ({ ...prev, reason: e.target.value }))}
@@ -2414,7 +2409,7 @@ const App: React.FC = () => {
                   onClick={() => deleteCompetition(compToDelete)}
                   className="w-full py-4 bg-red-500 text-white font-black rounded-2xl hover:bg-red-600 transition-all"
                 >
-                  SIM, EXCLUIR COMPETIÇÃO
+                  SIM, EXCLUIR COMPETIÇÃƒÆ’O
                 </button>
                 <button
                   onClick={() => setCompToDelete(null)}
@@ -2489,7 +2484,7 @@ const App: React.FC = () => {
                   onClick={() => setShowConfirmModal(false)}
                   className="w-full py-5 bg-zinc-900/50 text-zinc-500 font-black rounded-2xl hover:text-white hover:bg-zinc-800 transition-all uppercase text-[10px] tracking-widest"
                 >
-                  AINDA NÃO, VOU REVISAR
+                  AINDA NÃƒÆ’O, VOU REVISAR
                 </button>
               </div>
             </motion.div>
@@ -2922,11 +2917,11 @@ const PostSubmit = ({ user, competitions, registrations, setView, lockedCompetit
         <AlertCircle className="w-8 h-8 text-amber-500 shrink-0 transform group-hover:rotate-12 transition-transform duration-500" />
         <div className="space-y-3 relative z-10">
           <h3 className="text-lg font-black text-amber-500 uppercase tracking-widest leading-none">
-            AVISO CRÍTICO: REGRAS DE POSTAGEM!
+            AVISO CRáTICO: REGRAS DE POSTAGEM!
           </h3>
           <p className="text-[13px] font-bold text-zinc-100 leading-relaxed uppercase tracking-tight max-w-2xl">
-            COLOQUE AS <span className="text-amber-500 underline decoration-2 underline-offset-4">HASHTAGS E MARCAÇÕES</span> CORRETAMENTE PARA ESTA COMPETIÇÃO. 
-            VáDEOS SEM AS OBRIGATORIEDADES OU PRIVADOS SERÃO <span className="text-red-500">REJEITADOS</span>.
+            COLOQUE AS <span className="text-amber-500 underline decoration-2 underline-offset-4">HASHTAGS E MARCAÇÕES</span> CORRETAMENTE PARA ESTA COMPETIÇÃƒÆ’O. 
+            VáDEOS SEM AS OBRIGATORIEDADES OU PRIVADOS SERÃƒÆ’O <span className="text-red-500">REJEITADOS</span>.
           </p>
         </div>
       </div>
@@ -3096,7 +3091,7 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { r
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
 
-      {/* á¢ââ‚¬Âââ€šÂ¬á¢ââ‚¬Âââ€šÂ¬á¢ââ‚¬Âââ€šÂ¬ Informações da Competição (Timer + Meta) á¢ââ‚¬Âââ€šÂ¬á¢ââ‚¬Âââ€šÂ¬á¢ââ‚¬Âââ€šÂ¬ */}
+      {/* á¢Ã¢â‚¬ÂÃ¢â€šÂ¬á¢Ã¢â‚¬ÂÃ¢â€šÂ¬á¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Informações da Competição (Timer + Meta) á¢Ã¢â‚¬ÂÃ¢â€šÂ¬á¢Ã¢â‚¬ÂÃ¢â€šÂ¬á¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */}
       {selectedCompetition && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Timer */}
@@ -3164,7 +3159,7 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { r
         </div>
       )}
 
-      {/* á¢ââ‚¬Âââ€šÂ¬á¢ââ‚¬Âââ€šÂ¬á¢ââ‚¬Âââ€šÂ¬ Barra de Controle Unificada á¢ââ‚¬Âââ€šÂ¬á¢ââ‚¬Âââ€šÂ¬á¢ââ‚¬Âââ€šÂ¬ */}
+      {/* á¢Ã¢â‚¬ÂÃ¢â€šÂ¬á¢Ã¢â‚¬ÂÃ¢â€šÂ¬á¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Barra de Controle Unificada á¢Ã¢â‚¬ÂÃ¢â€šÂ¬á¢Ã¢â‚¬ÂÃ¢â€šÂ¬á¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */}
       <div className="glass border border-zinc-800/50 rounded-[24px] p-4 flex flex-col md:flex-row md:items-center gap-4">
         
         {/* Seletor de Competição */}
@@ -3260,7 +3255,7 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { r
         </div>
       </div>
 
-      {/* á¢ââ‚¬Âââ€šÂ¬á¢ââ‚¬Âââ€šÂ¬á¢ââ‚¬Âââ€šÂ¬ Tabela de Ranking á¢ââ‚¬Âââ€šÂ¬á¢ââ‚¬Âââ€šÂ¬á¢ââ‚¬Âââ€šÂ¬ */}
+      {/* á¢Ã¢â‚¬ÂÃ¢â€šÂ¬á¢Ã¢â‚¬ÂÃ¢â€šÂ¬á¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Tabela de Ranking á¢Ã¢â‚¬ÂÃ¢â€šÂ¬á¢Ã¢â‚¬ÂÃ¢â€šÂ¬á¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */}
       <div ref={rankingRef} className="space-y-3 relative bg-black/50 p-2 rounded-[2rem]">
         
         {/* Marca d'água oficial apenas para o print (visível sempre ou via CSS específico se preferir) */}
@@ -3271,7 +3266,7 @@ const Rankings = ({ rankings, competitions, lockedCompetitionId, userRole }: { r
             </div>
             <div>
               <h2 className="text-lg font-black gold-gradient uppercase leading-none">Ranking Oficial</h2>
-              <p className="text-[9px] font-black text-zinc-600 uppercase tracking-widest">{typeLabels[rankingType]} • {selectedCompetition?.title}</p>
+              <p className="text-[9px] font-black text-zinc-600 uppercase tracking-widest">{typeLabels[rankingType]} Ã¢â‚¬Â¢ {selectedCompetition?.title}</p>
             </div>
           </div>
         </div>
@@ -3520,7 +3515,7 @@ const UserListRow = ({
         onChange={(e) => onUpdateRole(user.uid, e.target.value as any)}
         className="bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1 text-[9px] font-black uppercase text-amber-500 outline-none focus:border-amber-500 cursor-pointer w-full max-w-[120px]"
       >
-        <option value="user">USUÁRIO</option>
+        <option value="user">USUáRIO</option>
         <option value="auditor">AUDITOR</option>
         <option value="administrativo">ADMINISTRATIVO</option>
         <option value="admin">DIRETORIA</option>
@@ -3743,7 +3738,7 @@ const FinancialRow = ({ user, onViewLinks, compId, isPaidView }: { user: User, o
           <span className="text-zinc-600 text-[8px] font-black uppercase tracking-widest whitespace-nowrap">CHAVE PIX</span>
         </div>
         <span className="font-black text-[11px] text-white truncate tracking-tight select-all selection:bg-amber-500 selection:text-black">
-          {user.pixKey || 'CHAVE NÃO INFORMADA'}
+          {user.pixKey || 'CHAVE NÃƒÆ’O INFORMADA'}
         </span>
       </div>
 
@@ -3869,7 +3864,7 @@ const DailyTransactionRow = ({ transaction, users }: { transaction: Transaction,
           <CreditCard className="w-3 h-3 text-zinc-700" />
           <span className="text-zinc-600 text-[8px] font-black uppercase tracking-widest whitespace-nowrap">CHAVE PIX</span>
         </div>
-        <span className="font-black text-[10px] text-zinc-400 truncate tracking-tight uppercase select-all">{user?.pixKey || 'NÃO INFORMADA'}</span>
+        <span className="font-black text-[10px] text-zinc-400 truncate tracking-tight uppercase select-all">{user?.pixKey || 'NÃƒÆ’O INFORMADA'}</span>
       </div>
       <div className="flex flex-col min-w-0">
         <div className="flex items-center gap-1.5 mb-1">
@@ -3882,7 +3877,7 @@ const DailyTransactionRow = ({ transaction, users }: { transaction: Transaction,
       </div>
       <div className="text-center">
         <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-500 text-[9px] font-black uppercase tracking-widest border border-emerald-500/20 shadow-lg shadow-emerald-500/5">
-          PAGAMENTO ÚNICO
+          PAGAMENTO ÃƒÅ¡NICO
         </span>
       </div>
       <div className="flex items-center justify-end">
@@ -4325,7 +4320,7 @@ const AdminPanel = ({
         minute: '2-digit'
       });
     } catch (e) {
-      return 'DATA INVÁLIDA';
+      return 'DATA INVáLIDA';
     }
   };
 
@@ -4575,7 +4570,7 @@ const AdminPanel = ({
         photoURL: `https://ui-avatars.com/api/?name=${encodeURIComponent(newUserName.trim())}&background=random`
       });
 
-      alert(`á¢Ã…â€œââ‚¬Â¦ Acesso criado com sucesso!\n\nNome: ${newUserName}\nCargo: ${newUserRole.toUpperCase()}\nEmail: ${newUserEmail}`);
+      alert(`á¢Ã…â€œÃ¢â‚¬Â¦ Acesso criado com sucesso!\n\nNome: ${newUserName}\nCargo: ${newUserRole.toUpperCase()}\nEmail: ${newUserEmail}`);
       setNewUserName('');
       setNewUserEmail('');
       setNewUserPass('');
@@ -4605,7 +4600,7 @@ const AdminPanel = ({
     if (!targetUser) return;
 
     // Trigger confirmation modal for admin too
-    setGlobalSelectedCompId(adminManualCompId); // Use the renamed prop to set App state
+    setAppSelectedCompId(adminManualCompId); // Use the renamed prop to set App state
     setProtocolCount(1);
     setConfirmCallback(() => () => performAdminSubmit(targetUser.uid, targetUser.displayName));
     setShowConfirmModal(true);
@@ -4648,7 +4643,7 @@ const AdminPanel = ({
       await setDoc(doc(db, 'posts', postId), newPost);
       await updateUserMetrics(targetUid);
 
-      alert('âÅ“â€¦ Link adicionado com sucesso ao perfil de ' + targetDisplayName);
+      alert('Ã¢Å“â€¦ Link adicionado com sucesso ao perfil de ' + targetDisplayName);
       setAdminManualUrl('');
     } catch (error: any) {
       alert('á¢Ã‚ÂÃ…â€™ Erro ao adicionar link: ' + error.message);
@@ -4677,7 +4672,7 @@ const AdminPanel = ({
         apifyKey: trimmedKey // Mantém a última como principal por compatibilidade
       });
       setApifyKey(''); // Limpa o input após adicionar
-      alert('á¢Ã…â€œââ‚¬Â¦ Chave API adicionada com sucesso!');
+      alert('á¢Ã…â€œÃ¢â‚¬Â¦ Chave API adicionada com sucesso!');
     } catch (error: any) {
       alert(`á¢ Ã…â€™ Erro ao salvar chave: ${error.message}`);
     }
@@ -4691,7 +4686,7 @@ const AdminPanel = ({
         apifyKeys: newKeys,
         apifyKey: newKeys[0] || '' // Atualiza a principal
       });
-      alert('á¢Ã…â€œââ‚¬Â¦ Chave removida.');
+      alert('á¢Ã…â€œÃ¢â‚¬Â¦ Chave removida.');
     } catch (error: any) {
       alert(`á¢ Ã…â€™ Erro ao remover chave: ${error.message}`);
     }
@@ -4712,7 +4707,7 @@ const AdminPanel = ({
       const newKeys = [...(settings.apifyKeysSync || []), trimmedKey];
       await updateDoc(doc(db, 'config', 'settings'), { apifyKeysSync: newKeys });
       setApifyKeySync('');
-      alert('á¢Ã…â€œââ‚¬Â¦ Chave de Sincronização Inicial adicionada!');
+      alert('á¢Ã…â€œÃ¢â‚¬Â¦ Chave de Sincronização Inicial adicionada!');
     } catch (error: any) {
       alert(`á¢ Ã…â€™ Erro ao salvar chave: ${error.message}`);
     }
@@ -4723,7 +4718,7 @@ const AdminPanel = ({
     try {
       const newKeys = (settings.apifyKeysSync || []).filter(k => k !== keyToDelete);
       await updateDoc(doc(db, 'config', 'settings'), { apifyKeysSync: newKeys });
-      alert('á¢Ã…â€œââ‚¬Â¦ Chave removida.');
+      alert('á¢Ã…â€œÃ¢â‚¬Â¦ Chave removida.');
     } catch (error: any) {
       alert(`á¢ Ã…â€™ Erro ao remover chave: ${error.message}`);
     }
@@ -4745,7 +4740,7 @@ const AdminPanel = ({
     setRepairing(true);
     try {
       const res = await repairAllUserMetrics(true);
-      alert(`á¢Ã…â€œââ‚¬Â¦ Reparo concluído!\n\nUsuários processados: ${res.total}\nSucesso: ${res.success}\nErros: ${res.error}`);
+      alert(`á¢Ã…â€œÃ¢â‚¬Â¦ Reparo concluído!\n\nUsuários processados: ${res.total}\nSucesso: ${res.success}\nErros: ${res.error}`);
     } catch (error: any) {
       alert(`Erro no reparo: ${error.message}`);
     } finally {
@@ -5157,7 +5152,7 @@ const AdminPanel = ({
 
   const handleBulkForceDaily = async () => {
     if (selectedResyncPostIds.length === 0) return;
-    if (!confirm(`Deseja forçar ${selectedResyncPostIds.length} posts para o DIÁRIO?`)) return;
+    if (!confirm(`Deseja forçar ${selectedResyncPostIds.length} posts para o DIáRIO?`)) return;
     
     setSyncing(true);
     try {
@@ -5312,7 +5307,7 @@ const AdminPanel = ({
     try {
       await updateDoc(doc(db, 'posts', post.id), { forceMonthly: !isAlreadyForced, forceDaily: false });
       await updateUserMetrics(post.userId);
-      alert(isAlreadyForced ? 'Revertido! Link voltou ao comportamento normal.' : 'á¢Ã…â€œââ‚¬Â¦ Link forçado para o Mensal! Stats diários removidos.');
+      alert(isAlreadyForced ? 'Revertido! Link voltou ao comportamento normal.' : 'á¢Ã…â€œÃ¢â‚¬Â¦ Link forçado para o Mensal! Stats diários removidos.');
     } catch(e: any) { alert('Erro: ' + e.message); }
   };
 
@@ -5324,12 +5319,12 @@ const AdminPanel = ({
     }
     const msg = isAlreadyForcedDaily
       ? 'Este link já está forçado para o Diário. Deseja REVERTER para o comportamento normal?'
-      : 'Forçar este link para o Ranking DIÁRIO? Ele entrará na contagem diária permanentemente.';
+      : 'Forçar este link para o Ranking DIáRIO? Ele entrará na contagem diária permanentemente.';
     if (!confirm(msg)) return;
     try {
       await updateDoc(doc(db, 'posts', post.id), { forceDaily: !isAlreadyForcedDaily, forceMonthly: false });
       await updateUserMetrics(post.userId);
-      alert(isAlreadyForcedDaily ? 'Revertido! Link voltou ao comportamento normal.' : 'á¢Ã…â€œââ‚¬Â¦ Link forçado para o Diário! Stats integrados imediatamente.');
+      alert(isAlreadyForcedDaily ? 'Revertido! Link voltou ao comportamento normal.' : 'á¢Ã…â€œÃ¢â‚¬Â¦ Link forçado para o Diário! Stats integrados imediatamente.');
     } catch(e: any) { alert('Erro: ' + e.message); }
   };
 
@@ -5417,7 +5412,7 @@ const AdminPanel = ({
       return {
         'PLATAFORMA': post.platform,
         'LINK DO VáDEO': post.url,
-        'NOME DO USUÁRIO': post.userName || '',
+        'NOME DO USUáRIO': post.userName || '',
         'CURTIDAS': post.likes || 0,
         'VIEWS': post.views || 0,
         'STATUS': statusLabel(post.status),
@@ -5430,7 +5425,7 @@ const AdminPanel = ({
     worksheet['!cols'] = [
       { wch: 12 }, // PLATAFORMA
       { wch: 55 }, // LINK DO VáDEO
-      { wch: 28 }, // NOME DO USUÁRIO
+      { wch: 28 }, // NOME DO USUáRIO
       { wch: 12 }, // CURTIDAS
       { wch: 12 }, // VIEWS
       { wch: 12 }, // STATUS
@@ -5453,7 +5448,7 @@ const AdminPanel = ({
 
         {userRole === 'admin' && (
           <div className="flex flex-wrap items-center gap-6 bg-zinc-900/50 p-6 rounded-[32px] border border-zinc-800/50">
-            {/* CONFIGURAÇÃO DA CHAVE API GERAL */}
+            {/* CONFIGURAÇÃƒÆ’O DA CHAVE API GERAL */}
             <div className="flex flex-col gap-4 flex-1 min-w-[300px]">
               <div className="flex flex-col gap-2">
                 <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-2">
@@ -5500,7 +5495,7 @@ const AdminPanel = ({
               )}
             </div>
 
-            {/* CONFIGURAÇÃO DA CHAVE API EXCLUSIVA PARA SINCRONISMO */}
+            {/* CONFIGURAÇÃƒÆ’O DA CHAVE API EXCLUSIVA PARA SINCRONISMO */}
             <div className="flex flex-col gap-4 flex-1 min-w-[300px] border-l border-zinc-800/50 pl-6">
               <div className="flex flex-col gap-2">
                 <label className="text-[10px] font-black text-amber-500 uppercase tracking-widest ml-1 flex items-center gap-2">
@@ -5547,7 +5542,7 @@ const AdminPanel = ({
               )}
             </div>
 
-            {/* RESET DIÁRIO */}
+            {/* RESET DIáRIO */}
             <div className="flex flex-col gap-2 min-w-[240px]">
               <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Zerar Ranking Diário</label>
               <div className="flex items-center gap-2">
@@ -5629,22 +5624,22 @@ const AdminPanel = ({
             <TabBadge count={posts.filter(p => p.status === 'pending').length} />
           </button>
         )}
-        {/* SINCRONIZAÇÃO - visível apenas para admin */}
+        {/* SINCRONIZAÇÃƒÆ’O - visível apenas para admin */}
         {userRole === 'admin' && (
           <button
             onClick={() => { setTab('SINCRONIZACAO'); setAuditUserId(null); setSelectedCompId(null); setSyncDetailCompId(null); }}
             className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${(tab as any) === 'SINCRONIZACAO' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
           >
-            SINCRONIZAÇÃO ({posts.filter(p => p.status === 'approved').length})
+            SINCRONIZAÇÃƒÆ’O ({posts.filter(p => p.status === 'approved').length})
           </button>
         )}
-        {/* RESSINCRONIZAÇÃO - visível apenas para admin */}
+        {/* RESSINCRONIZAÇÃƒÆ’O - visível apenas para admin */}
         {userRole === 'admin' && (
           <button
             onClick={() => { setTab('RESSINCRONIZACAO'); setAuditUserId(null); setSelectedCompId(null); setSyncDetailCompId(null); }}
             className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${(tab as any) === 'RESSINCRONIZACAO' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}
           >
-            RESSINCRONIZAÇÃO ({posts.filter(p => p.status === 'synced' || p.status === 'banned').length})
+            RESSINCRONIZAÇÃƒÆ’O ({posts.filter(p => p.status === 'synced' || p.status === 'banned').length})
           </button>
         )}
         {/* USERS - visível apenas para admin */}
@@ -5684,7 +5679,7 @@ const AdminPanel = ({
             COMPETIÇÕES ({competitions.length})
           </button>
         )}
-        {/* SOLICITAÇÕES DE REMOÇÃO - visível apenas para admin */}
+        {/* SOLICITAÇÕES DE REMOÇÃƒÆ’O - visível apenas para admin */}
         {userRole === 'admin' && (
           <button
             onClick={() => { setTab('REMOVAL_REQUESTS'); setAuditUserId(null); setSelectedCompId(null); setSyncDetailCompId(null); }}
@@ -5883,7 +5878,7 @@ const AdminPanel = ({
                         <span className="text-xs font-black text-white">{approvedUsers.length}</span>
                       </div>
                       <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex flex-col items-center min-w-[120px]">
-                        <span className="text-[8px] font-black text-amber-500/70 uppercase tracking-widest mb-1">RENOVAÇÃO</span>
+                        <span className="text-[8px] font-black text-amber-500/70 uppercase tracking-widest mb-1">RENOVAÇÃƒÆ’O</span>
                         <span className="text-xs font-black text-amber-500">{collectiveProgress >= selectedMetaComp.goalTarget ? 'LIBERADA' : 'BLOQUEADA'}</span>
                       </div>
                     </div>
@@ -5949,7 +5944,7 @@ const AdminPanel = ({
                     const tk = activeUsers.reduce((acc: number, u: any) => acc + (u.tiktok?.length || 0), 0);
                     const ig = activeUsers.reduce((acc: number, u: any) => acc + (u.instagram?.length || 0) + ((u as any).userInstagram?.length || 0), 0);
                     const yt = activeUsers.reduce((acc: number, u: any) => acc + (u.youtube?.length || 0), 0);
-                    return `Tiktok: ${tk} • Insta: ${ig} • YT: ${yt}`;
+                    return `Tiktok: ${tk} Ã¢â‚¬Â¢ Insta: ${ig} Ã¢â‚¬Â¢ YT: ${yt}`;
                   })(), 
                   icon: Share2, 
                   color: 'text-pink-500', 
@@ -5977,7 +5972,7 @@ const AdminPanel = ({
                       </div>
                       {stat.trend && (
                         <div className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest flex items-center gap-1 ${stat.trend === 'up' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
-                          {stat.trend === 'up' ? '↑ Crescendo' : '→ Estável'}
+                          {stat.trend === 'up' ? 'á¢Ã¢â‚¬Â Ã¢â‚¬Ëœ Crescendo' : 'á¢Ã¢â‚¬Â Ã¢â‚¬Å“ Estável'}
                         </div>
                       )}
                     </div>
@@ -6002,7 +5997,7 @@ const AdminPanel = ({
                           onChange={(e) => setSelectedNetworkUserId(e.target.value)}
                           className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-2 py-1.5 text-[8px] font-black text-zinc-300 uppercase tracking-widest focus:outline-none focus:border-pink-500/50 transition-all cursor-pointer"
                         >
-                          <option value="all" className="bg-zinc-900 text-zinc-300 font-black">TODOS OS USUÁRIOS</option>
+                          <option value="all" className="bg-zinc-900 text-zinc-300 font-black">TODOS OS USUáRIOS</option>
                           {[...approvedUsers, ...pendingUsers]
                             .sort((a, b) => (a.displayName || a.email || '').localeCompare(b.displayName || b.email || ''))
                             .map(u => (
@@ -6193,15 +6188,15 @@ const AdminPanel = ({
                   onChange={e => setNewUserRole(e.target.value as any)}
                   className="w-full bg-black border border-zinc-800 px-4 py-3 rounded-xl focus:border-amber-500 outline-none transition-all font-bold text-sm text-zinc-300"
                 >
-                  <option value="user">Usuário Comum (Criador de Conteúdo)</option>
-                  <option value="auditor">Gestor — Controle de Campanhas</option>
-                  <option value="administrativo">Administrativo — Gestão + Financeiro + Acesso como usuário</option>
-                  <option value="admin">Administrador (Diretoria) — Acesso total</option>
+                  <option value="user">á°Ã…Â¸Ã¢â‚¬ËœÃ‚Â¤ Usuário Comum (Criador de Conteúdo)</option>
+                  <option value="auditor">á°Ã…Â¸Ã¢â‚¬Â  Gestor á¢Ã¢â€šÂ¬Ã¢â‚¬Â Controle de Campanhas</option>
+                  <option value="administrativo">á°Ã…Â¸ Ã‚Â¢ Administrativo á¢Ã¢â€šÂ¬Ã¢â‚¬Â Gestão + Financeiro + Acesso como usuário</option>
+                  <option value="admin">á°Ã…Â¸Ã¢â‚¬ËœÃ¢â‚¬Ëœ Administrador (Diretoria) á¢Ã¢â€šÂ¬Ã¢â‚¬Â Acesso total</option>
                 </select>
               </div>
 
               <div>
-                <label className="text-xs font-black text-zinc-500 uppercase ml-2 mb-1 block">NOME DO USUÁRIO</label>
+                <label className="text-xs font-black text-zinc-500 uppercase ml-2 mb-1 block">NOME DO USUáRIO</label>
                 <input
                   type="text" value={newUserName} onChange={e => setNewUserName(e.target.value)}
                   placeholder="Nome do integrante"
@@ -6233,7 +6228,7 @@ const AdminPanel = ({
                 className="w-full mt-6 flex justify-center items-center gap-2 gold-bg text-black font-black uppercase tracking-widest py-4 rounded-xl hover:scale-[1.02] transition-all disabled:opacity-50"
               >
                 {creatingUser ? <RefreshCw className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5" />}
-                {creatingUser ? 'CRIANDO...' : 'REGISTRAR ACESSO NO BANCO DE DADOS'}
+                {creatingUser ? 'CRIANDO...' : 'REGISTRAR ACESSO NO BANDO DE DADOS'}
               </button>
             </div>
           </div>
@@ -6256,7 +6251,7 @@ const AdminPanel = ({
                     className="bg-black border border-zinc-800 rounded-xl py-2 px-4 text-[10px] font-black text-amber-500 outline-none focus:border-amber-500 transition-all min-w-[220px] cursor-pointer hover:bg-zinc-900"
                   >
                     {competitions.map(c => (
-                      <option key={c.id} value={c.id}>{c.title} {c.isActive ? '• ATIVA' : ''}</option>
+                      <option key={c.id} value={c.id}>{c.title} {c.isActive ? 'Ã¢â‚¬Â¢ ATIVA' : ''}</option>
                     ))}
                   </select>
                 </div>
@@ -6352,7 +6347,7 @@ const AdminPanel = ({
                   </div>
 
                   <div className="min-h-[400px]">
-                    <ListHeader columns={['REDES', 'LINK DO VÍDEO', 'STATUS', 'MÉTRICAS', 'CONTROLE']} gridClass="grid-cols-[80px_1fr_120px_150px_200px]" />
+                    <ListHeader columns={['REDES', 'LINK DO VáDEO', 'STATUS', 'MÉTRICAS', 'CONTROLE']} gridClass="grid-cols-[80px_1fr_120px_150px_200px]" />
                     <div className="max-h-[600px] overflow-y-auto custom-scrollbar">
                       {posts.filter(p => p.userId === auditUserId).map(post => (
                         <div key={post.id} className="grid grid-cols-[80px_1fr_120px_150px_200px] gap-4 items-center py-4 px-8 hover:bg-white/[0.02] transition-all border-b border-zinc-900/50 last:border-0">
@@ -6467,7 +6462,7 @@ const AdminPanel = ({
                               <Zap className="w-6 h-6" />
                             </div>
                             <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-1 flex items-center">
-                              PROJEÇÃO DE SAáDA (PENDENTE) <InfoTooltip text="Total acumulado nos saldos dos usuários aguardando pagamento ou saque." />
+                              PROJEÇÃƒÆ’O DE SAáDA (PENDENTE) <InfoTooltip text="Total acumulado nos saldos dos usuários aguardando pagamento ou saque." />
                             </p>
                             <h4 className="text-3xl font-black text-amber-500 tracking-tight">R$ {totalPendingGlobal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h4>
                           </div>
@@ -6508,7 +6503,7 @@ const AdminPanel = ({
                                     </div>
                                     <div>
                                       <p className="text-xs font-black text-zinc-200 uppercase">{u.displayName}</p>
-                                      <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">{u.totalViewsCount?.toLocaleString()} views totais • {u.postsCount || 0} posts</p>
+                                      <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">{u.totalViewsCount?.toLocaleString()} views totais Ã¢â‚¬Â¢ {u.postsCount || 0} posts</p>
                                     </div>
                                   </div>
                                   <div className="text-right">
@@ -6542,7 +6537,7 @@ const AdminPanel = ({
                                       <div>
                                         <p className="text-xs font-black text-zinc-200 uppercase">{u.displayName}</p>
                                         <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">
-                                          {u.email.split('@')[0]} • {posts.filter(p => p.userId === u.uid && (p.status === 'approved' || p.status === 'synced')).length} posts
+                                          {u.email.split('@')[0]} Ã¢â‚¬Â¢ {posts.filter(p => p.userId === u.uid && (p.status === 'approved' || p.status === 'synced')).length} posts
                                         </p>
                                       </div>
                                     </div>
@@ -6590,7 +6585,7 @@ const AdminPanel = ({
                                     <div className="text-right">
                                       <p className="text-xs font-black text-white">R$ {compTotal.toLocaleString('pt-BR')}</p>
                                       <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest flex items-center justify-end">
-                                        {compViews.toLocaleString()} VIEWS • CPM R$ {compCpm.toFixed(2)}
+                                        {compViews.toLocaleString()} VIEWS Ã¢â‚¬Â¢ CPM R$ {compCpm.toFixed(2)}
                                         <InfoTooltip text="CPM (Custo por Mil): Indica quanto a competição custou para cada 1.000 visualizações geradas." />
                                       </p>
                                       <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest mt-1">{Math.round(percent)}% Pago</p>
@@ -6640,7 +6635,7 @@ const AdminPanel = ({
                               onClick={() => setShowManualUserSelect(!showManualUserSelect)}
                               className="w-full md:w-auto px-4 py-2.5 bg-zinc-900 text-zinc-300 font-black rounded-xl text-[10px] uppercase tracking-widest border border-zinc-800 hover:border-amber-500/50 hover:text-amber-500 transition-all flex items-center justify-center gap-2 shadow-lg"
                             >
-                              <Plus className="w-3.5 h-3.5" /> INSERIR USUÁRIO MANUAL
+                              <Plus className="w-3.5 h-3.5" /> INSERIR USUáRIO MANUAL
                             </button>
 
                             {showManualUserSelect && (
@@ -6903,7 +6898,7 @@ const AdminPanel = ({
                         onChange={(e) => setAdminManualCompId(e.target.value)}
                         className="bg-black border border-zinc-800 rounded-xl px-4 py-3 text-xs font-bold text-white outline-none focus:border-amber-500 transition-all"
                       >
-                        <option value="">SELECIONAR COMPETIÇÃO</option>
+                        <option value="">SELECIONAR COMPETIÇÃƒÆ’O</option>
                         {competitions.filter(c => c.isActive).map(c => (
                           <option key={c.id} value={c.id}>{c.title}</option>
                         ))}
@@ -6992,9 +6987,9 @@ const AdminPanel = ({
                                   <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
                                   <span className={`text-xl font-black mt-0.5 ${isSelected ? 'text-amber-500' : 'text-white'}`}>{dayPosts.length}</span>
                                   <div className="flex items-center gap-2 mt-1">
-                                    {approved > 0 && <span className="text-[8px] font-black text-emerald-500">{approved}✓</span>}
+                                    {approved > 0 && <span className="text-[8px] font-black text-emerald-500">{approved}á¢Ã…â€œÃ¢â‚¬Å“</span>}
                                     {pending > 0 && <span className="text-[8px] font-black text-amber-400">{pending}á¢Ã‚ÂÃ‚Â³</span>}
-                                    {rejected > 0 && <span className="text-[8px] font-black text-red-500">{rejected}✕</span>}
+                                    {rejected > 0 && <span className="text-[8px] font-black text-red-500">{rejected}á¢Ã…â€œÃ¢â‚¬â€</span>}
                                   </div>
                                 </button>
                               );
@@ -7097,7 +7092,7 @@ const AdminPanel = ({
               </div>
             ) : (
               <div className="space-y-1">
-                <ListHeader columns={['USUÁRIO', 'EMAIL', 'CARGO', 'AÇÕES']} gridClass="grid-cols-[1.5fr_1.2fr_1fr_220px]" />
+                <ListHeader columns={['USUáRIO', 'EMAIL', 'CARGO', 'AÇÕES']} gridClass="grid-cols-[1.5fr_1.2fr_1fr_220px]" />
                 {approvedUsers.map(u => (
                   <UserListRow
                     key={u.uid}
@@ -7138,10 +7133,10 @@ const AdminPanel = ({
                         onChange={(e) => setEditRole(e.target.value as any)}
                         className="w-full bg-black border border-zinc-800 rounded-2xl py-4 px-6 text-sm font-bold focus:border-amber-500 outline-none transition-all text-zinc-300 cursor-pointer"
                       >
-                        <option value="user">USUÁRIO COMUM (CRIADOR DE CONTEÚDO)</option>
-                        <option value="auditor">AUDITOR á¢ââ€šÂ¬ââ‚¬Â REVISA VáDEOS POSTADOS</option>
-                        <option value="administrativo">ADMINISTRATIVO á¢ââ€šÂ¬ââ‚¬Â FINANCEIRO + COMPETIÇÕES</option>
-                        <option value="admin">ADMINISTRADOR (DIRETORIA) á¢ââ€šÂ¬ââ‚¬Â ACESSO TOTAL</option>
+                        <option value="user">USUáRIO COMUM (CRIADOR DE CONTEÃƒÅ¡DO)</option>
+                        <option value="auditor">AUDITOR á¢Ã¢â€šÂ¬Ã¢â‚¬Â REVISA VáDEOS POSTADOS</option>
+                        <option value="administrativo">ADMINISTRATIVO á¢Ã¢â€šÂ¬Ã¢â‚¬Â FINANCEIRO + COMPETIÇÕES</option>
+                        <option value="admin">ADMINISTRADOR (DIRETORIA) á¢Ã¢â€šÂ¬Ã¢â‚¬Â ACESSO TOTAL</option>
                       </select>
                       <p className="text-[9px] text-zinc-600 font-bold ml-1">á¢Ã…Â¡Ã‚Â á¯Ã‚Â¸Ã‚Â Alterar a função afeta imediatamente o acesso do usuário</p>
                     </div>
@@ -7178,7 +7173,7 @@ const AdminPanel = ({
           <div className="space-y-6">
             <h3 className="text-xl font-black uppercase tracking-tight">Usuários Arquivados</h3>
             <div className="space-y-1">
-              <ListHeader columns={['USUÁRIO', 'EMAIL', 'AÇÕES']} gridClass="grid-cols-[1.5fr_1.5fr_200px]" />
+              <ListHeader columns={['USUáRIO', 'EMAIL', 'AÇÕES']} gridClass="grid-cols-[1.5fr_1.5fr_200px]" />
               {archivedUsers.map(u => (
                 <ArchivedUserRow
                   key={u.uid}
@@ -7199,7 +7194,7 @@ const AdminPanel = ({
           <div className="space-y-6">
             <h3 className="text-xl font-black uppercase tracking-tight">Solicitações de Acesso</h3>
             <div className="space-y-1">
-              <ListHeader columns={['USUÁRIO', 'EMAIL', 'AÇÕES']} gridClass="grid-cols-[1.5fr_1.5fr_200px]" />
+              <ListHeader columns={['USUáRIO', 'EMAIL', 'AÇÕES']} gridClass="grid-cols-[1.5fr_1.5fr_200px]" />
               {pendingUsers.map(u => (
                 <PendingUserRow
                   key={u.uid}
@@ -7228,7 +7223,7 @@ const AdminPanel = ({
                   onClick={() => setIsCreatingComp(!isCreatingComp)}
                   className="px-6 py-2 gold-bg text-black font-black rounded-xl text-xs hover:scale-105 transition-all"
                 >
-                  {isCreatingComp ? 'CANCELAR' : 'NOVA COMPETIÇÃO'}
+                  {isCreatingComp ? 'CANCELAR' : 'NOVA COMPETIÇÃƒÆ’O'}
                 </button>
               )}
               {selectedCompId && (
@@ -7309,7 +7304,7 @@ const AdminPanel = ({
                       </div>
                     </div>
 
-                    {/* META DA COMPETIÇÃO */}
+                    {/* META DA COMPETIÇÃƒÆ’O */}
                     <div className="p-8 rounded-[40px] bg-zinc-950 border border-zinc-900 relative overflow-hidden group lg:col-span-2">
                        <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500/5 blur-[80px]" />
                        <div className="relative z-10 h-full flex flex-col justify-between">
@@ -7447,7 +7442,7 @@ const AdminPanel = ({
                           )}
                           {comp.prizesDaily && comp.prizesDaily.length > 0 && (
                             <div className="p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800/50">
-                              <p className="text-[9px] font-black text-blue-400 uppercase mb-2">PREMIAÇÃO DIÁRIA (VIEWS DO DIA)</p>
+                              <p className="text-[9px] font-black text-blue-400 uppercase mb-2">PREMIAÇÃƒÆ’O DIáRIA (VIEWS DO DIA)</p>
                               <div className="flex flex-wrap gap-2">
                                 {comp.prizesDaily.map((p, idx) => (
                                   <span key={idx} className="text-[10px] font-bold bg-black px-2 py-1 rounded-lg border border-zinc-800">
@@ -7756,7 +7751,7 @@ const AdminPanel = ({
                           type="text"
                           value={compBonuses}
                           onChange={(e) => setCompBonuses(e.target.value)}
-                          placeholder="Ex: +10% para vídeos com áudio oficial"
+                          placeholder="Ex: +10% para vídeos com Ã¡udio oficial"
                           className="w-full bg-black border border-zinc-800 rounded-2xl py-4 px-6 text-sm font-bold focus:border-amber-500 outline-none transition-all"
                         />
                       </div>
@@ -8324,7 +8319,7 @@ const AdminPanel = ({
                       className="bg-black border border-zinc-800 rounded-xl px-4 py-2 text-[10px] font-black uppercase text-amber-500 outline-none focus:border-amber-500 transition-all"
                     >
                       <option value="pendente">PENDENTE</option>
-                      <option value="analise">EM ANÁLISE</option>
+                      <option value="analise">EM ANáLISE</option>
                       <option value="desenvolvimento">TRABALHANDO</option>
                       <option value="concluido">CONCLUáDO</option>
                     </select>
@@ -8476,7 +8471,7 @@ const AdminPanel = ({
                   onChange={(e) => setSelectedCompId(e.target.value)}
                   className="bg-black border border-zinc-800 rounded-2xl px-6 py-4 text-xs font-black text-amber-500 outline-none focus:border-amber-500 transition-all uppercase w-full sm:w-auto"
                 >
-                  <option value="">SELECIONE A COMPETIÇÃO...</option>
+                  <option value="">SELECIONE A COMPETIÇÃƒÆ’O...</option>
                   {competitions.map(c => (
                     <option key={c.id} value={c.id}>{c.title}</option>
                   ))}
@@ -8496,7 +8491,7 @@ const AdminPanel = ({
                 <div className="space-y-4">
                   <div className="overflow-x-auto">
                     <div className="min-w-[800px]">
-                      <ListHeader columns={['PLATAFORMA', 'LINK DO VáDEO', 'USUÁRIO CRIADOR', 'CURTIDAS', 'VIEWS', 'STATUS DO LINK']} gridClass="grid-cols-[100px_minmax(0,1.5fr)_minmax(0,1fr)_100px_100px_120px]" />
+                      <ListHeader columns={['PLATAFORMA', 'LINK DO VáDEO', 'USUáRIO CRIADOR', 'CURTIDAS', 'VIEWS', 'STATUS DO LINK']} gridClass="grid-cols-[100px_minmax(0,1.5fr)_minmax(0,1fr)_100px_100px_120px]" />
                       <div className="mt-4 space-y-2 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
                         {posts.filter(p => p.competitionId === selectedCompId).length === 0 ? (
                           <div className="py-20 text-center border border-dashed border-zinc-800 rounded-2xl">
@@ -8576,7 +8571,7 @@ const AdminPanel = ({
                         onClick={() => handleApproveRemoval(post.id)}
                         className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-red-600 text-white font-black text-[10px] uppercase tracking-widest hover:bg-white hover:text-red-600 transition-all shadow-lg"
                       >
-                        APROVAR REMOÇÃO
+                        APROVAR REMOÇÃƒÆ’O
                       </button>
                     </div>
                   </div>
@@ -8604,7 +8599,7 @@ const AdminPanel = ({
 
             <div className="bg-black border border-zinc-800 rounded-[32px] overflow-hidden p-6 md:p-8">
               <div className="min-w-[800px]">
-                <ListHeader columns={['PLATAFORMA', 'LINK / MOTIVO', 'USUÁRIO', 'CURTIDAS', 'VIEWS', 'AÇÕES']} gridClass="grid-cols-[100px_minmax(0,1.5fr)_minmax(0,1fr)_100px_100px_150px]" />
+                <ListHeader columns={['PLATAFORMA', 'LINK / MOTIVO', 'USUáRIO', 'CURTIDAS', 'VIEWS', 'AÇÕES']} gridClass="grid-cols-[100px_minmax(0,1.5fr)_minmax(0,1fr)_100px_100px_150px]" />
                 <div className="mt-4 space-y-3 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
                   {posts.filter(p => p.status === 'rejected' || p.status === 'banned' || p.status === 'deleted').length === 0 ? (
                     <div className="py-20 text-center border border-dashed border-zinc-800 rounded-2xl">

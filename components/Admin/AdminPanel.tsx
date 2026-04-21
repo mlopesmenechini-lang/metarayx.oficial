@@ -283,7 +283,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         <div className="space-y-4">
           <div className="flex items-center gap-4">
             <div className="w-4 h-4 rounded-full bg-amber-500 animate-pulse shadow-[0_0_15px_rgba(245,158,11,0.5)]" />
-            <h2 className="text-4xl font-black uppercase tracking-tighter gold-gradient">Painel de Controle Elite</h2>
+            <h2 className="text-xl font-black uppercase tracking-tight text-white flex items-center gap-3">
+            <Shield className="w-5 h-5 text-amber-500" /> PAINEL DE ADMINISTRAÇÃO
+          </h2>
           </div>
           <p className="text-zinc-500 font-bold text-xs uppercase tracking-[0.3em] ml-1">Gerenciamento Centralizado de Operações MetaRayx</p>
         </div>

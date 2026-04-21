@@ -40,8 +40,9 @@ export const DiagnosticoTab: React.FC<DiagnosticoTabProps> = ({
   handleDeleteAllDuplicates,
   userRole
 }) => {
-  const [viewMode, setViewMode] = useState<'USER_SEARCH' | 'CONTINGENCY'>('USER_SEARCH');
+  const [viewMode, setViewMode] = useState<'USER_SEARCH' | 'CONTINGENCY' | 'LINK_SEARCH'>('USER_SEARCH');
   const [searchTerm, setSearchTerm] = useState('');
+  const [linkSearchTerm, setLinkSearchTerm] = useState('');
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [isRepairing, setIsRepairing] = useState(false);
   const [isSyncingSocials, setIsSyncingSocials] = useState(false);
@@ -189,6 +190,15 @@ export const DiagnosticoTab: React.FC<DiagnosticoTabProps> = ({
         >
           BUSCA DE USUÁRIO
         </button>
+        <button
+          onClick={() => setViewMode('LINK_SEARCH')}
+          className={`px-6 py-2 rounded-xl font-bold text-xs transition-all flex items-center gap-2 ${
+            viewMode === 'LINK_SEARCH' ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/20' : 'text-zinc-500 hover:text-indigo-400'
+          }`}
+        >
+          <Search className="w-4 h-4" />
+          BUSCA DE LINK
+        </button>
         {userRole !== 'auditor' && (
           <button
             onClick={() => setViewMode('CONTINGENCY')}
@@ -280,6 +290,121 @@ export const DiagnosticoTab: React.FC<DiagnosticoTabProps> = ({
                 <ShieldAlert className="w-12 h-12 text-emerald-500/50 mx-auto mb-4" />
                 <p className="text-emerald-500 font-black uppercase tracking-widest text-sm">Banco de dados íntegro</p>
                 <p className="text-zinc-500 text-xs mt-2">Nenhuma duplicidade detectada no sistema no momento.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : viewMode === 'LINK_SEARCH' ? (
+        <div className="space-y-6">
+          <div className="bg-indigo-500/5 p-8 rounded-[40px] border border-indigo-500/20 space-y-6">
+            <div className="space-y-2">
+              <h3 className="text-2xl font-black uppercase text-indigo-500 flex items-center gap-3">
+                <Search className="w-8 h-8" /> Investigação de Link
+              </h3>
+              <p className="text-zinc-500 font-bold text-xs uppercase tracking-widest">Cole um link abaixo para descobrir quem o enviou e qual o status atual no sistema.</p>
+            </div>
+
+            <div className="relative">
+              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500">
+                <Link className="w-5 h-5" />
+              </div>
+              <input
+                type="text"
+                placeholder="Cole a URL do vídeo (TikTok, YouTube ou Instagram)..."
+                value={linkSearchTerm}
+                onChange={(e) => setLinkSearchTerm(e.target.value)}
+                className="w-full bg-black border border-zinc-800 rounded-2xl py-4 pl-12 pr-4 text-sm font-bold text-white outline-none focus:border-indigo-500 transition-all shadow-xl"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {linkSearchTerm.trim().length > 3 ? (
+              posts.filter(p => p.url?.toLowerCase().includes(linkSearchTerm.toLowerCase())).length > 0 ? (
+                posts.filter(p => p.url?.toLowerCase().includes(linkSearchTerm.toLowerCase())).map(post => (
+                  <div key={post.id} className="p-8 rounded-[2.5rem] glass border border-zinc-800/50 space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                      <div className="flex items-center gap-4">
+                        <div className={`p-4 rounded-2xl ${
+                          post.platform === 'tiktok' ? 'bg-amber-500/10 text-amber-500' :
+                          post.platform === 'youtube' ? 'bg-red-500/10 text-red-500' : 'bg-pink-500/10 text-pink-500'
+                        }`}>
+                          {post.platform === 'tiktok' ? <Zap className="w-6 h-6" /> :
+                           post.platform === 'youtube' ? <TrendingUp className="w-6 h-6" /> : <Camera className="w-6 h-6" />}
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Enviado por</p>
+                          <h4 className="text-xl font-black text-white">{post.userName || 'Usuário Desconhecido'}</h4>
+                          <p className="text-[10px] font-bold text-zinc-600">{post.userId}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-3">
+                        <div className="px-4 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-center">
+                          <p className="text-[8px] font-black text-zinc-600 uppercase">Status</p>
+                          <p className={`text-[10px] font-black uppercase tracking-widest ${
+                            post.status === 'approved' || post.status === 'synced' ? 'text-emerald-500' :
+                            post.status === 'rejected' || post.status === 'deleted' ? 'text-red-500' : 'text-amber-500'
+                          }`}>
+                            {post.status === 'approved' || post.status === 'synced' ? 'Aprovado' : 
+                             post.status === 'rejected' ? 'Recusado' : 
+                             post.status === 'deleted' ? 'Removido/Lixo' : 'Em Triagem'}
+                          </p>
+                        </div>
+                        <div className="px-4 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-center">
+                          <p className="text-[8px] font-black text-zinc-600 uppercase">Métrica</p>
+                          <p className="text-[10px] font-black text-white uppercase">{(post.views || 0).toLocaleString()} VIEWS</p>
+                        </div>
+                        <div className="px-4 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-center">
+                          <p className="text-[8px] font-black text-zinc-600 uppercase">Data Envio</p>
+                          <p className="text-[10px] font-black text-zinc-400 uppercase">{new Date(post.timestamp).toLocaleDateString()} {new Date(post.timestamp).toLocaleTimeString()}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-black/40 rounded-2xl border border-zinc-800/50 flex flex-col sm:flex-row items-center justify-between gap-4">
+                      <div className="flex items-center gap-3 min-w-0 w-full">
+                        <Link className="w-4 h-4 text-zinc-600 shrink-0" />
+                        <span className="text-xs font-bold text-zinc-400 truncate">{post.url}</span>
+                      </div>
+                      <a 
+                        href={post.url} 
+                        target="_blank" 
+                        rel="noreferrer" 
+                        className="px-6 py-2 bg-indigo-500 text-white font-black text-[10px] uppercase tracking-widest rounded-xl hover:scale-105 transition-all whitespace-nowrap"
+                      >
+                        Abrir Original
+                      </a>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                       <Target className="w-4 h-4 text-zinc-600" />
+                       <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+                         Competição: <span className="text-zinc-300">{competitions.find(c => c.id === post.competitionId)?.title || 'GERAL / NENHUMA'}</span>
+                       </p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="py-20 text-center glass border-dashed border-zinc-900 rounded-[40px]">
+                  <AlertCircle className="w-12 h-12 text-zinc-800 mx-auto mb-4" />
+                  <p className="text-zinc-600 font-black uppercase tracking-widest text-sm">Link não encontrado</p>
+                  <p className="text-zinc-700 text-xs mt-2">Nenhum post no sistema corresponde a esta URL.</p>
+                </div>
+              )
+            ) : linkSearchTerm.trim().length > 0 ? (
+               <div className="py-10 text-center">
+                 <p className="text-zinc-600 text-xs font-bold italic">Continue digitando ou cole o link completo...</p>
+               </div>
+            ) : (
+              <div className="py-20 flex flex-col items-center justify-center space-y-6 text-center">
+                <div className="w-20 h-20 bg-zinc-900/50 rounded-[30px] flex items-center justify-center border border-zinc-800/50">
+                  <Search className="w-10 h-10 text-zinc-800" />
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-sm font-black text-zinc-600 uppercase">Aguardando busca...</h4>
+                  <p className="text-[10px] font-bold text-zinc-700">O resultado aparecerá automaticamente após inserir o link.</p>
+                </div>
               </div>
             )}
           </div>
