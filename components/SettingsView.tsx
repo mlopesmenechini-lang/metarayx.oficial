@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Check, RefreshCw, Zap, Camera, TrendingUp, 
   Trash2, AlertCircle, ShieldCheck,
-  User as UserIcon, Crown, Share2
+  User as UserIcon, Crown, Share2, Plus, X, ChevronRight, Pencil, Save
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { User } from '../types';
 
 interface SettingsViewProps {
@@ -33,46 +34,43 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   handleUpdateProfile, isUpdatingProfile,
   settingsTab, setSettingsTab
 }) => {
-  const addSocial = (platform: 'tiktok' | 'instagram' | 'youtube') => {
-    if (platform === 'tiktok') setProfileTiktok([...profileTiktok, '@']);
-    if (platform === 'instagram') setProfileInstagram([...profileInstagram, '@']);
-    if (platform === 'youtube') setProfileYoutube([...profileYoutube, '@']);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [newAccountPlatform, setNewAccountPlatform] = useState<'instagram' | 'tiktok' | 'youtube'>('instagram');
+  const [newAccountUsername, setNewAccountUsername] = useState('');
+
+  const handleAddAccount = () => {
+    if (!newAccountUsername.trim()) return;
+    
+    const formattedUsername = '@' + newAccountUsername.replace('@', '').trim();
+    
+    if (newAccountPlatform === 'tiktok') {
+      if (!profileTiktok.includes(formattedUsername)) {
+        setProfileTiktok([...profileTiktok, formattedUsername]);
+      }
+    } else if (newAccountPlatform === 'instagram') {
+      if (!profileInstagram.includes(formattedUsername)) {
+        setProfileInstagram([...profileInstagram, formattedUsername]);
+      }
+    } else if (newAccountPlatform === 'youtube') {
+      if (!profileYoutube.includes(formattedUsername)) {
+        setProfileYoutube([...profileYoutube, formattedUsername]);
+      }
+    }
+    
+    setNewAccountUsername('');
+    setIsModalOpen(false);
   };
 
-  const removeSocial = (platform: 'tiktok' | 'instagram' | 'youtube', index: number) => {
-    if (platform === 'tiktok') setProfileTiktok(profileTiktok.filter((_, i) => i !== index));
-    if (platform === 'instagram') setProfileInstagram(profileInstagram.filter((_, i) => i !== index));
-    if (platform === 'youtube') setProfileYoutube(profileYoutube.filter((_, i) => i !== index));
-  };
-
-  const updateSocial = (platform: 'tiktok' | 'instagram' | 'youtube', index: number, val: string) => {
-    const newVal = '@' + val.replace('@', '');
-    if (platform === 'tiktok') {
-      const list = [...profileTiktok]; list[index] = newVal; setProfileTiktok(list);
-    }
-    if (platform === 'instagram') {
-      const list = [...profileInstagram]; list[index] = newVal; setProfileInstagram(list);
-    }
-    if (platform === 'youtube') {
-      const list = [...profileYoutube]; list[index] = newVal; setProfileYoutube(list);
-    }
+  const removeSocial = (platform: 'tiktok' | 'instagram' | 'youtube', username: string) => {
+    if (platform === 'tiktok') setProfileTiktok(profileTiktok.filter(u => u !== username));
+    if (platform === 'instagram') setProfileInstagram(profileInstagram.filter(u => u !== username));
+    if (platform === 'youtube') setProfileYoutube(profileYoutube.filter(u => u !== username));
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div className="space-y-1">
-          <h2 className="text-3xl font-black tracking-tight gold-gradient uppercase">Configurações</h2>
-          <p className="text-zinc-500 font-bold text-[10px] uppercase tracking-widest">Gerencie seu perfil e redes sociais</p>
-        </div>
-        <button onClick={handleUpdateProfile} disabled={isUpdatingProfile}
-          className="px-10 py-5 gold-bg text-black font-black rounded-2xl hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-3 shadow-xl shadow-amber-500/10">
-          {isUpdatingProfile ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
-          SALVAR ALTERAÇÕES
-        </button>
-      </div>
-
-      <div className="flex p-1.5 bg-zinc-900 border border-zinc-800 rounded-2xl w-full">
+    <div className="max-w-7xl mx-auto space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20 px-4 md:px-0">
+      {/* Tab Switcher */}
+      <div className="flex p-1.5 bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md mx-auto md:mx-0">
         <button onClick={() => setSettingsTab('PROFILE')}
           className={`flex-1 py-3.5 rounded-xl font-black text-xs tracking-widest transition-all ${settingsTab === 'PROFILE' ? 'bg-amber-500 text-black shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}>
           MEU PERFIL
@@ -83,9 +81,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </button>
       </div>
 
-      <div className="space-y-6">
-        {settingsTab === 'PROFILE' ? (
-          <div className="p-8 rounded-[40px] glass border border-zinc-800 space-y-8 relative overflow-hidden">
+      {settingsTab === 'PROFILE' ? (
+        <div className="space-y-10">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div className="space-y-1">
+              <h2 className="text-3xl font-black tracking-tight gold-gradient uppercase">Meu Perfil</h2>
+              <p className="text-zinc-500 font-bold text-[10px] uppercase tracking-widest">Gerencie suas informações pessoais</p>
+            </div>
+            <button onClick={handleUpdateProfile} disabled={isUpdatingProfile}
+              className="px-10 py-5 gold-bg text-black font-black rounded-2xl hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-3 shadow-xl shadow-amber-500/10">
+              {isUpdatingProfile ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
+              SALVAR ALTERAÇÕES
+            </button>
+          </div>
+
+          <div className="p-8 rounded-[40px] glass border border-zinc-800 space-y-8 relative overflow-hidden max-w-2xl">
             <div className="absolute top-0 right-0 p-8 opacity-5">
               <UserIcon className="w-40 h-40" />
             </div>
@@ -129,109 +139,235 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
             </div>
           </div>
-        ) : (
-          <div className="p-10 rounded-[40px] glass border border-zinc-800 space-y-12 relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-8 opacity-5"><Share2 className="w-40 h-40" /></div>
-            <div className="space-y-4 relative z-10">
-              <div className="flex items-center gap-3 text-amber-500">
-                <Zap className="w-5 h-5 shadow-amber-500/20" />
-                <h3 className="text-xl font-black uppercase tracking-tight">Vincular Várias Contas</h3>
-              </div>
-              <p className="text-xs text-zinc-500 font-bold leading-relaxed">Você pode cadastrar múltiplos perfis (@) para cada rede social. Isso permite que você envie vídeos de diferentes contas suas.</p>
+        </div>
+      ) : (
+        <div className="space-y-10">
+          {/* Header Social */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div className="space-y-1">
+              <h2 className="text-3xl font-black tracking-tight text-white uppercase">Minhas Contas</h2>
+              <p className="text-zinc-500 font-bold text-[10px] uppercase tracking-widest">Gerencie suas contas de redes sociais para competir</p>
             </div>
+            <button 
+              onClick={() => setIsModalOpen(true)}
+              className="px-8 py-4 bg-[#00D1FF] text-black font-black rounded-2xl hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 shadow-xl shadow-[#00D1FF]/20"
+            >
+              <Plus className="w-5 h-5" />
+              ADICIONAR CONTA
+            </button>
+          </div>
 
-            <div className="space-y-12 relative z-10">
-              {/* TikTok */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between px-1">
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2"><Zap className="w-3.5 h-3.5 text-amber-500" /> Contas TikTok</label>
-                  <button onClick={() => addSocial('tiktok')} className="text-[10px] font-black text-amber-500 hover:text-amber-400 uppercase tracking-widest flex items-center gap-1 transition-colors">+ Adicionar Perfil</button>
-                </div>
-                <div className="space-y-3">
-                  {profileTiktok.map((val, idx) => (
-                    <div key={idx} className="relative group animate-in slide-in-from-left-2 duration-300">
-                      <span className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600 font-black text-sm">@</span>
-                      <input type="text" value={val.replace('@', '')} onChange={(e) => updateSocial('tiktok', idx, e.target.value)}
-                        placeholder="seu_usuario" className="w-full bg-black border border-zinc-800 rounded-2xl py-5 pl-12 pr-14 text-sm font-black focus:border-amber-500 outline-none transition-all" />
-                      <button onClick={() => removeSocial('tiktok', idx)} className="absolute right-5 top-1/2 -translate-y-1/2 p-2 text-zinc-700 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4" /></button>
-                    </div>
-                  ))}
-                  {profileTiktok.length === 0 && (
-                    <div onClick={() => addSocial('tiktok')} className="py-8 border-2 border-dashed border-zinc-800 rounded-3xl flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-amber-500/30 transition-all group">
-                      <Zap className="w-5 h-5 text-zinc-800 group-hover:text-amber-500/50" />
-                      <p className="text-[10px] font-black text-zinc-700 group-hover:text-amber-500/50 uppercase tracking-widest">Nenhuma conta TikTok vinculada</p>
-                    </div>
-                  )}
-                </div>
+          {/* Platform Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-zinc-900/30 border border-zinc-800 p-8 rounded-[40px] flex flex-col items-center justify-center text-center space-y-4 hover:border-pink-500/30 transition-all group">
+              <div className="w-16 h-16 rounded-[24px] bg-pink-500/10 flex items-center justify-center text-pink-500 mb-2">
+                <Camera className="w-8 h-8" />
               </div>
-
-              {/* Instagram */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between px-1">
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2"><Camera className="w-3.5 h-3.5 text-pink-500" /> Contas Instagram</label>
-                  <button onClick={() => addSocial('instagram')} className="text-[10px] font-black text-pink-500 hover:text-pink-400 uppercase tracking-widest flex items-center gap-1 transition-colors">+ Adicionar Perfil</button>
-                </div>
-                <div className="space-y-3">
-                  {profileInstagram.map((val, idx) => (
-                    <div key={idx} className="relative group animate-in slide-in-from-left-2 duration-300">
-                      <span className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600 font-black text-sm">@</span>
-                      <input type="text" value={val.replace('@', '')} onChange={(e) => updateSocial('instagram', idx, e.target.value)}
-                        placeholder="seu_perfil" className="w-full bg-black border border-zinc-800 rounded-2xl py-5 pl-12 pr-14 text-sm font-black focus:border-pink-500 outline-none transition-all" />
-                      <button onClick={() => removeSocial('instagram', idx)} className="absolute right-5 top-1/2 -translate-y-1/2 p-2 text-zinc-700 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4" /></button>
-                    </div>
-                  ))}
-                  {profileInstagram.length === 0 && (
-                    <div onClick={() => addSocial('instagram')} className="py-8 border-2 border-dashed border-zinc-800 rounded-3xl flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-pink-500/30 transition-all group">
-                      <Camera className="w-5 h-5 text-zinc-800 group-hover:text-pink-500/50" />
-                      <p className="text-[10px] font-black text-zinc-700 group-hover:text-pink-500/50 uppercase tracking-widest">Nenhuma conta Instagram vinculada</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* YouTube */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between px-1">
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2"><TrendingUp className="w-3.5 h-3.5 text-red-500" /> Canais YouTube</label>
-                  <button onClick={() => addSocial('youtube')} className="text-[10px] font-black text-red-500 hover:text-red-400 uppercase tracking-widest flex items-center gap-1 transition-colors">+ Adicionar Canal</button>
-                </div>
-                <div className="space-y-3">
-                  {profileYoutube.map((val, idx) => (
-                    <div key={idx} className="relative group animate-in slide-in-from-left-2 duration-300">
-                      <span className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600 font-black text-sm">@</span>
-                      <input type="text" value={val.replace('@', '')} onChange={(e) => updateSocial('youtube', idx, e.target.value)}
-                        placeholder="seu_canal" className="w-full bg-black border border-zinc-800 rounded-2xl py-5 pl-12 pr-14 text-sm font-black focus:border-red-500 outline-none transition-all" />
-                      <button onClick={() => removeSocial('youtube', idx)} className="absolute right-5 top-1/2 -translate-y-1/2 p-2 text-zinc-700 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4" /></button>
-                    </div>
-                  ))}
-                  {profileYoutube.length === 0 && (
-                    <div onClick={() => addSocial('youtube')} className="py-8 border-2 border-dashed border-zinc-800 rounded-3xl flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-red-500/30 transition-all group">
-                      <TrendingUp className="w-5 h-5 text-zinc-800 group-hover:text-red-500/50" />
-                      <p className="text-[10px] font-black text-zinc-700 group-hover:text-red-500/50 uppercase tracking-widest">Nenhum canal YouTube vinculado</p>
-                    </div>
-                  )}
-                </div>
+              <div>
+                <p className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Instagram</p>
+                <p className="text-4xl font-black text-white">{profileInstagram.length}</p>
               </div>
             </div>
 
-            <div className="p-6 rounded-3xl bg-amber-500/5 border border-amber-500/10 flex items-start gap-4">
-              <ShieldCheck className="w-5 h-5 text-amber-500 shrink-0" />
-              <p className="text-[10px] text-amber-500/70 font-bold leading-relaxed uppercase tracking-wide">
-                Importante: Você pode adicionar múltiplos perfis, mas lembre-se que cada vídeo postado deve originar-se de um desses perfis cadastrados para ser validado.
-              </p>
+            <div className="bg-zinc-900/30 border border-zinc-800 p-8 rounded-[40px] flex flex-col items-center justify-center text-center space-y-4 hover:border-amber-500/30 transition-all group">
+              <div className="w-16 h-16 rounded-[24px] bg-amber-500/10 flex items-center justify-center text-amber-500 mb-2">
+                <Zap className="w-8 h-8" />
+              </div>
+              <div>
+                <p className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">TikTok</p>
+                <p className="text-4xl font-black text-white">{profileTiktok.length}</p>
+              </div>
             </div>
+
+            <div className="bg-zinc-900/30 border border-zinc-800 p-8 rounded-[40px] flex flex-col items-center justify-center text-center space-y-4 hover:border-red-500/30 transition-all group">
+              <div className="w-16 h-16 rounded-[24px] bg-red-500/10 flex items-center justify-center text-red-500 mb-2">
+                <TrendingUp className="w-8 h-8" />
+              </div>
+              <div>
+                <p className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">YouTube</p>
+                <p className="text-4xl font-black text-white">{profileYoutube.length}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Accounts List */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 mb-4">
+              <Camera className="w-4 h-4 text-pink-500" />
+              <h4 className="text-sm font-black text-zinc-500 uppercase tracking-widest">Instagram</h4>
+              <span className="text-[10px] font-bold text-zinc-700 bg-zinc-900 px-2 py-0.5 rounded-md">{profileInstagram.length}</span>
+            </div>
+            {profileInstagram.map((username, idx) => (
+              <div key={`ig-${idx}`} className="group bg-zinc-900/40 border border-zinc-800/50 p-5 rounded-3xl flex items-center justify-between hover:border-zinc-700 transition-all">
+                <div className="flex items-center gap-5">
+                  <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-pink-500">
+                    <Camera className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-black text-white uppercase tracking-tight">{username}</p>
+                    <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest flex items-center gap-1">
+                       Vínculo verificado <Check className="w-3 h-3 text-emerald-500" />
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                   <button 
+                    onClick={() => removeSocial('instagram', username)}
+                    className="p-3 text-zinc-600 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                   >
+                     <Trash2 className="w-5 h-5" />
+                   </button>
+                </div>
+              </div>
+            ))}
+
+            <div className="flex items-center gap-2 mb-4 pt-6">
+              <Zap className="w-4 h-4 text-amber-500" />
+              <h4 className="text-sm font-black text-zinc-500 uppercase tracking-widest">TikTok</h4>
+              <span className="text-[10px] font-bold text-zinc-700 bg-zinc-900 px-2 py-0.5 rounded-md">{profileTiktok.length}</span>
+            </div>
+            {profileTiktok.map((username, idx) => (
+              <div key={`tt-${idx}`} className="group bg-zinc-900/40 border border-zinc-800/50 p-5 rounded-3xl flex items-center justify-between hover:border-zinc-700 transition-all">
+                <div className="flex items-center gap-5">
+                  <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-amber-500">
+                    <Zap className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-black text-white uppercase tracking-tight">{username}</p>
+                    <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest flex items-center gap-1">
+                       Vínculo verificado <Check className="w-3 h-3 text-emerald-500" />
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                   <button 
+                    onClick={() => removeSocial('tiktok', username)}
+                    className="p-3 text-zinc-600 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                   >
+                     <Trash2 className="w-5 h-5" />
+                   </button>
+                </div>
+              </div>
+            ))}
+
+            <div className="flex items-center gap-2 mb-4 pt-6">
+              <TrendingUp className="w-4 h-4 text-red-500" />
+              <h4 className="text-sm font-black text-zinc-500 uppercase tracking-widest">YouTube</h4>
+              <span className="text-[10px] font-bold text-zinc-700 bg-zinc-900 px-2 py-0.5 rounded-md">{profileYoutube.length}</span>
+            </div>
+            {profileYoutube.map((username, idx) => (
+              <div key={`yt-${idx}`} className="group bg-zinc-900/40 border border-zinc-800/50 p-5 rounded-3xl flex items-center justify-between hover:border-zinc-700 transition-all">
+                <div className="flex items-center gap-5">
+                  <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-red-500">
+                    <TrendingUp className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-black text-white uppercase tracking-tight">{username}</p>
+                    <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest flex items-center gap-1">
+                       Vínculo verificado <Check className="w-3 h-3 text-emerald-500" />
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                   <button 
+                    onClick={() => removeSocial('youtube', username)}
+                    className="p-3 text-zinc-600 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                   >
+                     <Trash2 className="w-5 h-5" />
+                   </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <button onClick={handleUpdateProfile} disabled={isUpdatingProfile}
+            className="w-full py-6 gold-bg text-black font-black rounded-2xl hover:scale-[1.01] transition-all disabled:opacity-50 flex items-center justify-center gap-3 shadow-2xl shadow-amber-500/10 mt-12">
+            {isUpdatingProfile ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+            SALVAR TODAS AS CONFIGURAÇÕES
+          </button>
+        </div>
+      )}
+
+      {/* Nova Conta Modal */}
+      <AnimatePresence>
+        {isModalOpen && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-6">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsModalOpen(false)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-md bg-zinc-950 rounded-[40px] border border-zinc-800/50 shadow-2xl overflow-hidden p-8"
+            >
+               <div className="flex items-center justify-between mb-8">
+                  <div className="flex items-center gap-4">
+                     <div className="w-12 h-12 rounded-2xl bg-zinc-900 flex items-center justify-center">
+                        <Plus className="w-6 h-6 text-white" />
+                     </div>
+                     <div>
+                        <h3 className="text-xl font-black text-white uppercase tracking-tight">Nova Conta</h3>
+                        <p className="text-zinc-500 font-bold text-[10px] uppercase tracking-widest">Adicione uma conta de rede social</p>
+                     </div>
+                  </div>
+                  <button onClick={() => setIsModalOpen(false)} className="p-2 text-zinc-500 hover:text-white transition-colors">
+                    <X className="w-6 h-6" />
+                  </button>
+               </div>
+
+               <div className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">PLATAFORMA</label>
+                    <select 
+                      value={newAccountPlatform}
+                      onChange={(e) => setNewAccountPlatform(e.target.value as any)}
+                      className="w-full bg-black border border-zinc-800 rounded-2xl py-4 px-6 text-sm font-bold text-white focus:border-[#00D1FF] outline-none transition-all appearance-none cursor-pointer"
+                    >
+                      <option value="instagram">Instagram</option>
+                      <option value="tiktok">TikTok</option>
+                      <option value="youtube">YouTube</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">USERNAME</label>
+                    <div className="relative">
+                      <span className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600 font-black text-sm">@</span>
+                      <input 
+                        type="text" 
+                        value={newAccountUsername}
+                        onChange={(e) => setNewAccountUsername(e.target.value)}
+                        placeholder="seu_usuario" 
+                        className="w-full bg-black border border-zinc-800 rounded-2xl py-4 pl-12 pr-6 text-sm font-bold text-white focus:border-[#00D1FF] outline-none transition-all shadow-inner" 
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-4 pt-4">
+                    <button 
+                      onClick={() => setIsModalOpen(false)}
+                      className="flex-1 py-4 bg-zinc-900 text-zinc-400 font-black rounded-2xl hover:bg-zinc-800 transition-all text-xs uppercase tracking-widest"
+                    >
+                      Cancelar
+                    </button>
+                    <button 
+                      onClick={handleAddAccount}
+                      className="flex-1 py-4 bg-[#00D1FF] text-black font-black rounded-2xl hover:scale-[1.02] transition-all text-xs uppercase tracking-widest flex items-center justify-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      ADICIONAR
+                    </button>
+                  </div>
+               </div>
+            </motion.div>
           </div>
         )}
-
-        <div className="p-8 rounded-3xl bg-zinc-950/50 border border-zinc-900 flex items-start gap-5">
-          <div className="w-10 h-10 rounded-2xl bg-zinc-900 flex items-center justify-center shrink-0">
-            <AlertCircle className="w-5 h-5 text-zinc-600" />
-          </div>
-          <p className="text-xs text-zinc-500 font-medium leading-relaxed">
-            Mantenha suas contas vinculadas atualizadas. O MetaRayx Hub realiza verificações periódicas para garantir a integridade dos dados das competições.
-          </p>
-        </div>
-      </div>
+      </AnimatePresence>
     </div>
   );
 };

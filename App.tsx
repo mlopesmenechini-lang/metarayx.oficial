@@ -15,7 +15,7 @@ import {
   Mail, Lock, User as UserIcon, Eye, EyeOff, Loader2, RefreshCw, Crown, Trash2, Plus,
   Heart, Share2, Bookmark, Bell, Check, Camera, BarChart3, ArrowLeft, ArrowRight, BookOpen, Shield, Star, ChevronRight, Target,
   Award, UserX, Sparkles, CreditCard, Coins, DollarSign, Info, Archive, Download, RotateCcw, Pencil, PlusCircle, MinusCircle, Key, ShieldAlert,
-  Save
+  Save, Link2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { syncViewsWithApify, syncSinglePostWithApify, updateUserMetrics, repairAllUserMetrics } from './services/apifyService';
@@ -249,6 +249,45 @@ const App: React.FC = () => {
   const [rejectionReason, setRejectionReason] = useState('');
   const [rejectionModal, setRejectionModal] = useState<{ isOpen: boolean; postId: string; status: PostStatus }>({ isOpen: false, postId: '', status: 'rejected' });
   const [removalModal, setRemovalModal] = useState<{ isOpen: boolean; postId: string; reason: string; consent: boolean }>({ isOpen: false, postId: '', reason: '', consent: false });
+
+  const dailyVideoCount = useMemo(() => {
+    if (!user || !posts) return 0;
+    
+    const now = new Date();
+    const h = now.getHours();
+    
+    // Início e fim do ciclo baseado em 20h - 18h (Horário Local)
+    const start = new Date(now);
+    const end = new Date(now);
+    
+    if (h >= 20) {
+      // Ciclo NOVO começou hoje às 20h
+      start.setHours(20, 0, 0, 0);
+      end.setDate(end.getDate() + 1);
+      end.setHours(18, 0, 0, 0);
+    } else if (h < 18) {
+      // Ciclo começou ontem às 20h
+      start.setDate(start.getDate() - 1);
+      start.setHours(20, 0, 0, 0);
+      end.setHours(18, 0, 0, 0);
+    } else {
+      // Período de intervalo (18h às 20h)
+      return 0;
+    }
+    
+    const sTime = start.getTime();
+    const eTime = end.getTime();
+    
+    return posts.filter(p => {
+      const pTime = Number(p.timestamp);
+      const isCorrectUser = p.userId === user.uid;
+      const isValidStatus = p.status !== 'deleted' && p.status !== 'rejected' && p.status !== 'banned';
+      const isInCycle = pTime >= sTime && pTime <= eTime;
+      const isCorrectComp = !selectedActiveCompId || p.competitionId === selectedActiveCompId;
+      
+      return isCorrectUser && isValidStatus && isInCycle && isCorrectComp;
+    }).length;
+  }, [posts, user, selectedActiveCompId]);
 
 
   useEffect(() => {
@@ -855,6 +894,26 @@ const App: React.FC = () => {
       handleFirestoreError(error, OperationType.UPDATE, `posts/${postId}`);
     }
   };
+
+  async function handlePermanentDeletePost(postId: string) {
+    if (!window.confirm('Tem certeza que deseja excluir este post PERMANENTEMENTE?\n\nEsta ação não pode ser desfeita e o vídeo sumirá de todos os históricos.')) {
+      return;
+    }
+    try {
+      const post = posts.find(p => p.id === postId);
+      await deleteDoc(doc(db, 'posts', postId));
+      
+      if (post) {
+        await updateUserMetrics(post.userId);
+      }
+      
+      setNotification({ message: 'Vídeo excluído permanentemente!', type: 'success' });
+    } catch (error: any) {
+      console.error('Erro ao excluir post:', error);
+      handleFirestoreError(error, OperationType.DELETE, `posts/${postId}`);
+      setNotification({ message: 'Erro ao excluir vídeo.', type: 'error' });
+    }
+  }
 
   const handleApproveAsMonthly = async (postId: string) => {
     const post = posts.find(p => p.id === postId);
@@ -2058,6 +2117,7 @@ const App: React.FC = () => {
                       setProtocolCount={setProtocolCount}
                       setConfirmCallback={setConfirmCallback}
                       setGlobalSelectedCompId={setSelectedActiveCompId}
+                      dailyVideoCount={dailyVideoCount}
                     />
                   )
                 )}
@@ -2109,6 +2169,7 @@ const App: React.FC = () => {
                     handleUpdateUserRole={handleUpdateUserRole}
                     handleApproveRemoval={handleApproveRemoval}
                     handleRejectRemoval={handleRejectRemoval}
+                    handlePermanentDeletePost={handlePermanentDeletePost}
                     handleRankingResetOnly={handleRankingResetOnly}
                     handleResetRankingSimple={handleResetRankingSimple}
                     handleUpdateMasterKey={handleUpdateMasterKey}
@@ -2576,7 +2637,7 @@ const App: React.FC = () => {
 
 
 
-const PostSubmit = ({ user, competitions, registrations, setView, lockedCompetitionId, setShowConfirmModal, setProtocolCount, setConfirmCallback, setAppSelectedCompId }: {
+const PostSubmit = ({ user, competitions, registrations, setView, lockedCompetitionId, setShowConfirmModal, setProtocolCount, setConfirmCallback, setAppSelectedCompId, dailyVideoCount }: {
   user: User,
   competitions: Competition[],
   registrations: CompetitionRegistration[],
@@ -2585,419 +2646,369 @@ const PostSubmit = ({ user, competitions, registrations, setView, lockedCompetit
   setShowConfirmModal: (v: boolean) => void,
   setProtocolCount: (v: number) => void,
   setConfirmCallback: (v: any) => void,
-  setAppSelectedCompId: (v: string | null) => void
+  setAppSelectedCompId: (v: string | null) => void,
+  dailyVideoCount: number
 }) => {
-  const [url, setUrl] = useState('');
-  const [platform, setPlatform] = useState<Platform>('tiktok');
-  const [submitting, setSubmitting] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const [selectedCompId, setSelectedCompId] = useState<string>(lockedCompetitionId || '');
-  const [selectedAccountHandle, setSelectedAccountHandle] = useState('');
-
-  useEffect(() => {
-    if (lockedCompetitionId) {
-      setSelectedCompId(lockedCompetitionId);
-    }
-  }, [lockedCompetitionId]);
-
-  // Check if the user has an approved registration in any active competition
-  const activeCompIds = useMemo(() =>
-    competitions.filter(c => c.isActive && c.endDate >= Date.now()).map(c => c.id),
-    [competitions]
-  );
-  
-  const hasActiveRegistration = useMemo(() => 
-    registrations.some(
-      r => r.userId === user.uid && r.status === 'approved' && activeCompIds.includes(r.competitionId)
-    ), [registrations, user.uid, activeCompIds]
-  );
-
-
-  const [duplicates, setDuplicates] = useState<string[]>([]);
+  const [accountInputs, setAccountInputs] = useState<Record<string, string[]>>({});
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  // removed selectedCompId local state as it is now at the top
+  const [duplicates, setDuplicates] = useState<string[]>([]);
+  const [selectedCompId, setSelectedCompId] = useState<string>(lockedCompetitionId || '');
 
-  // Get competitions where user is approved
-  const approvedCompRegistrations = useMemo(() => 
-    registrations.filter(r => r.userId === user.uid && r.status === 'approved'),
-    [registrations, user.uid]
-  );
-
-  const approvedCompetitions = useMemo(() => 
-    competitions.filter(c => approvedCompRegistrations.some(r => r.competitionId === c.id)),
-    [competitions, approvedCompRegistrations]
-  );
-
-  // Auto-select if only one approved competition
+  // Inicializa os campos para todas as contas vinculadas do usuário
   useEffect(() => {
-    if (approvedCompetitions.length === 1 && !selectedCompId) {
-      setSelectedCompId(approvedCompetitions[0].id);
-      setAppSelectedCompId(approvedCompetitions[0].id);
-    }
-  }, [approvedCompetitions, selectedCompId, setAppSelectedCompId]);
-
-  // Auto-select account handle if only one is available for the platform
-  useEffect(() => {
-    const handles = platform === 'tiktok' ? (Array.isArray(user.tiktok) ? user.tiktok : (user.tiktok ? [user.tiktok] : [])) :
-                  platform === 'instagram' ? (Array.isArray(user.instagram) ? user.instagram : (user.instagram ? [user.instagram] : [])) :
-                  (Array.isArray(user.youtube) ? user.youtube : (user.youtube ? [user.youtube] : []));
+    const initial: Record<string, string[]> = {};
+    const platforms: Platform[] = ['tiktok', 'instagram', 'youtube'];
     
-    if (handles.length === 1) {
-      setSelectedAccountHandle(handles[0]);
-    } else {
-      setSelectedAccountHandle('');
+    platforms.forEach(p => {
+      const handles = user[p] || [];
+      handles.forEach(h => {
+        initial[`${p}:${h}`] = [''];
+      });
+    });
+    
+    setAccountInputs(initial);
+  }, [user]);
+
+  // Se houver apenas uma competição disponível, seleciona automaticamente
+  useEffect(() => {
+    const approved = registrations.filter(r => r.userId === user.uid && r.status === 'approved').map(r => r.competitionId);
+    const comps = competitions.filter(c => approved.includes(c.id));
+    if (comps.length === 1 && !selectedCompId) {
+      setSelectedCompId(comps[0].id);
+      setAppSelectedCompId(comps[0].id);
     }
-  }, [platform, user]);
+  }, [competitions, registrations, user.uid, selectedCompId, setAppSelectedCompId]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!url.trim()) return;
+  const addField = (accountKey: string) => {
+    setAccountInputs(prev => ({
+      ...prev,
+      [accountKey]: [...(prev[accountKey] || []), '']
+    }));
+  };
 
-    if (!selectedCompId) {
-      setError('Por favor, selecione uma competição.');
+  const removeField = (accountKey: string, index: number) => {
+    setAccountInputs(prev => {
+      const fields = [...(prev[accountKey] || [])];
+      if (fields.length <= 1) {
+        fields[0] = '';
+        return { ...prev, [accountKey]: fields };
+      }
+      fields.splice(index, 1);
+      return { ...prev, [accountKey]: fields };
+    });
+  };
+
+  const handleInputChange = (accountKey: string, index: number, value: string) => {
+    setAccountInputs(prev => {
+      const fields = [...(prev[accountKey] || [])];
+      fields[index] = value;
+      return { ...prev, [accountKey]: fields };
+    });
+  };
+
+  const handleSubmit = async () => {
+    setError('');
+    setDuplicates([]);
+
+    const submissionQueue: { url: string; platform: Platform; handle: string }[] = [];
+    Object.entries(accountInputs).forEach(([key, links]) => {
+      const [platform, handle] = key.split(':');
+      links.forEach(link => {
+        if (link.trim()) {
+          submissionQueue.push({ 
+            url: link.trim(), 
+            platform: platform as Platform, 
+            handle 
+          });
+        }
+      });
+    });
+
+    if (submissionQueue.length === 0) {
+      setError('Por favor, insira pelo menos um link válido.');
       return;
     }
 
-    const rawUrls = url.split(/[\n,]+/).map(u => u.trim()).filter(u => u.length > 5);
-    if (rawUrls.length === 0) return;
+    if (!selectedCompId) {
+      setError('Por favor, selecione uma competição para enviar.');
+      return;
+    }
 
-    setProtocolCount(rawUrls.length);
+    // Validação de domínios
+    for (const item of submissionQueue) {
+      const u = item.url.toLowerCase();
+      if (item.platform === 'tiktok' && !u.includes('tiktok.com')) {
+        setError(`O link "${item.url}" não é um vídeo do TikTok válido.`);
+        return;
+      }
+      if (item.platform === 'tiktok' && (u.includes('vt.tiktok.com') || u.includes('vm.tiktok.com'))) {
+        setError(`Links encurtados (vt/vm) não são permitidos. Cole no navegador e pegue a URL completa.`);
+        return;
+      }
+      if (item.platform === 'youtube' && !u.includes('youtube.com') && !u.includes('youtu.be')) {
+        setError(`O link "${item.url}" não é um vídeo do YouTube válido.`);
+        return;
+      }
+      if (item.platform === 'instagram' && !u.includes('instagram.com')) {
+        setError(`O link "${item.url}" não é um post do Instagram válido.`);
+        return;
+      }
+    }
+
+    setProtocolCount(submissionQueue.length);
     setAppSelectedCompId(selectedCompId);
-    setConfirmCallback(() => handlePerformSubmit);
+    setConfirmCallback(() => () => performFinalSubmit(submissionQueue));
     setShowConfirmModal(true);
   };
 
-  const handlePerformSubmit = async () => {
-    setShowConfirmModal(false);
-    setSubmitting(true);
-    setDuplicates([]);
+  const performFinalSubmit = async (queue: { url: string; platform: Platform; handle: string }[]) => {
+    setShowConfirmModal(false); // Fecha o modal de confirmação imediatamente
+    setLoading(true);
     setError('');
     try {
-      const rawUrls = url.split(/[\n,]+/).map(u => u.trim()).filter(u => u.length > 5);
-
-      // 0. Validate if user has the social media registered in their profile
-      const userTiktoks = Array.isArray(user.tiktok) ? user.tiktok : (user.tiktok ? [user.tiktok] : []);
-      const userYoutube = Array.isArray(user.youtube) ? user.youtube : (user.youtube ? [user.youtube] : []);
-      const userInstagram = Array.isArray(user.instagram) ? user.instagram : (user.instagram ? [user.instagram] : []);
-
-      if (platform === 'tiktok' && userTiktoks.length === 0) {
-        setError('Você precisa cadastrar pelo menos um @ do TikTok nas configurações antes de enviar links.');
-        setSubmitting(false);
-        return;
-      }
-      if (platform === 'youtube' && userYoutube.length === 0) {
-        setError('Você precisa cadastrar seu canal do YouTube nas configurações antes de enviar links.');
-        setSubmitting(false);
-        return;
-      }
-      if (platform === 'instagram' && userInstagram.length === 0) {
-        setError('Você precisa cadastrar pelo menos um @ do Instagram nas configurações antes de enviar links.');
-        setSubmitting(false);
-        return;
-      }
-
-      if (!selectedAccountHandle) {
-        setError('Por favor, selecione qual conta você usou para postar este vídeo.');
-        setSubmitting(false);
-        return;
-      }
-
-      // 1. Validate if URL domain matches selected platform
-      for (const singleUrl of rawUrls) {
-        const u = singleUrl.toLowerCase();
-        if (platform === 'tiktok' && !u.includes('tiktok.com')) {
-          setError(`Erro: O link "${singleUrl}" não é um vídeo do TikTok válido.`);
-          setSubmitting(false);
-          return;
-        }
-        if (platform === 'tiktok' && (u.includes('vt.tiktok.com') || u.includes('vm.tiktok.com'))) {
-          setError(`Link encurtado não permitido: "${singleUrl}"\n\nComo resolver: Cole esse link no navegador do celular ou computador. Quando a página abrir, copie o link completo que aparece na barra de endereço (ex: tiktok.com/@usuario/video/123...) e use esse link aqui.`);
-          setSubmitting(false);
-          return;
-        }
-        if (platform === 'youtube' && !u.includes('youtube.com') && !u.includes('youtu.be')) {
-          setError(`Erro: O link "${singleUrl}" não é um vídeo do YouTube válido.`);
-          setSubmitting(false);
-          return;
-        }
-        if (platform === 'instagram' && !u.includes('instagram.com')) {
-          setError(`Erro: O link "${singleUrl}" não é um post do Instagram válido.`);
-          setSubmitting(false);
-          return;
-        }
-      }
-
-      // Remove internal duplicates in the batch first
-      const normalizedMap = new Map<string, string>();
-      rawUrls.forEach(u => {
-        const norm = normalizeUrl(u);
-        if (!normalizedMap.has(norm)) {
-          normalizedMap.set(norm, u);
+      // Normalização e verificação de duplicados
+      const normalizedToOriginal = new Map<string, typeof queue[0]>();
+      queue.forEach(item => {
+        const norm = normalizeUrl(item.url);
+        if (!normalizedToOriginal.has(norm)) {
+          normalizedToOriginal.set(norm, item);
         }
       });
 
-      const urls = Array.from(normalizedMap.values());
-      const normalizedToUpload = Array.from(normalizedMap.keys());
-
-      if (urls.length === 0) {
-        setSubmitting(false);
-        return;
-      }
-
-      // Check for duplicate URLs across the entire system (Using queries for better scalability)
+      const normalizedUrls = Array.from(normalizedToOriginal.keys());
       const duplicateFound: string[] = [];
-      const normToOriginal = new Map<string, string>();
-      normalizedToUpload.forEach(n => normToOriginal.set(n, normalizedMap.get(n)!));
 
-      // Batch query 30 at a time
+      // Consulta duplicados no banco
       const batches = [];
-      for (let i = 0; i < normalizedToUpload.length; i += 30) {
-        batches.push(normalizedToUpload.slice(i, i + 30));
+      for (let i = 0; i < normalizedUrls.length; i += 30) {
+        batches.push(normalizedUrls.slice(i, i + 30));
       }
 
       for (const batch of batches) {
-        // Query by normalizedUrl
-        const qNorm = query(collection(db, 'posts'), where('normalizedUrl', 'in', batch));
-        const snapNorm = await getDocs(qNorm);
-        snapNorm.docs.forEach(doc => {
+        const q = query(collection(db, 'posts'), where('normalizedUrl', 'in', batch));
+        const snap = await getDocs(q);
+        snap.docs.forEach(doc => {
           const norm = doc.data().normalizedUrl;
-          if (norm) duplicateFound.push(normToOriginal.get(norm) || doc.data().url);
-        });
-
-        // Query by exact url (fallback for old posts)
-        const batchOriginals = batch.map(n => normToOriginal.get(n)!);
-        const qOrig = query(collection(db, 'posts'), where('url', 'in', batchOriginals));
-        const snapOrig = await getDocs(qOrig);
-        snapOrig.docs.forEach(doc => {
-          const original = doc.data().url;
-          if (!duplicateFound.includes(original)) {
-            duplicateFound.push(original);
-          }
+          if (norm) duplicateFound.push(normalizedToOriginal.get(norm)?.url || norm);
         });
       }
 
       if (duplicateFound.length > 0) {
-        // Remove potentially identical entries in the duplicateFound list
-        const uniqueDuplicates = Array.from(new Set(duplicateFound));
-        setDuplicates(uniqueDuplicates);
-        setError(`${uniqueDuplicates.length} link(s) já existem no sistema e foram bloqueados.`);
-        setSubmitting(false);
+        setDuplicates(duplicateFound);
+        setError(`${duplicateFound.length} link(s) já existem no sistema.`);
+        setLoading(false);
         return;
       }
 
-      await Promise.all(urls.map(async (singleUrl) => {
+      // Upload em lote
+      const batch = writeBatch(db);
+      for (const item of queue) {
         const postId = Math.random().toString(36).substr(2, 9);
-        const norm = normalizeUrl(singleUrl);
-        const newPost: Post = {
+        const norm = normalizeUrl(item.url);
+        batch.set(doc(db, 'posts', postId), {
           id: postId,
           userId: user.uid,
           userName: user.displayName,
-          url: singleUrl,
+          url: item.url,
           normalizedUrl: norm,
-          platform,
-          competitionId: selectedCompId, // Link to selected competition
-          accountHandle: selectedAccountHandle,
+          platform: item.platform,
+          accountHandle: item.handle,
+          competitionId: selectedCompId,
           status: 'pending',
-          views: 0,
-          likes: 0,
-          comments: 0,
-          shares: 0,
-          saves: 0,
+          views: 0, likes: 0, comments: 0, shares: 0, saves: 0,
           timestamp: Date.now()
-        };
-        await setDoc(doc(db, 'posts', postId), newPost);
-      }));
-
-      if (platform === 'instagram') {
-        const uDoc = await getDoc(doc(db, 'users', user.uid));
-        const currentCount = uDoc.data()?.dailyInstaPosts || 0;
-        await updateDoc(doc(db, 'users', user.uid), { dailyInstaPosts: currentCount + urls.length });
+        });
       }
 
-      setSuccess(true);
-      setUrl('');
-      setTimeout(() => setSuccess(false), 3000);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'posts');
+      await batch.commit();
+
+      // Reset de campos para novos envios
+      const reset: Record<string, string[]> = {};
+      Object.keys(accountInputs).forEach(k => reset[k] = ['']);
+      setAccountInputs(reset);
+      
+      // O usuário permanece na tela atual para poder enviar mais links se desejar
+
+    } catch (err: any) {
+      console.error('Submit Error:', err);
+      setError(`Erro ao enviar: ${err.message}`);
     } finally {
-      setSubmitting(false);
+      setLoading(false);
     }
   };
 
-
+  const getPlatformIcon = (platform: string) => {
+    switch (platform) {
+      case 'tiktok': return <div className="w-8 h-8 rounded-lg bg-black flex items-center justify-center border border-zinc-800"><Zap className="w-5 h-5 text-[#ff0050]" /></div>;
+      case 'instagram': return <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-amber-500 via-red-500 to-purple-600 flex items-center justify-center"><Camera className="w-5 h-5 text-white" /></div>;
+      case 'youtube': return <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center border border-zinc-200"><ExternalLink className="w-5 h-5 text-[#ff0000]" /></div>;
+      default: return <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center"><Link2 className="w-5 h-5 text-white" /></div>;
+    }
+  };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-8">
-      <div className="text-center space-y-2">
-        <h2 className="text-4xl font-black tracking-tighter">Protocolar Link</h2>
-        <p className="text-zinc-400">Envie seu vídeo para triagem e sincronização</p>
+    <div className="max-w-2xl mx-auto space-y-8 pb-32">
+      {/* Cabeçalho */}
+      <div className="glass p-6 rounded-3xl border border-zinc-800/50 flex items-center gap-4">
+        <div className="w-12 h-12 gold-bg rounded-2xl flex items-center justify-center shadow-lg shadow-amber-500/20">
+          <Trophy className="w-6 h-6 text-black" />
+        </div>
+        <div>
+          <p className="text-xs text-zinc-500 font-bold uppercase tracking-widest">Enviando para:</p>
+          <h3 className="text-lg font-black text-white truncate">
+            {competitions.find(c => c.id === selectedCompId)?.title || 'Selecione uma Competição'}
+          </h3>
+        </div>
       </div>
 
-      {!hasActiveRegistration ? (
-        <div className="p-8 rounded-3xl glass flex flex-col items-center justify-center text-center space-y-6 border-amber-500/20 border">
-          <div className="w-20 h-20 bg-amber-500/10 rounded-3xl flex items-center justify-center">
-            <Trophy className="w-10 h-10 text-amber-500" />
+      <div className="space-y-2">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-emerald-500/20 rounded-xl flex items-center justify-center border border-emerald-500/20">
+            <Link2 className="w-5 h-5 text-emerald-500" />
           </div>
-          <div className="space-y-2">
-            <h3 className="text-2xl font-black text-white">Inscrição Necessária</h3>
-            <p className="text-zinc-400 max-w-sm mx-auto">
-              Para protocolar links, você precisa estar inscrito e aprovado em uma competição ativa.
-            </p>
+          <div>
+            <h2 className="text-2xl font-black text-white tracking-tight">Cole os Links dos Seus Posts</h2>
+            <p className="text-sm text-zinc-400">Envie seus links por conta. Você pode adicionar vários por @!</p>
           </div>
-          <button
-            onClick={() => setView('COMPETITIONS')}
-            className="px-8 py-4 gold-bg text-black font-black rounded-xl hover:scale-105 transition-all w-full md:w-auto"
+        </div>
+      </div>
+
+      {/* Contador de Ciclo */}
+      <div className="flex justify-center">
+        <div className="glass px-6 py-3 rounded-2xl border border-emerald-500/30 flex items-center gap-4 bg-emerald-500/5 backdrop-blur-md">
+          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <div className="flex items-center gap-6">
+            <div>
+              <p className="text-[10px] text-zinc-500 font-black uppercase tracking-tighter mb-0.5">Enviados no Ciclo</p>
+              <div className="flex items-baseline gap-1">
+                <span className="text-2xl font-black text-white">{dailyVideoCount}</span>
+                <span className="text-[10px] font-bold text-zinc-500">VÍDEOS</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Alertas de Erro */}
+      <AnimatePresence>
+        {error && (
+          <motion.div 
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-start gap-3"
           >
-            VER COMPETIÇÕES
+            <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+            <div className="space-y-2">
+              <p className="text-sm text-red-400 font-bold">{error}</p>
+              {duplicates.length > 0 && (
+                <div className="text-xs text-red-400/70 space-y-1">
+                  {duplicates.map((d, i) => <p key={i} className="truncate max-w-md">• {d}</p>)}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Cards de Contas */}
+      <div className="space-y-6">
+        {Object.entries(accountInputs).length === 0 ? (
+          <div className="glass p-12 rounded-[2.5rem] border border-dashed border-zinc-800 text-center">
+            <UserX className="w-12 h-12 text-zinc-700 mx-auto mb-4" />
+            <p className="text-zinc-500 font-bold">Nenhuma conta vinculada encontrada.</p>
+            <button 
+              onClick={() => { setView('SETTINGS'); setSettingsTab('SOCIAL'); }}
+              className="mt-4 text-amber-500 font-black hover:underline uppercase text-xs tracking-widest"
+            >
+              Vincular contas agora
+            </button>
+          </div>
+        ) : (
+          Object.entries(accountInputs).map(([accountKey, links]) => {
+            const [platform, handle] = accountKey.split(':');
+            return (
+              <motion.div 
+                key={accountKey}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="glass p-6 rounded-[2rem] border border-zinc-800/50 hover:border-zinc-700/50 transition-all group"
+              >
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-4">
+                    {getPlatformIcon(platform)}
+                    <div>
+                      <h4 className="font-black text-white capitalize text-lg">{platform} - <span className="text-amber-500">@{handle}</span></h4>
+                      <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">
+                        {platform === 'tiktok' ? 'Ex: tiktok.com/@user/video/123' : 
+                         platform === 'youtube' ? 'Ex: youtube.com/shorts/ABC' : 
+                         'Ex: instagram.com/reel/XYZ'}
+                      </p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => addField(accountKey)}
+                    className="flex items-center gap-2 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-xl border border-zinc-800 transition-all text-[10px] font-black uppercase tracking-widest"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Adicionar
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {links.map((link, idx) => (
+                    <div key={idx} className="relative group/input">
+                      <input
+                        type="text"
+                        value={link}
+                        onChange={(e) => handleInputChange(accountKey, idx, e.target.value)}
+                        placeholder="Cole o link do post aqui"
+                        className="w-full bg-black/40 border border-zinc-800/50 rounded-2xl px-5 py-4 text-sm focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all placeholder:text-zinc-700"
+                      />
+                      {links.length > 1 && (
+                        <button 
+                          onClick={() => removeField(accountKey, idx)}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 p-1.5 text-zinc-600 hover:text-red-500 transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            );
+          })
+        )}
+      </div>
+
+      <div className="p-4 bg-zinc-900/50 rounded-2xl border border-zinc-800">
+        <p className="text-[13px] font-bold text-zinc-100 leading-relaxed uppercase tracking-tight max-w-2xl">
+          COLOQUE AS <span className="text-amber-500 underline decoration-2 underline-offset-4">HASHTAGS E MARCAÇÕES</span> CORRETAMENTE PARA ESTA COMPETIÇÃO. 
+          VÍDEOS SEM AS OBRIGATORIEDADES OU PRIVADOS SERÃO <span className="text-red-500">REJEITADOS</span>.
+        </p>
+      </div>
+
+      {/* Botão de Ação Flutuante */}
+      <div className="fixed bottom-10 left-0 right-0 px-6 z-50 pointer-events-none">
+        <div className="max-w-2xl mx-auto pointer-events-auto">
+          <button
+            onClick={handleSubmit}
+            disabled={loading}
+            className="w-full py-6 gold-bg text-black font-black rounded-[1.5rem] shadow-[0_20px_50px_rgba(245,158,11,0.3)] hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:grayscale"
+          >
+            {loading ? (
+              <Loader2 className="w-6 h-6 animate-spin" />
+            ) : (
+              <>
+                <Send className="w-6 h-6" />
+                ENVIAR POSTS AGORA
+              </>
+            )}
           </button>
         </div>
-      ) : (
-        <>
-      <form onSubmit={handleSubmit} className="p-8 rounded-3xl glass space-y-6">
-        <div className="space-y-2">
-          <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest">Plataforma</label>
-          <div className="grid grid-cols-3 gap-4">
-            <button
-              type="button"
-              onClick={() => setPlatform('tiktok')}
-              className={`py-4 rounded-2xl font-bold transition-all border-2 ${platform === 'tiktok' ? 'border-amber-500 bg-amber-500/10 text-amber-500' : 'border-zinc-800 text-zinc-500'}`}
-            >
-              TikTok
-            </button>
-            <button
-              type="button"
-              onClick={() => setPlatform('youtube')}
-              className={`py-4 rounded-2xl font-bold transition-all border-2 ${platform === 'youtube' ? 'border-red-500 bg-red-500/10 text-red-500' : 'border-zinc-800 text-zinc-500'}`}
-            >
-              YouTube
-            </button>
-            <button
-              type="button"
-              onClick={() => setPlatform('instagram')}
-              className={`py-4 rounded-2xl font-bold transition-all border-2 ${platform === 'instagram' ? 'border-pink-500 bg-pink-500/10 text-pink-500' : 'border-zinc-800 text-zinc-500'}`}
-            >
-              Instagram
-            </button>
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest flex items-center justify-between">
-            <span>Selecione sua Conta vinculada</span>
-            <button 
-              type="button" 
-              onClick={() => setView('SETTINGS')}
-              className="text-amber-500 hover:underline"
-            >
-              Gerenciar Contas
-            </button>
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {Array.from(new Set(
-              (platform === 'tiktok' ? (Array.isArray(user.tiktok) ? user.tiktok : (user.tiktok ? [user.tiktok] : [])) :
-              platform === 'instagram' ? (Array.isArray(user.instagram) ? user.instagram : (user.instagram ? [user.instagram] : [])) :
-              (Array.isArray(user.youtube) ? user.youtube : (user.youtube ? [user.youtube] : [])))
-              .filter(Boolean)
-              .map(h => h.trim())
-            )).map((handle) => (
-              <button
-                key={handle}
-                type="button"
-                onClick={() => setSelectedAccountHandle(handle)}
-                className={`px-6 py-3 rounded-xl font-black text-xs transition-all border ${selectedAccountHandle === handle 
-                  ? 'bg-amber-500 border-amber-500 text-black shadow-lg shadow-amber-500/20' 
-                  : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:border-zinc-700'}`}
-              >
-                {handle}
-              </button>
-            ))}
-            {(platform === 'tiktok' ? (Array.isArray(user.tiktok) ? user.tiktok : (user.tiktok ? [user.tiktok] : [])) :
-              platform === 'instagram' ? (Array.isArray(user.instagram) ? user.instagram : (user.instagram ? [user.instagram] : [])) :
-              (Array.isArray(user.youtube) ? user.youtube : (user.youtube ? [user.youtube] : []))
-            ).length === 0 && (
-              <p className="text-red-500 text-[10px] font-black uppercase tracking-widest p-4 border border-red-500/20 bg-red-500/5 rounded-2xl w-full">
-                Nenhuma conta {platform} cadastrada. Vá em "Gerenciar Contas" para vincular seu perfil.
-              </p>
-            )}
-          </div>
-        </div>
-
-        {!lockedCompetitionId && (
-          <div className="space-y-2">
-            <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest">Competição</label>
-            <select
-              value={selectedCompId}
-              onChange={(e) => setSelectedCompId(e.target.value)}
-              required
-              className="w-full bg-zinc-900 border-2 border-zinc-800 rounded-2xl px-6 py-4 font-bold focus:border-amber-500 outline-none transition-colors text-white"
-            >
-              <option value="" disabled>Selecione a Competição</option>
-              {approvedCompetitions.map(comp => (
-                <option key={comp.id} value={comp.id}>{comp.title}</option>
-              ))}
-            </select>
-            {approvedCompetitions.length === 0 && (
-              <p className="text-[10px] text-red-500 font-bold uppercase mt-1">Você não está aprovado em nenhuma competição.</p>
-            )}
-          </div>
-        )}
-
-        <div className="space-y-2">
-          <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest">URLs dos Vídeos (um por linha)</label>
-          <textarea
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://...&#10;https://..."
-            className="w-full bg-zinc-900 border-2 border-zinc-800 rounded-2xl px-6 py-4 font-bold focus:border-amber-500 outline-none transition-colors min-h-[120px] resize-y"
-          />
-        </div>
-
-        {error && (
-          <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 space-y-2">
-            <p className="text-red-400 font-black text-xs uppercase tracking-widest flex items-center gap-2">
-              <AlertCircle className="w-4 h-4" /> {error}
-            </p>
-            {duplicates.map((d, i) => (
-              <p key={i} className="text-red-300/70 text-[11px] font-mono truncate pl-6">{d}</p>
-            ))}
-          </div>
-        )}
-        <button
-          disabled={submitting || success}
-          className={`w-full py-5 rounded-2xl font-black text-lg transition-all flex items-center justify-center gap-3 ${success ? 'bg-emerald-500 text-black' : 'gold-bg text-black hover:scale-[1.02]'}`}
-        >
-          {submitting ? (
-            <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1 }} className="w-6 h-6 border-2 border-black border-t-transparent rounded-full" />
-          ) : success ? (
-            <>
-              <CheckCircle2 className="w-6 h-6" />
-              ENVIADO COM SUCESSO
-            </>
-          ) : (
-            <>
-              <Send className="w-6 h-6" />
-              PROTOCOLAR AGORA
-            </>
-          )}
-        </button>
-      </form>
-
-      <div className="p-8 rounded-3xl bg-amber-500/10 border border-amber-500/20 flex items-start gap-5 shadow-[0_0_40px_rgba(245,158,11,0.05)] relative overflow-hidden group mb-4">
-        <div className="absolute inset-0 bg-gradient-to-br from-amber-500/5 to-transparent pointer-events-none" />
-        <AlertCircle className="w-8 h-8 text-amber-500 shrink-0 transform group-hover:rotate-12 transition-transform duration-500" />
-        <div className="space-y-3 relative z-10">
-          <h3 className="text-lg font-black text-amber-500 uppercase tracking-widest leading-none">
-            AVISO CRÍTICO: REGRAS DE POSTAGEM!
-          </h3>
-          <p className="text-[13px] font-bold text-zinc-100 leading-relaxed uppercase tracking-tight max-w-2xl">
-            COLOQUE AS <span className="text-amber-500 underline decoration-2 underline-offset-4">HASHTAGS E MARCAÇÕES</span> CORRETAMENTE PARA ESTA COMPETIÇÃO. 
-            VáDEOS SEM AS OBRIGATORIEDADES OU PRIVADOS SERÃO <span className="text-red-500">REJEITADOS</span>.
-          </p>
-        </div>
       </div>
-      </>
-      )}
-
     </div>
   );
 };
@@ -4005,6 +4016,7 @@ const AdminPanel = ({
   handleUpdateUserRole,
   handleApproveRemoval,
   handleRejectRemoval,
+  handlePermanentDeletePost,
   handleRankingResetOnly,
   handleResetRankingSimple,
   handleUpdateMasterKey,
@@ -8705,12 +8717,23 @@ const AdminPanel = ({
                         <div className="font-black text-zinc-300 capitalize truncate px-2">{post.userName}</div>
                         <div className="font-black text-emerald-400 text-center bg-emerald-500/10 py-1.5 rounded-lg">{(post.likes || 0).toLocaleString()}</div>
                         <div className="font-black text-amber-500 text-center bg-amber-500/10 py-1.5 rounded-lg">{(post.views || 0).toLocaleString()}</div>
-                        <div className="flex justify-center">
+                        <div className="flex items-center justify-center gap-2">
                           <button
                             onClick={() => handlePostStatus(post.id, 'pending')}
-                            className="w-full py-2.5 bg-zinc-900 text-zinc-200 border border-zinc-800 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-white hover:text-black transition-all flex items-center justify-center gap-2"
+                            className="flex-1 h-11 bg-zinc-900 text-zinc-200 border border-zinc-800 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-white hover:text-black transition-all flex items-center justify-center gap-2"
                           >
                             <RefreshCw className="w-3.5 h-3.5" /> RESTAURAR
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handlePermanentDeletePost(post.id);
+                            }}
+                            className="w-11 h-11 flex-shrink-0 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-all flex items-center justify-center shadow-lg shadow-red-500/20"
+                            title="Excluir Permanentemente"
+                          >
+                            <Trash2 className="w-5 h-5" />
                           </button>
                         </div>
                       </div>

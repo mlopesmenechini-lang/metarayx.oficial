@@ -380,12 +380,13 @@ interface CompetitionDetailViewProps {
   setProtocolCount: (v: number) => void;
   setConfirmCallback: (v: any) => void;
   setGlobalSelectedCompId: (v: string | null) => void;
+  dailyVideoCount: number;
 }
 
 export const CompetitionDetailView: React.FC<CompetitionDetailViewProps> = ({
   comp, user, rankings, posts, registrations, onBack, setView, RankingsComponent: Rankings, PostSubmitComponent: PostSubmit,
   onDelete, onRemove, isAdmin, allCompetitions,
-  setShowConfirmModal, setProtocolCount, setConfirmCallback, setGlobalSelectedCompId
+  setShowConfirmModal, setProtocolCount, setConfirmCallback, setGlobalSelectedCompId, dailyVideoCount
 }) => {
   const [activeTab, setActiveTab] = useState<'RANKING' | 'POST' | 'REGULAMENTO' | 'PROTOCOLOS'>('RANKING');
 
@@ -460,6 +461,7 @@ export const CompetitionDetailView: React.FC<CompetitionDetailViewProps> = ({
                 setProtocolCount={setProtocolCount}
                 setConfirmCallback={setConfirmCallback}
                 setAppSelectedCompId={setGlobalSelectedCompId}
+                dailyVideoCount={dailyVideoCount}
               />
             )}
           </motion.div>
