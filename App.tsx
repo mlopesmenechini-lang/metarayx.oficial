@@ -2639,7 +2639,8 @@ const PostSubmit = ({ user, competitions, registrations, setView, lockedCompetit
   setProtocolCount: (v: number) => void,
   setConfirmCallback: (v: any) => void,
   setAppSelectedCompId: (v: string | null) => void,
-  dailyVideoCount: number
+  dailyVideoCount: number,
+  setSettingsTab: (tab: 'PROFILE' | 'SOCIAL') => void
 }) => {
   const [accountInputs, setAccountInputs] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(false);
@@ -4120,8 +4121,7 @@ const AdminPanel = ({
   setShowConfirmModal,
   setProtocolCount,
   setConfirmCallback,
-  setGlobalSelectedCompId,
-  handlePermanentDeletePost
+  setGlobalSelectedCompId
 }: {
   userRole: UserRole;
   posts: Post[];
