@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { 
-  Check, RefreshCw, Zap, Camera, TrendingUp, 
   Trash2, AlertCircle, ShieldCheck,
-  User as UserIcon, Crown, Share2, Plus, X, ChevronRight, Pencil, Save
+  User as UserIcon, Crown, Share2, Plus, X, ChevronRight, Save
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User } from '../types';
@@ -213,7 +212,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <div className="flex items-center gap-4">
                    <button 
                     onClick={() => removeSocial('instagram', username)}
-                    className="p-3 text-zinc-600 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                    className="p-3 text-zinc-600 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all"
                    >
                      <Trash2 className="w-5 h-5" />
                    </button>
@@ -242,7 +241,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <div className="flex items-center gap-4">
                    <button 
                     onClick={() => removeSocial('tiktok', username)}
-                    className="p-3 text-zinc-600 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                    className="p-3 text-zinc-600 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all"
                    >
                      <Trash2 className="w-5 h-5" />
                    </button>
@@ -271,7 +270,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <div className="flex items-center gap-4">
                    <button 
                     onClick={() => removeSocial('youtube', username)}
-                    className="p-3 text-zinc-600 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                    className="p-3 text-zinc-600 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all"
                    >
                      <Trash2 className="w-5 h-5" />
                    </button>

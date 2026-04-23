@@ -261,18 +261,16 @@ const App: React.FC = () => {
     const end = new Date(now);
     
     if (h >= 20) {
-      // Ciclo NOVO começou hoje às 20h
+      // Ciclo atual: Hoje 20h -> Amanhã 18h
       start.setHours(20, 0, 0, 0);
       end.setDate(end.getDate() + 1);
       end.setHours(18, 0, 0, 0);
-    } else if (h < 18) {
-      // Ciclo começou ontem às 20h
+    } else {
+      // Ciclo atual: Ontem 20h -> Hoje 18h
+      // (Cobre também o período entre 18h e 20h mostrando o ciclo que acabou de encerrar)
       start.setDate(start.getDate() - 1);
       start.setHours(20, 0, 0, 0);
       end.setHours(18, 0, 0, 0);
-    } else {
-      // Período de intervalo (18h às 20h)
-      return 0;
     }
     
     const sTime = start.getTime();
