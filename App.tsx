@@ -2118,6 +2118,7 @@ const App: React.FC = () => {
                       setConfirmCallback={setConfirmCallback}
                       setGlobalSelectedCompId={setSelectedActiveCompId}
                       dailyVideoCount={dailyVideoCount}
+                      setSettingsTab={setSettingsTab}
                     />
                   )
                 )}
@@ -2628,16 +2629,7 @@ const App: React.FC = () => {
 
 
 
-
-
-
-
-
-
-
-
-
-const PostSubmit = ({ user, competitions, registrations, setView, lockedCompetitionId, setShowConfirmModal, setProtocolCount, setConfirmCallback, setAppSelectedCompId, dailyVideoCount }: {
+const PostSubmit = ({ user, competitions, registrations, setView, lockedCompetitionId, setShowConfirmModal, setProtocolCount, setConfirmCallback, setAppSelectedCompId, dailyVideoCount, setSettingsTab }: {
   user: User,
   competitions: Competition[],
   registrations: CompetitionRegistration[],
@@ -4128,7 +4120,8 @@ const AdminPanel = ({
   setShowConfirmModal,
   setProtocolCount,
   setConfirmCallback,
-  setGlobalSelectedCompId
+  setGlobalSelectedCompId,
+  handlePermanentDeletePost
 }: {
   userRole: UserRole;
   posts: Post[];
@@ -4169,6 +4162,7 @@ const AdminPanel = ({
   handleRankingResetOnly: () => void;
   handleResetRankingSimple: (compId: string) => void;
   handleUpdateMasterKey: (newKey: string) => Promise<void>;
+  handlePermanentDeletePost: (postId: string) => Promise<void>;
   showRoleChallenge: boolean;
   setShowRoleChallenge: (val: boolean) => void;
   roleChallengeInput: string;
