@@ -1616,6 +1616,19 @@ const App: React.FC = () => {
       alert('Erro ao atualizar status.');
     }
   };
+  
+  const handleUpdateSuggestionResponse = async (id: string, adminResponse: string) => {
+    try {
+      await updateDoc(doc(db, 'suggestions', id), { 
+        adminResponse: adminResponse.trim(),
+        respondedAt: Date.now()
+      });
+      alert('Resposta enviada com sucesso!');
+    } catch (error) {
+      console.error('Error responding to suggestion:', error);
+      alert('Erro ao enviar resposta.');
+    }
+  };
 
   const handleUpdateUserRole = async (uid: string, role: UserRole, skipCheck = false) => {
     try {
@@ -2092,6 +2105,7 @@ const App: React.FC = () => {
                     handleDeleteAnnouncement={handleDeleteAnnouncement}
                     handleDeleteSuggestion={handleDeleteSuggestion}
                     handleUpdateSuggestionStatus={handleUpdateSuggestionStatus}
+                    handleUpdateSuggestionResponse={handleUpdateSuggestionResponse}
                     handleUpdateUserRole={handleUpdateUserRole}
                     handleApproveRemoval={handleApproveRemoval}
                     handleRejectRemoval={handleRejectRemoval}
@@ -2233,7 +2247,9 @@ const App: React.FC = () => {
                     suggestionMsg={suggestionMsg}
                     setSuggestionMsg={setSuggestionMsg}
                     handleSendSuggestion={handleSendSuggestion}
+                    handleUpdateSuggestionResponse={handleUpdateSuggestionResponse}
                     suggestions={suggestions}
+                    userRole={user.role}
                   />
                 )}
               </motion.div>
@@ -3985,6 +4001,7 @@ const AdminPanel = ({
   handleDeleteAnnouncement,
   handleDeleteSuggestion,
   handleUpdateSuggestionStatus,
+  handleUpdateSuggestionResponse,
   handleUpdateUserRole,
   handleApproveRemoval,
   handleRejectRemoval,
@@ -4133,6 +4150,7 @@ const AdminPanel = ({
   handleDeleteAnnouncement: (id: string) => void;
   handleDeleteSuggestion: (id: string) => void;
   handleUpdateSuggestionStatus: (id: string, status: Suggestion['status']) => void;
+  handleUpdateSuggestionResponse: (id: string, response: string) => void;
   handleUpdateUserRole: (uid: string, role: UserRole) => void;
   handleApproveRemoval: (postId: string) => void;
   handleRejectRemoval: (postId: string) => void;

@@ -199,33 +199,76 @@ export const TimerTab: React.FC<TimerTabProps> = ({ timerConfig, handleUpdateTim
 interface SugestoesTabProps {
   suggestions: Suggestion[];
   handleUpdateSuggestionStatus: (id: string, status: Suggestion['status']) => void;
+  handleUpdateSuggestionResponse: (id: string, response: string) => void;
   handleDeleteSuggestion: (id: string) => void;
 }
 
-export const SugestoesTab: React.FC<SugestoesTabProps> = ({ suggestions, handleUpdateSuggestionStatus, handleDeleteSuggestion }) => (
-  <div className="space-y-6">
-    <h3 className="text-xl font-black uppercase tracking-tight">Caixa de Sugestões ({suggestions.length})</h3>
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      {suggestions.map(s => (
-        <div key={s.id} className="p-6 bg-zinc-900 border border-zinc-800 rounded-3xl space-y-4">
-          <div className="flex justify-between items-start">
-            <div className={`px-2 py-1 rounded text-[8px] font-black uppercase ${s.status === 'pendente' ? 'bg-amber-500/10 text-amber-500' : 'bg-emerald-500/10 text-emerald-500'}`}>
-              {s.status}
+export const SugestoesTab: React.FC<SugestoesTabProps> = ({ suggestions, handleUpdateSuggestionStatus, handleUpdateSuggestionResponse, handleDeleteSuggestion }) => {
+  const [localResponses, setLocalResponses] = React.useState<Record<string, string>>({});
+
+  return (
+    <div className="space-y-6">
+      <h3 className="text-xl font-black uppercase tracking-tight">Caixa de Sugestões ({suggestions.length})</h3>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {suggestions.map(s => (
+          <div key={s.id} className="p-6 bg-zinc-900 border border-zinc-800 rounded-[32px] space-y-4 flex flex-col justify-between">
+            <div className="space-y-4">
+              <div className="flex justify-between items-start">
+                <div className="flex gap-2">
+                  <div className={`px-2 py-1 rounded text-[8px] font-black uppercase ${s.status === 'pendente' ? 'bg-amber-500/10 text-amber-500' : 'bg-emerald-500/10 text-emerald-500'}`}>
+                    {s.status}
+                  </div>
+                  {s.adminResponse && (
+                    <div className="px-2 py-1 rounded bg-blue-500/10 text-blue-500 text-[8px] font-black uppercase">
+                      RESPONDIDA
+                    </div>
+                  )}
+                </div>
+                <button onClick={() => handleDeleteSuggestion(s.id)} className="text-red-500/30 hover:text-red-500 transition-colors">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="text-xs font-bold text-white leading-relaxed">{s.message}</p>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black text-zinc-500 uppercase">Por: {s.userName}</span>
+                <span className="text-[9px] text-zinc-700 font-bold uppercase">• {new Date(s.timestamp).toLocaleDateString()}</span>
+              </div>
             </div>
-            <button onClick={() => handleDeleteSuggestion(s.id)} className="text-red-500 hover:text-red-400"><Trash2 className="w-4 h-4" /></button>
+
+            <div className="pt-4 border-t border-zinc-800 space-y-3">
+              <div>
+                <label className="text-[8px] font-black text-zinc-600 uppercase tracking-widest mb-1 block">Resposta da Diretoria</label>
+                <textarea
+                  value={localResponses[s.id] ?? s.adminResponse ?? ''}
+                  onChange={(e) => setLocalResponses(prev => ({ ...prev, [s.id]: e.target.value }))}
+                  placeholder="Escreva um feedback para o usuário..."
+                  className="w-full bg-black border border-zinc-800 rounded-xl p-3 text-[10px] font-bold text-zinc-300 focus:border-amber-500 outline-none transition-all h-20 resize-none"
+                />
+              </div>
+              
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleUpdateSuggestionResponse(s.id, localResponses[s.id] || s.adminResponse || '')}
+                  className="flex-1 py-2 bg-zinc-800 text-white font-black text-[10px] uppercase rounded-lg hover:bg-white hover:text-black transition-all"
+                >
+                  Salvar Resposta
+                </button>
+                {s.status === 'pendente' && (
+                  <button 
+                    onClick={() => handleUpdateSuggestionStatus(s.id, 'concluido')} 
+                    className="flex-1 py-2 bg-emerald-500/10 text-emerald-500 font-black text-[10px] uppercase rounded-lg hover:bg-emerald-500 hover:text-black transition-all"
+                  >
+                    Concluir
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
-          <p className="text-xs font-bold text-white">{s.message}</p>
-          <div className="pt-4 border-t border-zinc-800 flex justify-between items-center">
-            <span className="text-[10px] font-black text-zinc-500 uppercase">Por: {s.userName}</span>
-            {s.status === 'pendente' && (
-              <button onClick={() => handleUpdateSuggestionStatus(s.id, 'concluido')} className="text-[10px] font-black text-emerald-500 uppercase hover:underline">Marcar Concluído</button>
-            )}
-          </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 interface SolicitacoesRemocaoTabProps {
   posts: Post[];

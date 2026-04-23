@@ -112,6 +112,10 @@ interface AdminPanelProps {
   
   // Handlers - Outros
   handleExportExcel: () => void;
+  handleDeleteSuggestion: (id: string) => void;
+  handleUpdateSuggestionStatus: (id: string, status: any) => void;
+  handleUpdateSuggestionResponse: (id: string, response: string) => void;
+  handleUpdateUserRole: (uid: string, role: UserRole) => void;
   handleDeleteUserPost: (postId: string) => Promise<void>;
   handleResetDailyRanking: (id: string | null) => void;
   handleResetRankingSimple: (id: string | null) => void;
@@ -234,7 +238,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   setRejectionModal,
   financeTab, setFinanceTab, financeCompId, setFinanceCompId, financeDateFilter, setFinanceDateFilter,
   handleMarkPaid, handleToggleManualPostValidation, validatedPostsLocal, setValidatedPostsLocal, onUpdatePixKey,
-  handleExportExcel, handleDeleteUserPost, handleResetDailyRanking, handleResetRankingSimple,
+  handleExportExcel, handleDeleteSuggestion, handleUpdateSuggestionStatus, handleUpdateSuggestionResponse, handleUpdateUserRole,
+  handleDeleteUserPost, handleResetDailyRanking, handleResetRankingSimple,
   handleRepairMetrics, handleRankingResetOnly, handleSystemCleanup, pendingMoves, setPendingMoves, repairing, selectedResetCompId, setSelectedResetCompId,
    newUserRole, setNewUserRole, newUserName, setNewUserName, newUserEmail, setNewUserEmail, newUserPass, setNewUserPass,
   handleCreateUser, creatingUser, handleDeleteAllDuplicates,
@@ -553,7 +558,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         {tab === 'USERS_APPROVED' && (
           <UsersTab 
             type="APPROVED" users={approvedUsers} userRole={userRole}
-            handleUpdateUserRole={() => {}} handleArchiveUser={() => {}} handleDeleteUser={() => {}}
+            handleUpdateUserRole={handleUpdateUserRole} handleArchiveUser={() => {}} handleDeleteUser={() => {}}
             PendingUserRow={() => null} ApprovedUserRow={() => null}
           />
         )}
@@ -631,8 +636,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         {tab === 'SUGESTOES' && (
           <SugestoesTab 
             suggestions={suggestions} 
-            handleUpdateSuggestionStatus={() => {}} 
-            handleDeleteSuggestion={() => {}} 
+            handleUpdateSuggestionStatus={handleUpdateSuggestionStatus} 
+            handleUpdateSuggestionResponse={handleUpdateSuggestionResponse}
+            handleDeleteSuggestion={handleDeleteSuggestion} 
           />
         )}
 

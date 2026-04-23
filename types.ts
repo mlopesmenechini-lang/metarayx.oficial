@@ -186,6 +186,8 @@ export interface Suggestion {
   message: string;
   timestamp: number;
   status: 'pendente' | 'analise' | 'desenvolvimento' | 'concluido';
+  adminResponse?: string;
+  respondedAt?: number;
 }
 
 export interface Settings {
