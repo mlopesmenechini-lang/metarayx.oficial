@@ -291,6 +291,14 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                             {post.status === 'approved' || post.status === 'synced' ? 'Aprovado' : 
                              post.status === 'rejected' || post.status === 'banned' ? 'Recusado' : 'Em Triagem'}
                           </div>
+                          {(post.status === 'rejected' || post.status === 'banned') && post.rejectionReason && (
+                            <div className="mt-2 pt-2 border-t border-zinc-800/30">
+                              <p className="text-[7px] font-black text-zinc-600 uppercase mb-0.5">Motivo</p>
+                              <p className="text-[9px] text-zinc-400 font-bold leading-tight italic">
+                                {post.rejectionReason}
+                              </p>
+                            </div>
+                          )}
                         </div>
                         <div className="p-3 rounded-2xl bg-zinc-900/50 border border-zinc-800/50">
                           <p className="text-[8px] font-black text-zinc-600 uppercase mb-1">Data</p>

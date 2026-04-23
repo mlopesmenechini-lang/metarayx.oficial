@@ -1122,7 +1122,7 @@ const App: React.FC = () => {
                 const u = approvedUsers.find(au => au.uid === uid);
                 return `- ${u?.displayName || uid}: R$ ${data.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
               }).join('\n');
-            alert(`âÅ“â€¦ Ranking resetado!\n\n${Object.keys(balanceIncrements).length} usuário(s) premiados:\n${auditMsg}`);
+            alert(`✅ Ranking resetado!\n\n${Object.keys(balanceIncrements).length} usuário(s) premiados:\n${auditMsg}`);
           }
         } catch (error) {
           console.error('Error resetting rankings:', error);
