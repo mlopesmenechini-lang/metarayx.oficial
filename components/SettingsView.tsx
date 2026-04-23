@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { 
+  Check, RefreshCw, Zap, Camera, TrendingUp, 
   Trash2, AlertCircle, ShieldCheck,
   User as UserIcon, Crown, Share2, Plus, X, ChevronRight, Save
 } from 'lucide-react';
