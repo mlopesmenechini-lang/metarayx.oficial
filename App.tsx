@@ -1058,7 +1058,8 @@ const App: React.FC = () => {
 
   const handleResetDailyRanking = async (compId?: string) => {
     const key = window.prompt('Digite a Master Admin Key para autorizar esta ação:');
-    if (!key || key.trim() !== settings.masterKey) {
+    const masterKey = settings.masterAdminKey || 'METARAYX2024';
+    if (!key || key.trim() !== masterKey) {
       alert('Chave incorreta. Operação abortada.');
       return;
     }
@@ -1233,7 +1234,8 @@ const App: React.FC = () => {
 
   const handleRankingResetOnly = async () => {
     const key = window.prompt('Digite a Master Admin Key para autorizar esta ação:');
-    if (!key || key.trim() !== settings.masterKey) {
+    const masterKey = settings.masterAdminKey || 'METARAYX2024';
+    if (!key || key.trim() !== masterKey) {
       alert('Chave incorreta. Operação abortada.');
       return;
     }
@@ -1324,7 +1326,8 @@ const App: React.FC = () => {
 
   const handleResetRankingSimple = async (compId: string) => {
     const key = window.prompt('Digite a Master Admin Key para autorizar esta ação:');
-    if (!key || key.trim() !== settings.masterKey) {
+    const masterKey = settings.masterAdminKey || 'METARAYX2024';
+    if (!key || key.trim() !== masterKey) {
       alert('Chave incorreta. Operação abortada.');
       return;
     }
@@ -1410,7 +1413,8 @@ const App: React.FC = () => {
 
   const handleSystemCleanup = async () => {
     const key = window.prompt('Digite a Master Admin Key para autorizar esta ação:');
-    if (!key || key.trim() !== settings.masterKey) {
+    const masterKey = settings.masterAdminKey || 'METARAYX2024';
+    if (!key || key.trim() !== masterKey) {
       alert('Chave incorreta. Operação abortada.');
       return;
     }
@@ -4918,7 +4922,8 @@ function AdminPanel({
 
   const handleRepairMetrics = async () => {
     const key = window.prompt('Digite a Master Admin Key para autorizar esta ação:');
-    if (!key || key.trim() !== settings.masterKey) {
+    const masterKey = settings.masterAdminKey || 'METARAYX2024';
+    if (!key || key.trim() !== masterKey) {
       alert('Chave incorreta. Operação abortada.');
       return;
     }
