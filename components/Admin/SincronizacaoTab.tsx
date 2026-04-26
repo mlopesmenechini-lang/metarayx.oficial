@@ -5,10 +5,11 @@ import {
   Camera, 
   ArrowLeft, 
   Check, 
-  RotateCcw, 
   RefreshCw, 
   Clock, 
-  ChevronRight 
+  ChevronRight,
+  Trophy,
+  ArrowRight
 } from 'lucide-react';
 import { Post, Competition, Settings } from '../../types';
 import { PostTagRow, CompliancePanel } from './AdminUI';
@@ -26,8 +27,12 @@ interface SincronizacaoTabProps {
   syncing: boolean;
   syncingPostId: string | null;
   setSyncingPostId: (id: string | null) => void;
-  handleSyncApprovedParallel: () => void;
-  handleSyncApprovedSequentially: () => void;
+  syncingCompId?: string | null;
+  syncProgress?: number;
+  syncTotal?: number;
+  sessionSyncedIds?: string[];
+  handleSyncApprovedParallel: (compId?: string) => void;
+  handleSyncApprovedSequentially: (compId?: string) => void;
   formatLastSyncDate: (date?: string) => string;
   onSingleSync: (post: Post) => Promise<void>;
   handleMovePostToCompetition: (postId: string, newCompId: string) => Promise<void>;
@@ -36,7 +41,7 @@ interface SincronizacaoTabProps {
   selectedAdminHandle: string;
   setSelectedAdminHandle: (handle: string) => void;
   adminHandles: string[];
-  onUpdateMasterKey: (newKey: string) => void;
+  onUpdateMasterKey?: () => Promise<void>;
 }
 
 export const SincronizacaoTab: React.FC<SincronizacaoTabProps> = ({
@@ -52,6 +57,10 @@ export const SincronizacaoTab: React.FC<SincronizacaoTabProps> = ({
   syncing,
   syncingPostId,
   setSyncingPostId,
+  syncingCompId,
+  syncProgress,
+  syncTotal,
+  sessionSyncedIds = [],
   handleSyncApprovedParallel,
   handleSyncApprovedSequentially,
   formatLastSyncDate,
@@ -61,10 +70,8 @@ export const SincronizacaoTab: React.FC<SincronizacaoTabProps> = ({
   setPendingMoves,
   selectedAdminHandle,
   setSelectedAdminHandle,
-  adminHandles,
-  onUpdateMasterKey
+  adminHandles
 }) => {
-  const [newMasterKey, setNewMasterKey] = React.useState('');
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
       {syncDetailCompId ? (
@@ -137,7 +144,7 @@ export const SincronizacaoTab: React.FC<SincronizacaoTabProps> = ({
                   disabled={syncing}
                   className="px-6 py-2.5 rounded-xl bg-red-500/10 text-red-500 border border-red-500/20 text-[10px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all disabled:opacity-50 flex items-center gap-2"
                 >
-                  <RotateCcw className="w-3.5 h-3.5" />
+                  <RefreshCw className="w-3.5 h-3.5" />
                   Reverter para Posts (Triagem)
                 </button>
               )}
@@ -282,20 +289,30 @@ export const SincronizacaoTab: React.FC<SincronizacaoTabProps> = ({
             </div>
             <div className="flex flex-wrap items-center gap-4">
               <button
-                onClick={handleSyncApprovedParallel}
-                disabled={syncing}
-                className="px-8 py-5 bg-gradient-to-r from-amber-600 to-amber-500 text-black font-black rounded-2xl hover:scale-[1.02] transition-all flex items-center justify-center gap-3 shadow-[0_0_20px_rgba(245,158,11,0.3)] disabled:opacity-50"
-              >
-                {syncing ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
-                MULTI-SYNC (TODAS AS CHAVES)
-              </button>
-              <button
                 onClick={handleSyncApprovedSequentially}
                 disabled={syncing}
-                className="px-8 py-5 bg-zinc-800 text-white font-black rounded-2xl hover:scale-[1.02] transition-all flex items-center justify-center gap-3 border border-zinc-700 disabled:opacity-50"
+                className="px-8 py-5 bg-zinc-800 text-zinc-400 font-black rounded-2xl border border-zinc-700 hover:bg-zinc-700 hover:text-white transition-all flex items-center justify-center gap-3 disabled:opacity-50"
               >
-                {syncing ? <RefreshCw className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
+                {syncing && !syncingCompId ? <RefreshCw className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
                 SEQUENCIAL
+              </button>
+
+              <button
+                onClick={handleSyncApprovedParallel}
+                disabled={syncing}
+                className="px-10 py-5 gold-bg text-black font-black rounded-2xl hover:scale-[1.02] transition-all flex items-center justify-center gap-3 shadow-2xl shadow-amber-500/20 disabled:opacity-50"
+              >
+                {syncing && !syncingCompId ? (
+                  <>
+                    <RefreshCw className="w-5 h-5 animate-spin" />
+                    MULTI-SYNC
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-5 h-5 font-black" />
+                    MULTI-SYNC ({settings.apifyKeysSync?.length || 1} CHAVES)
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -308,22 +325,84 @@ export const SincronizacaoTab: React.FC<SincronizacaoTabProps> = ({
                 <div 
                   key={comp.id} 
                   onClick={() => setSyncDetailCompId(comp.id)}
-                  className="p-8 rounded-[40px] glass border border-zinc-800 flex flex-col justify-between group hover:border-amber-500/50 transition-all cursor-pointer bg-zinc-900/20"
+                  className="glass-card premium-border p-8 rounded-[40px] flex flex-col justify-between group hover:border-amber-500/50 transition-all cursor-pointer relative overflow-hidden"
                 >
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
-                        <Zap className="w-6 h-6" />
+                  <div className="absolute inset-0 bg-gradient-to-br from-amber-500/0 via-amber-500/0 to-amber-500/0 group-hover:from-amber-500/5 group-hover:to-transparent transition-all duration-500" />
+                  
+                  <div className="space-y-6 relative z-10">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-5">
+                        <div className={`w-16 h-16 rounded-3xl flex items-center justify-center transition-all duration-500 group-hover:scale-110 group-hover:gold-glow shadow-inner ${comp.isActive ? 'bg-amber-500/20 text-amber-500 shadow-amber-500/20' : 'bg-zinc-800/50 text-zinc-500'}`}>
+                          <Trophy className="w-8 h-8" />
+                        </div>
+                        <div className="space-y-1">
+                          <h4 className="font-black text-xl uppercase tracking-tight text-white group-hover:text-amber-500 transition-colors duration-300 truncate max-w-[200px]">
+                            {comp.title}
+                          </h4>
+                          <div className="flex items-center gap-2">
+                            <span className={`w-2 h-2 rounded-full ${comp.isActive ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-700'}`} />
+                            <p className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">
+                              {compApprovedPosts.length} <span className="text-zinc-700">Vídeos Pendentes</span>
+                            </p>
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <h4 className="font-black text-sm uppercase truncate max-w-[150px]">{comp.title}</h4>
-                        <span className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">{compApprovedPosts.length} Vídeos Pendentes</span>
+                      <div className="p-2 rounded-full bg-zinc-800/50 text-zinc-600 group-hover:text-amber-500 transition-colors">
+                        <ChevronRight className="w-5 h-5 group-hover:translate-x-0.5 transition-transform" />
                       </div>
                     </div>
                   </div>
-                  <div className="mt-8 flex items-center justify-between text-[10px] font-black text-zinc-500 uppercase tracking-widest">
-                    <span>VER LINKS</span>
-                    <ChevronRight className="w-4 h-4 text-amber-500 group-hover:translate-x-1 transition-transform" />
+
+                  <div className="mt-10 flex flex-col gap-4 relative z-10">
+                    <div className="w-full py-4 px-6 rounded-2xl bg-white/5 border border-white/10 group-hover:border-amber-500/20 group-hover:bg-amber-500/10 transition-all flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 group-hover:text-amber-500">Acessar Detalhes</span>
+                      <div className="w-6 h-6 rounded-lg bg-zinc-800 flex items-center justify-center group-hover:bg-amber-500 group-hover:text-black transition-all">
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSyncApprovedSequentially(comp.id);
+                        }}
+                        disabled={syncing}
+                        className={`py-4 px-4 rounded-2xl border transition-all flex items-center justify-center gap-2 text-[8px] font-black uppercase tracking-widest
+                          ${syncingCompId === comp.id && (!sessionSyncedIds || !sessionSyncedIds.length) 
+                            ? 'bg-zinc-800 border-zinc-700 text-zinc-400' 
+                            : 'bg-black border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white'
+                          } disabled:opacity-50`}
+                      >
+                        {syncingCompId === comp.id && (!sessionSyncedIds || !sessionSyncedIds.length) ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+                        SEQUENCIAL
+                      </button>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSyncApprovedParallel(comp.id);
+                        }}
+                        disabled={syncing}
+                        className={`py-4 px-4 rounded-2xl border transition-all flex items-center justify-center gap-2 text-[8px] font-black uppercase tracking-widest
+                          ${syncingCompId === comp.id 
+                            ? 'bg-amber-500 text-black border-amber-500 shadow-lg shadow-amber-500/20' 
+                            : 'gold-bg text-black border-amber-500/50 hover:scale-[1.05] shadow-md'
+                          } disabled:opacity-50`}
+                      >
+                        {syncingCompId === comp.id ? (
+                          <>
+                            <RefreshCw className="w-3 h-3 animate-spin" />
+                            {syncProgress}/{syncTotal}
+                          </>
+                        ) : (
+                          <>
+                            <Zap className="w-3 h-3" />
+                            MULTI-SYNC
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
@@ -338,55 +417,6 @@ export const SincronizacaoTab: React.FC<SincronizacaoTabProps> = ({
         </div>
       )}
 
-      {/* ── SECURITY SETTINGS ── */}
-      {!syncDetailCompId && (
-        <div className="bg-zinc-950 p-8 rounded-[40px] border border-red-500/10 space-y-6 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-8 opacity-5">
-            <Zap className="w-32 h-32 text-red-500" />
-          </div>
-          
-          <div className="flex items-center gap-3 relative z-10">
-            <div className="p-2 rounded-xl bg-red-500/10 text-red-500">
-              <Zap className="w-5 h-5" />
-            </div>
-            <div>
-              <h4 className="text-sm font-black uppercase text-white">Configurações de Segurança Crítica</h4>
-              <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-[0.2em]">Trava de segurança para atribuição de cargos administrativos</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 relative z-10">
-            <div className="space-y-4">
-              <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-2">
-                Palavra-Chave Mestra (Atual: <span className="text-red-500">{settings.masterAdminKey ? settings.masterAdminKey.replace(/./g, '*') : 'PADRÃO'}</span>)
-              </label>
-              <div className="flex gap-3">
-                <input
-                  type="password"
-                  value={newMasterKey}
-                  onChange={(e) => setNewMasterKey(e.target.value)}
-                  placeholder="Nova palavra-chave..."
-                  className="flex-1 bg-black border border-zinc-800 rounded-2xl py-4 px-6 text-sm font-bold focus:border-red-500 outline-none transition-all shadow-inner"
-                />
-                <button
-                  onClick={() => {
-                    if (window.confirm('Tem certeza que deseja alterar a Master Key? Guarde-a bem, ela é necessária para criar novos admins.')) {
-                      onUpdateMasterKey(newMasterKey);
-                      setNewMasterKey('');
-                    }
-                  }}
-                  className="px-8 py-4 bg-red-600 text-white font-black rounded-2xl hover:bg-red-500 transition-all shadow-lg shadow-red-600/20 text-xs"
-                >
-                  SALVAR
-                </button>
-              </div>
-              <p className="text-[9px] text-zinc-600 font-bold uppercase tracking-widest leading-relaxed">
-                Esta chave será solicitada sempre que um usuário for promovido a ADMINISTRADOR.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

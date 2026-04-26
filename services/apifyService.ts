@@ -1,7 +1,8 @@
+import React from 'react';
 import { db, doc, updateDoc, getDocs, collection, query, where, getDoc } from '../firebase';
 import { Post, User } from '../types';
 
-const runActorAndGetResults = async (apiKeys: string | string[], actorId: string, input: any) => {
+const runActorAndGetResults = async (apiKeys: string | string[], actorId: string, input: any, syncPausedRef?: React.MutableRefObject<boolean>, cancelSyncRef?: React.MutableRefObject<boolean>) => {
   const keys = Array.isArray(apiKeys) ? apiKeys : [apiKeys];
   let lastError: any = null;
 
@@ -37,6 +38,12 @@ const runActorAndGetResults = async (apiKeys: string | string[], actorId: string
       let finished = false;
       let attempts = 0;
       while (!finished && attempts < 30) { // Max 5 minutes (10s intervals)
+        if (cancelSyncRef && cancelSyncRef.current) throw new Error('Operação cancelada pelo usuário.');
+        while (syncPausedRef && syncPausedRef.current && (!cancelSyncRef || !cancelSyncRef.current)) {
+          await new Promise(r => setTimeout(r, 1000));
+        }
+        if (cancelSyncRef && cancelSyncRef.current) throw new Error('Operação cancelada pelo usuário.');
+
         await new Promise(r => setTimeout(r, 10000));
         const statusResponse = await fetch(`https://api.apify.com/v2/actor-runs/${runId}?token=${apiKey}`);
         const statusData = await statusResponse.json();
@@ -247,7 +254,7 @@ const formatYoutubeUrl = (url: string) => {
   return url;
 };
 
-export const syncSinglePostWithApify = async (apiKeys: string | string[], post: Post, skipDaily: boolean = false) => {
+export const syncSinglePostWithApify = async (apiKeys: string | string[], post: Post, skipDaily: boolean = false, syncPausedRef?: React.MutableRefObject<boolean>, cancelSyncRef?: React.MutableRefObject<boolean>) => {
   const apiKey = Array.isArray(apiKeys) ? apiKeys[0] : apiKeys; 
   if (!apiKey) throw new Error('Apify API Key is required.');
 
@@ -258,19 +265,19 @@ export const syncSinglePostWithApify = async (apiKeys: string | string[], post: 
       resultsPerPage: 1,
       shouldDownloadVideos: false,
       shouldDownloadCovers: false,
-    });
+    }, syncPausedRef, cancelSyncRef);
   } else if (post.platform === 'youtube') {
     const formattedUrl = formatYoutubeUrl(post.url);
     items = await runActorAndGetResults(apiKey, 'streamers/youtube-scraper', {
       startUrls: [{ url: formattedUrl }],
       maxResults: 1,
-    });
+    }, syncPausedRef, cancelSyncRef);
   } else if (post.platform === 'instagram') {
     items = await runActorAndGetResults(apiKey, 'apify/instagram-scraper', {
       directUrls: [post.url],
       resultsType: 'posts',
       searchLimit: 1,
-    });
+    }, syncPausedRef, cancelSyncRef);
   }
 
   // Prepare new metrics

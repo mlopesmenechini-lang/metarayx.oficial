@@ -516,6 +516,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             handleBulkSyncSelectedApproved={handleBulkSyncSelectedApproved}
             syncing={syncing} syncingPostId={syncingPostId} setSyncingPostId={setSyncingPostId} handleSyncApprovedParallel={handleSyncApprovedParallel}
             handleSyncApprovedSequentially={handleSyncApprovedSequentially} formatLastSyncDate={formatLastSyncDate} onSingleSync={onSingleSync}
+            syncingCompId={syncingCompId} syncProgress={syncProgress} syncTotal={syncTotal} sessionSyncedIds={sessionSyncedIds}
             handleMovePostToCompetition={handleMovePostToCompetition}
             pendingMoves={pendingMoves}
             setPendingMoves={setPendingMoves}

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Zap, 
   TrendingUp, 
@@ -6,12 +6,9 @@ import {
   ArrowLeft, 
   Check, 
   CheckCircle2,
-  RotateCcw, 
   RefreshCw, 
   Clock, 
   ChevronRight,
-  Key,
-  Lock,
   X,
   Trophy,
   ArrowRight,
@@ -19,7 +16,8 @@ import {
   Calendar,
   MessageSquare,
   Eye,
-  Heart
+  Heart,
+  Plus
 } from 'lucide-react';
 import { Post, Competition, Settings } from '../../types';
 import { PostTagRow, CompliancePanel } from './AdminUI';
@@ -48,10 +46,10 @@ interface RessincronizacaoTabProps {
   setSessionSyncedIds: (ids: string[] | ((prev: string[]) => string[])) => void;
   syncingPostId: string | null;
   setSyncingPostId: (id: string | null) => void;
-  apifyKey: string;
-  setApifyKey: (val: string) => void;
-  handleSaveApiKey: () => void;
-  handleDeleteApiKey: (key: string) => void;
+  syncPaused: boolean;
+  setSyncPaused: (val: boolean) => void;
+  syncPausedRef: React.MutableRefObject<boolean>;
+  handleClearSyncSession: () => void;
   // Handlers needed for individual post actions
   onForceMonthly: (post: Post) => Promise<void>;
   onForceDaily: (post: Post) => Promise<void>;
@@ -91,10 +89,6 @@ export const RessincronizacaoTab: React.FC<RessincronizacaoTabProps> = ({
   setSessionSyncedIds,
   syncingPostId,
   setSyncingPostId,
-  apifyKey,
-  setApifyKey,
-  handleSaveApiKey,
-  handleDeleteApiKey,
   onForceMonthly,
   onForceDaily,
   onResetToSync,
@@ -106,19 +100,77 @@ export const RessincronizacaoTab: React.FC<RessincronizacaoTabProps> = ({
   setPendingMoves,
   selectedAdminHandle,
   setSelectedAdminHandle,
-  adminHandles
+  adminHandles,
+  syncPaused,
+  setSyncPaused,
+  syncPausedRef,
+  handleClearSyncSession
 }) => {
+  const [visibleCount, setVisibleCount] = useState(30);
+
+  // Resetar o contador quando mudar de competição ou handle
+  React.useEffect(() => {
+    setVisibleCount(30);
+  }, [syncDetailCompId, selectedAdminHandle]);
+
+  const filteredPosts = posts.filter(p => {
+    const matchesComp = p.competitionId === syncDetailCompId;
+    const matchesStatus = p.status === 'synced' || p.status === 'banned';
+    const matchesHandle = selectedAdminHandle === 'all' || p.accountHandle === selectedAdminHandle;
+    return matchesComp && matchesStatus && matchesHandle;
+  });
+
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
       {syncDetailCompId ? (
         <div className="space-y-6">
+          {/* BARRA DE SESSÃO / PROGRESSO PERSISTENTE */}
+          {(sessionSyncedIds.length > 0 || syncing) && (
+            <div className="bg-zinc-900/80 backdrop-blur-xl p-6 rounded-[32px] border border-zinc-800/50 flex flex-wrap items-center justify-between gap-6 shadow-2xl">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center text-amber-500">
+                  <Clock className="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 className="text-white font-black text-xs uppercase tracking-widest mb-1">Sessão Salva</h4>
+                  <p className="text-zinc-500 text-[10px] font-bold uppercase">{sessionSyncedIds.length} vídeos processados nesta bateria</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                {syncing && (
+                  <button
+                    onClick={() => setSyncPaused(!syncPaused)}
+                    className={`px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 ${
+                      syncPaused 
+                        ? 'bg-emerald-500 text-black hover:bg-emerald-400' 
+                        : 'bg-amber-500 text-black hover:bg-amber-400'
+                    }`}
+                  >
+                    {syncPaused ? <Zap className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
+                    {syncPaused ? 'CONTINUAR' : 'PAUSAR'}
+                  </button>
+                )}
+                
+                {((sessionSyncedIds.length > 0 && !syncing) || (syncing && syncPaused)) && (
+                  <button
+                    onClick={handleClearSyncSession}
+                    className="px-6 py-3 rounded-xl bg-red-500/10 text-red-500 border border-red-500/20 font-black text-[10px] uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all flex items-center gap-2"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    LIMPAR PROGRESSO
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-zinc-900/30 p-8 rounded-[40px] border border-zinc-800/50">
             <div className="flex flex-col md:flex-row md:items-center gap-8">
               <div className="space-y-2">
                 <h3 className="text-2xl font-black uppercase gold-gradient">
                   Vídeos Sincronizados: {competitions.find(c => c.id === syncDetailCompId)?.title}
                 </h3>
-                <p className="text-zinc-500 font-bold text-xs uppercase tracking-widest">Atualização Individual de Métricas</p>
+                <p className="text-zinc-500 font-bold text-xs uppercase tracking-widest">Atualização Individual de Métricas ({filteredPosts.length} vídeos)</p>
               </div>
 
               <div className="flex flex-wrap items-center gap-4">
@@ -160,16 +212,16 @@ export const RessincronizacaoTab: React.FC<RessincronizacaoTabProps> = ({
                     } disabled:opacity-50 mt-auto h-fit`}
                 >
                   {syncingCompId === syncDetailCompId ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
-                  {syncingCompId === syncDetailCompId ? `DUAL-SYNC: ${syncProgress} / ${syncTotal}` : 'DUAL-SYNC (ALTA PERFORMANCE)'}
+                  MULTI-SYNC ({settings.apifyKeys?.length || 1} CHAVES)
                 </button>
               </div>
             </div>
 
             <button
               onClick={() => setSyncDetailCompId(null)}
-              className="px-8 py-3 bg-zinc-800 text-zinc-400 font-black rounded-2xl text-[10px] uppercase tracking-widest hover:bg-zinc-700 hover:text-white transition-all flex items-center gap-2 mt-auto"
+              className="px-8 py-4 bg-zinc-900 text-white font-black rounded-2xl border border-zinc-800 hover:bg-zinc-800 transition-all text-xs uppercase"
             >
-              <ArrowLeft className="w-4 h-4" /> VOLTAR AOS CARDS
+              VOLTAR
             </button>
           </div>
 
@@ -177,22 +229,16 @@ export const RessincronizacaoTab: React.FC<RessincronizacaoTabProps> = ({
             <div className="flex items-center gap-4">
               <button
                 onClick={() => {
-                  const allVisiblePosts = posts.filter(p => {
-                    const matchesComp = p.competitionId === syncDetailCompId;
-                    const matchesStatus = p.status === 'synced' || p.status === 'banned';
-                    const matchesHandle = selectedAdminHandle === 'all' || p.accountHandle === selectedAdminHandle;
-                    return matchesComp && matchesStatus && matchesHandle;
-                  }).map(p => p.id);
-                  
-                  if (selectedResyncPostIds.length === allVisiblePosts.length) {
+                  const allVisibleIds = filteredPosts.map(p => p.id);
+                  if (selectedResyncPostIds.length === allVisibleIds.length) {
                     setSelectedResyncPostIds([]);
                   } else {
-                    setSelectedResyncPostIds(allVisiblePosts);
+                    setSelectedResyncPostIds(allVisibleIds);
                   }
                 }}
                 className="px-4 py-2 rounded-xl bg-zinc-800 text-zinc-400 text-[10px] font-black uppercase tracking-widest border border-zinc-700 hover:bg-zinc-700 hover:text-white transition-all"
               >
-                {selectedResyncPostIds.length > 0 ? 'Desmarcar Todos' : 'Selecionar Filtrados'}
+                {selectedResyncPostIds.length === filteredPosts.length ? 'Desmarcar Todos' : 'Selecionar Todos filtrados'}
               </button>
               {selectedResyncPostIds.length > 0 && (
                 <span className="text-amber-500 font-black text-[10px] uppercase tracking-widest">
@@ -238,12 +284,7 @@ export const RessincronizacaoTab: React.FC<RessincronizacaoTabProps> = ({
           </div>
 
           <div className="grid grid-cols-1 gap-4">
-            {posts.filter(p => {
-              const matchesComp = p.competitionId === syncDetailCompId;
-              const matchesStatus = p.status === 'synced' || p.status === 'banned';
-              const matchesHandle = selectedAdminHandle === 'all' || p.accountHandle === selectedAdminHandle;
-              return matchesComp && matchesStatus && matchesHandle;
-            }).map(post => {
+            {filteredPosts.slice(0, visibleCount).map(post => {
               const isSyncedInSession = sessionSyncedIds.includes(post.id);
               const sessionActive = syncing || sessionSyncedIds.length > 0;
               const isDimmed = sessionActive && isSyncedInSession;
@@ -424,7 +465,7 @@ export const RessincronizacaoTab: React.FC<RessincronizacaoTabProps> = ({
                     className="w-12 h-12 rounded-2xl bg-zinc-800 text-zinc-400 flex items-center justify-center hover:bg-blue-600 hover:text-white transition-all shadow-lg"
                     title="Voltar para Sincronização (Zerar Métricas)"
                   >
-                    <RotateCcw className="w-5 h-5" />
+                    <RefreshCw className="w-5 h-5" />
                   </button>
 
                   <button
@@ -444,6 +485,24 @@ export const RessincronizacaoTab: React.FC<RessincronizacaoTabProps> = ({
               );
             })}
           </div>
+
+          {filteredPosts.length > visibleCount && (
+            <div className="flex flex-col items-center gap-4 py-12">
+              <div className="flex items-center gap-3 px-6 py-2 bg-zinc-900/50 rounded-full border border-zinc-800">
+                <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                <p className="text-zinc-500 text-[10px] font-black uppercase tracking-[0.3em]">
+                  Mostrando {visibleCount} de {filteredPosts.length} vídeos
+                </p>
+              </div>
+              <button
+                onClick={() => setVisibleCount(prev => prev + 100)}
+                className="px-12 py-5 bg-zinc-900 text-white font-black rounded-[24px] border border-zinc-800 hover:bg-amber-500 hover:text-black hover:border-amber-500 transition-all shadow-xl uppercase text-xs tracking-widest flex items-center gap-3 group"
+              >
+                <Plus className="w-5 h-5 group-hover:rotate-90 transition-transform" />
+                Carregar mais vídeos
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="space-y-6">
@@ -482,54 +541,6 @@ export const RessincronizacaoTab: React.FC<RessincronizacaoTabProps> = ({
             </div>
           </div>
 
-          <div className="bg-zinc-900/50 p-6 rounded-[32px] border border-zinc-800/50 space-y-4">
-            <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-amber-500 uppercase tracking-widest flex items-center gap-2">
-                  <Key className="w-3 h-3" /> Gestão de Chaves Apify (Multi-Sync)
-                </label>
-                <p className="text-zinc-500 text-[9px] font-bold uppercase">Adicione múltiplas chaves para acelerar o processamento paralelo.</p>
-              </div>
-
-              <div className="flex items-center gap-3 flex-1 max-w-2xl">
-                <div className="relative flex-1 group">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 group-focus-within:text-amber-500 transition-colors" />
-                  <input
-                    type="text"
-                    value={apifyKey}
-                    onChange={(e) => setApifyKey(e.target.value)}
-                    placeholder="Insira nova chave Apify..."
-                    className="w-full bg-black border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-xs font-bold focus:border-amber-500 outline-none transition-all"
-                  />
-                </div>
-                <button
-                  onClick={handleSaveApiKey}
-                  className="px-6 py-3 gold-bg text-black font-black rounded-xl hover:scale-105 transition-all text-[10px] uppercase"
-                >
-                  Adicionar
-                </button>
-              </div>
-            </div>
-
-            {settings.apifyKeys && settings.apifyKeys.length > 0 && (
-              <div className="flex flex-wrap gap-2 pt-2 border-t border-zinc-800/50">
-                {settings.apifyKeys.map((key, idx) => (
-                  <div key={idx} className="flex items-center gap-2 bg-black/40 border border-zinc-800/50 px-3 py-1.5 rounded-lg group">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                    <code className="text-[9px] text-zinc-400 font-mono">
-                      {key.substring(0, 8)}...{key.substring(key.length - 6)}
-                    </code>
-                    <button 
-                      onClick={() => handleDeleteApiKey(key)}
-                      className="text-zinc-600 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {competitions.map(comp => {

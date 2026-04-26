@@ -14,7 +14,7 @@ import {
   TrendingUp, Users, Zap, Calendar, MessageSquare, Menu, X, ChevronLeft, ExternalLink,
   Mail, Lock, User as UserIcon, Eye, EyeOff, Loader2, RefreshCw, Crown, Trash2, Plus,
   Heart, Share2, Bookmark, Bell, Check, Camera, BarChart3, ArrowLeft, ArrowRight, BookOpen, Shield, Star, ChevronRight, Target,
-  Award, UserX, Sparkles, CreditCard, Coins, DollarSign, Info, Archive, Download, RotateCcw, Pencil, PlusCircle, MinusCircle, Key, ShieldAlert,
+  Award, UserX, Sparkles, CreditCard, Coins, DollarSign, Info, Archive, Download, Pencil, PlusCircle, MinusCircle, Key, ShieldAlert,
   Save, Link2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -35,6 +35,7 @@ import { TriagemTab } from './components/Admin/TriagemTab';
 import { SincronizacaoTab } from './components/Admin/SincronizacaoTab';
 import { RessincronizacaoTab } from './components/Admin/RessincronizacaoTab';
 import { DiagnosticoTab } from './components/Admin/DiagnosticoTab';
+import { ConfiguracoesApiTab } from './components/Admin/ConfiguracoesApiTab';
 
 const sanitizeString = (text: string) => {
   if (typeof text !== 'string') return text;
@@ -67,7 +68,7 @@ const sanitizeObject = (obj: any): any => {
 };
 import fbConfig from './firebase-applet-config.json';
 
-export type AdminTab = 'VISAO_GERAL' | 'SYNC' | 'TIMER' | 'TRIAGEM' | 'SINCRONIZACAO' | 'RESSINCRONIZACAO' | 'FINANCEIRO' | 'ACESSOS' | 'SUGESTOES' | 'RELATORIOS' | 'REMOVED_POSTS' | 'REMOVAL_REQUESTS' | 'REGISTROS' | 'AVISOS' | 'ARCHIVED' | 'POSTS' | 'USERS' | 'USERS_APPROVED' | 'COMPETITIONS' | 'DIAGNOSTICO';
+export type AdminTab = 'VISAO_GERAL' | 'SYNC' | 'TIMER' | 'TRIAGEM' | 'SINCRONIZACAO' | 'RESSINCRONIZACAO' | 'FINANCEIRO' | 'ACESSOS' | 'SUGESTOES' | 'RELATORIOS' | 'REMOVED_POSTS' | 'REMOVAL_REQUESTS' | 'REGISTROS' | 'AVISOS' | 'ARCHIVED' | 'POSTS' | 'USERS' | 'USERS_APPROVED' | 'COMPETITIONS' | 'DIAGNOSTICO' | 'APIS';
 
 const normalizeUrl = (url: string) => {
   try {
@@ -132,12 +133,27 @@ const App: React.FC = () => {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [globalSyncing, setGlobalSyncing] = useState(false);
   const [settings, setSettings] = useState<Settings>({ apifyKey: '', apifyKeys: [], apifyKeysSync: [] });
-  const [sessionSyncedIds, setSessionSyncedIds] = useState<string[]>([]);
+  const [sessionSyncedIds, setSessionSyncedIds] = useState<string[]>(() => {
+    const saved = localStorage.getItem('metarayx_sync_session');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [syncing, setSyncing] = useState(false);
+  const [syncPaused, setSyncPaused] = useState(false);
+  const syncPausedRef = useRef(false);
+  const cancelSyncRef = useRef(false);
+
+  useEffect(() => {
+    syncPausedRef.current = syncPaused;
+  }, [syncPaused]);
   const [syncProgress, setSyncProgress] = useState(0);
   const [syncTotal, setSyncTotal] = useState(0);
   const [syncingPostId, setSyncingPostId] = useState<string | null>(null);
   const [syncingCompId, setSyncingCompId] = useState<string | null>(null);
+
+  // Persistir sessão de sincronização
+  useEffect(() => {
+    localStorage.setItem('metarayx_sync_session', JSON.stringify(sessionSyncedIds));
+  }, [sessionSyncedIds]);
   const [timerConfig, setTimerConfig] = useState<{ enabled: boolean; endTime: number | null; targetTime: string; message: string }>({
     enabled: false,
     endTime: null,
@@ -491,7 +507,7 @@ const App: React.FC = () => {
     };
   }, [user?.uid]);
 
-  // Real-time Data Listeners á¢á¢ââ‚¬Å¡Ã‚Â¬á¢ââ€šÂ¬Ã‚Â dados privados (depende de aprovação)
+  // Real-time Data Listeners - dados privados (depende de aprovação)
   useEffect(() => {
     if (!user) return;
     const isStaff = user.role === 'admin' || user.role === 'auditor' || user.role === 'administrativo';
@@ -1030,6 +1046,11 @@ const App: React.FC = () => {
   };
 
   const handleResetDailyRanking = async (compId?: string) => {
+    const key = window.prompt('Digite a Master Admin Key para autorizar esta ação:');
+    if (!key || key.trim() !== settings.masterKey) {
+      alert('Chave incorreta. Operação abortada.');
+      return;
+    }
     const targetComp = compId ? competitions.find(c => c.id === compId) : competitions.find(c => c.isActive);
     
     if (!targetComp) {
@@ -1040,7 +1061,7 @@ const App: React.FC = () => {
     setConfirmModal({
       isOpen: true,
       title: `Zerar Ranking Diário - ${targetComp.title}`,
-      message: `Isso calculará os vencedores do Dia e o Top 1 Insta para esta COMPETIÇÃO ESPECáFICA, adicionará os prêmios ao Saldo, registrará as transações e zerará as estatísticas diárias DESTA COMPETIÇÃO. Deseja prosseguir?`,
+      message: `Isso calculará os vencedores do Dia e o Top 1 Insta para esta COMPETIÇÃO ESPECÍFICA, adicionará os prêmios ao Saldo, registrará as transações e zerará as estatísticas diárias DESTA COMPETIÇÃO. Deseja prosseguir?`,
       onConfirm: async () => {
         try {
           const cid = targetComp.id;
@@ -1061,35 +1082,39 @@ const App: React.FC = () => {
               return (statsB.dailyPosts || 0) - (statsA.dailyPosts || 0) || (statsB.dailyViews || 0) - (statsA.dailyViews || 0);
             })[0];
 
-          const balanceIncrements: Record<string, { amount: number, desc: string }> = {};
+          const transactionsToCreate: { uid: string, amount: number, desc: string }[] = [];
           const viewBonusValue = targetComp.viewBonus || 0;
 
           dailyViewWinners.forEach((u, i) => {
             const prize = targetComp.prizesDaily?.[i]?.value || 0;
             const dailyViews = u.competitionStats?.[cid]?.dailyViews || 0;
             const bonusFromViews = Math.floor(dailyViews / 1000000) * viewBonusValue;
-            const total = prize + bonusFromViews;
-            if (total > 0) {
-              balanceIncrements[u.uid] = {
-                amount: (balanceIncrements[u.uid]?.amount || 0) + total,
-                desc: `PRÃÅ MIO DIÁRIO ${targetComp.title.toUpperCase()} (${i + 1}º LUGAR)${bonusFromViews > 0 ? ' + Bá€NUS' : ''}`
-              };
+
+            if (prize > 0) {
+              transactionsToCreate.push({
+                uid: u.uid,
+                amount: prize,
+                desc: `PRÊMIO DIÁRIO ${targetComp.title.toUpperCase()} (${i + 1}º LUGAR)`
+              });
+            }
+
+            if (bonusFromViews > 0) {
+              transactionsToCreate.push({
+                uid: u.uid,
+                amount: bonusFromViews,
+                desc: `BÔNUS 1M VIEWS ${targetComp.title.toUpperCase()} (${Math.floor(dailyViews / 1000000)}x)`
+              });
             }
           });
 
           if (quantityWinner && targetComp.prizesInstagram?.[0]) {
             const prize = targetComp.prizesInstagram[0].value || 0;
-            const existing = balanceIncrements[quantityWinner.uid];
-            if (existing) {
-              existing.amount += prize;
-              if (!existing.desc.includes('+ Bá€NUS')) {
-                existing.desc += ' + Bá€NUS';
-              }
-            } else {
-              balanceIncrements[quantityWinner.uid] = {
+            if (prize > 0) {
+              transactionsToCreate.push({
+                uid: quantityWinner.uid,
                 amount: prize,
-                desc: `PRÃÅ MIO QUANTIDADE ${targetComp.title.toUpperCase()} + Bá€NUS`
-              };
+                desc: `PRÊMIO DE QUANTIDADE (TOP 1) ${targetComp.title.toUpperCase()}`
+              });
             }
           }
 
@@ -1102,10 +1127,10 @@ const App: React.FC = () => {
           const batch = writeBatch(db);
 
           // 1. Create transactions
-          Object.entries(balanceIncrements).forEach(([uid, data]) => {
+          transactionsToCreate.forEach((data) => {
             const transRef = doc(collection(db, 'transactions'));
             batch.set(transRef, {
-              userId: uid,
+              userId: data.uid,
               amount: data.amount,
               timestamp: Date.now(),
               status: 'credit',
@@ -1115,9 +1140,15 @@ const App: React.FC = () => {
             });
           });
 
+          // Calculate total increment per user for user doc update
+          const userIncrements: Record<string, number> = {};
+          transactionsToCreate.forEach(t => {
+            userIncrements[t.uid] = (userIncrements[t.uid] || 0) + t.amount;
+          });
+
           // 2. Reset user stats
           approvedUsers.forEach(u => {
-            const uIncrement = balanceIncrements[u.uid]?.amount || 0;
+            const uIncrement = userIncrements[u.uid] || 0;
             const dataToUpdate: any = {};
             
             // Reset daily stats for THIS competition
@@ -1172,7 +1203,7 @@ const App: React.FC = () => {
             const msg = dailyViewWinners.length === 0 
                 ? 'Nenhum usuário com visualizações diárias registradas.' 
                 : 'Nenhum prêmio configurado nesta competição.';
-            alert(`âÅ¡Â Ã¯Â¸Â Reset realizado sem premiações:\n\n${msg}\n\nEstatísticas diárias foram zeradas mesmo assim.`);
+            alert(`⚠️ Reset realizado sem premiações:\n\n${msg}\n\nEstatísticas diárias foram zeradas mesmo assim.`);
           } else {
             const auditMsg = Object.entries(balanceIncrements)
               .map(([uid, data]) => {
@@ -1190,9 +1221,14 @@ const App: React.FC = () => {
   };
 
   const handleRankingResetOnly = async () => {
+    const key = window.prompt('Digite a Master Admin Key para autorizar esta ação:');
+    if (!key || key.trim() !== settings.masterKey) {
+      alert('Chave incorreta. Operação abortada.');
+      return;
+    }
     setConfirmModal({
       isOpen: true,
-      title: 'âÅ¡Â Ã¯Â¸Â ZERAR GERAL (RESSINCRONIZAR)',
+      title: '⚠️ ZERAR GERAL (RESSINCRONIZAR)',
       message: 'Este procedimento zerará as estatísticas de TODOS os usuários e posts, mas MANTERÁ o status atual dos links. Os vídeos processados continuarão na aba de RESSINCRONIZAÇÃO, permitindo que você inicie uma nova coleta do zero com total controle. Deseja prosseguir?',
       onConfirm: async () => {
         try {
@@ -1276,6 +1312,11 @@ const App: React.FC = () => {
   };
 
   const handleResetRankingSimple = async (compId: string) => {
+    const key = window.prompt('Digite a Master Admin Key para autorizar esta ação:');
+    if (!key || key.trim() !== settings.masterKey) {
+      alert('Chave incorreta. Operação abortada.');
+      return;
+    }
     const targetComp = competitions.find(c => c.id === compId);
     if (!targetComp) {
       alert('Selecione uma competição!');
@@ -1345,7 +1386,7 @@ const App: React.FC = () => {
             await batch.commit();
           }
 
-          alert('á¢Ã…â€œÃ‚Â¨ Ranking da competição limpo com sucesso! Agora você pode ressincronizar os vídeos.');
+          alert('✅ Ranking da competição limpo com sucesso! Agora você pode ressincronizar os vídeos.');
         } catch (error: any) {
           console.error('Error clearing ranking:', error);
           alert('Erro ao limpar ranking: ' + error.message);
@@ -1357,10 +1398,15 @@ const App: React.FC = () => {
 
 
   const handleSystemCleanup = async () => {
+    const key = window.prompt('Digite a Master Admin Key para autorizar esta ação:');
+    if (!key || key.trim() !== settings.masterKey) {
+      alert('Chave incorreta. Operação abortada.');
+      return;
+    }
     setConfirmModal({
       isOpen: true,
-      title: 'Ã°Å¸Å¡Â¨ LIMPEZA GERAL DO SISTEMA - PERIGO',
-      message: 'VOCÃÅ  TEM CERTEZA? Esta operação apagará permanentemente TODOS OS LINKS, TRANSAÇÕES, REGISTROS E SALDOS. Esta ação não pode ser desfeita. Apenas os usuários e suas permissões serão mantidos.',
+      title: '🚨 LIMPEZA GERAL DO SISTEMA - PERIGO',
+      message: 'VOCÊ TEM CERTEZA? Esta operação apagará permanentemente TODOS OS LINKS, TRANSAÇÕES, REGISTROS E SALDOS. Esta ação não pode ser desfeita. Apenas os usuários e suas permissões serão mantidos.',
       onConfirm: async () => {
         try {
           const batch = writeBatch(db);
@@ -1418,7 +1464,7 @@ const App: React.FC = () => {
           });
 
           await batch.commit();
-          alert('á°Ã…Â¸ââ‚¬ÂÃ‚Â¥á°Ã…Â¸ââ‚¬ÂÃ‚Â¥á°Ã…Â¸ââ‚¬ÂÃ‚Â¥ SISTEMA FOI RESETADO COM SUCESSO! Todos os dados foram limpos.');
+          alert('🔥🔥🔥 SISTEMA FOI RESETADO COM SUCESSO! Todos os dados foram limpos.');
         } catch (error) {
           console.error('Error during cleanup:', error);
           alert('Erro durante a limpeza do sistema. Veja o console.');
@@ -1844,7 +1890,7 @@ const App: React.FC = () => {
       <div className="flex h-screen bg-black text-zinc-100 overflow-hidden">
         {/* Sidebar */}
         <aside className={`
-        fixed inset-y-0 left-0 z-50 w-64 glass border-r border-zinc-800/50 transform transition-transform duration-300 lg:relative lg:translate-x-0
+        fixed inset-y-0 left-0 z-[100] w-64 glass border-r border-zinc-800/50 transform transition-transform duration-300 lg:relative lg:translate-x-0
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
           <div className="flex flex-col h-full p-6 overflow-y-auto">
@@ -1917,6 +1963,14 @@ const App: React.FC = () => {
             </div>
           </div>
         </aside>
+
+        {/* Mobile Overlay */}
+        {isSidebarOpen && (
+          <div 
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[90] lg:hidden"
+            onClick={() => setIsSidebarOpen(false)}
+          />
+        )}
 
         {/* Main Content */}
         <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
@@ -2281,6 +2335,10 @@ const App: React.FC = () => {
                     setProtocolCount={setProtocolCount}
                     setConfirmCallback={setConfirmCallback}
                     setGlobalSelectedCompId={setSelectedActiveCompId}
+                    syncPaused={syncPaused}
+                    setSyncPaused={setSyncPaused}
+                    syncPausedRef={syncPausedRef}
+                    cancelSyncRef={cancelSyncRef}
                   />
                 )}
                 {view === 'SETTINGS' && user && (
@@ -4119,7 +4177,11 @@ const AdminPanel = ({
   setShowConfirmModal,
   setProtocolCount,
   setConfirmCallback,
-  setGlobalSelectedCompId
+  setGlobalSelectedCompId,
+  syncPaused,
+  setSyncPaused,
+  syncPausedRef,
+  cancelSyncRef
 }: {
   userRole: UserRole;
   posts: Post[];
@@ -4270,6 +4332,10 @@ const AdminPanel = ({
   setProtocolCount: (v: number) => void;
   setConfirmCallback: (v: any) => void;
   setGlobalSelectedCompId: (v: string | null) => void;
+  syncPaused: boolean;
+  setSyncPaused: (v: boolean) => void;
+  syncPausedRef: React.MutableRefObject<boolean>;
+  cancelSyncRef: React.MutableRefObject<boolean>;
 }) => {
   const [tab, setTab] = useState<AdminTab>('VISAO_GERAL');
   const [selectedSyncCompId, setSelectedSyncCompId] = useState<string>('ALL');
@@ -4646,7 +4712,7 @@ const AdminPanel = ({
         photoURL: `https://ui-avatars.com/api/?name=${encodeURIComponent(newUserName.trim())}&background=random`
       });
 
-      alert(`á¢Ã…â€œââ‚¬Â¦ Acesso criado com sucesso!\n\nNome: ${newUserName}\nCargo: ${newUserRole.toUpperCase()}\nEmail: ${newUserEmail}`);
+      alert(`✅ Acesso criado com sucesso!\n\nNome: ${newUserName}\nCargo: ${newUserRole.toUpperCase()}\nEmail: ${newUserEmail}`);
       setNewUserName('');
       setNewUserEmail('');
       setNewUserPass('');
@@ -4654,13 +4720,13 @@ const AdminPanel = ({
     } catch (e: any) {
       console.error('Erro criar usuário:', e);
       if (e.code === 'auth/email-already-in-use') {
-        alert('á¢Ã‚ÂÃ…â€™ Este email já está cadastrado no sistema.');
+        alert('❌ Este email já está cadastrado no sistema.');
       } else if (e.code === 'auth/invalid-email') {
-        alert('á¢Ã‚ÂÃ…â€™ Email inválido. Verifique o formato.');
+        alert('❌ Email inválido. Verifique o formato.');
       } else if (e.code === 'permission-denied' || e.message?.includes('permission')) {
-        alert('á¢Ã‚ÂÃ…â€™ Sem permissão para gravar no banco.\n\nVocê precisa publicar as novas Regras de Segurança no Console do Firebase (aba Segurança do Firestore).');
+        alert('❌ Sem permissão para gravar no banco.\n\nVocê precisa publicar as novas Regras de Segurança no Console do Firebase (aba Segurança do Firestore).');
       } else {
-        alert(`á¢Ã‚ÂÃ…â€™ Falha ao criar acesso:\n${e.message}`);
+        alert(`❌ Falha ao criar acesso:\n${e.message}`);
       }
     }
     setCreatingUser(false);
@@ -4692,7 +4758,7 @@ const AdminPanel = ({
       const qNorm = query(collection(db, 'posts'), where('normalizedUrl', 'in', [norm]));
       const snapNorm = await getDocs(qNorm);
       if (!snapNorm.empty) {
-        alert('á¢Ã‚ÂÃ…â€™ Este link já existe no sistema!');
+        alert('❌ Este link já existe no sistema!');
         setAdminSubmitting(false);
         return;
       }
@@ -4722,7 +4788,7 @@ const AdminPanel = ({
       alert('âÅ“â€¦ Link adicionado com sucesso ao perfil de ' + targetDisplayName);
       setAdminManualUrl('');
     } catch (error: any) {
-      alert('á¢Ã‚ÂÃ…â€™ Erro ao adicionar link: ' + error.message);
+      alert('❌ Erro ao adicionar link: ' + error.message);
     } finally {
       setAdminSubmitting(false);
     }
@@ -4748,9 +4814,9 @@ const AdminPanel = ({
         apifyKey: trimmedKey // Mantém a última como principal por compatibilidade
       });
       setApifyKey(''); // Limpa o input após adicionar
-      alert('á¢Ã…â€œââ‚¬Â¦ Chave API adicionada com sucesso!');
+      alert('✅ Chave API adicionada com sucesso!');
     } catch (error: any) {
-      alert(`á¢ Ã…â€™ Erro ao salvar chave: ${error.message}`);
+      alert(`❌ Erro ao salvar chave: ${error.message}`);
     }
   };
 
@@ -4762,9 +4828,9 @@ const AdminPanel = ({
         apifyKeys: newKeys,
         apifyKey: newKeys[0] || '' // Atualiza a principal
       });
-      alert('á¢Ã…â€œââ‚¬Â¦ Chave removida.');
+      alert('✅ Chave removida.');
     } catch (error: any) {
-      alert(`á¢ Ã…â€™ Erro ao remover chave: ${error.message}`);
+      alert(`❌ Erro ao remover chave: ${error.message}`);
     }
   };
 
@@ -4783,9 +4849,9 @@ const AdminPanel = ({
       const newKeys = [...(settings.apifyKeysSync || []), trimmedKey];
       await updateDoc(doc(db, 'config', 'settings'), { apifyKeysSync: newKeys });
       setApifyKeySync('');
-      alert('á¢Ã…â€œââ‚¬Â¦ Chave de Sincronização Inicial adicionada!');
+      alert('✅ Chave de Sincronização Inicial adicionada!');
     } catch (error: any) {
-      alert(`á¢ Ã…â€™ Erro ao salvar chave: ${error.message}`);
+      alert(`❌ Erro ao salvar chave: ${error.message}`);
     }
   };
 
@@ -4794,10 +4860,34 @@ const AdminPanel = ({
     try {
       const newKeys = (settings.apifyKeysSync || []).filter(k => k !== keyToDelete);
       await updateDoc(doc(db, 'config', 'settings'), { apifyKeysSync: newKeys });
-      alert('á¢Ã…â€œââ‚¬Â¦ Chave removida.');
+      alert('✅ Chave removida.');
     } catch (error: any) {
-      alert(`á¢ Ã…â€™ Erro ao remover chave: ${error.message}`);
+      alert(`❌ Erro ao remover chave: ${error.message}`);
     }
+  };
+
+  const handleMoveApiKey = async (type: 'general' | 'sync', index: number, direction: 'up' | 'down') => {
+    const keyArray = type === 'general' ? settings.apifyKeys : settings.apifyKeysSync;
+    if (!keyArray) return;
+    const newKeys = [...keyArray];
+    if (direction === 'up' && index > 0) {
+      [newKeys[index - 1], newKeys[index]] = [newKeys[index], newKeys[index - 1]];
+    } else if (direction === 'down' && index < newKeys.length - 1) {
+      [newKeys[index], newKeys[index + 1]] = [newKeys[index + 1], newKeys[index]];
+    } else {
+      return;
+    }
+    await updateDoc(doc(db, 'config', 'settings'), {
+      [type === 'general' ? 'apifyKeys' : 'apifyKeysSync']: newKeys
+    });
+  };
+
+  const handleToggleApiKey = async (key: string) => {
+    const disabled = settings.disabledApifyKeys || [];
+    const newDisabled = disabled.includes(key) ? disabled.filter(k => k !== key) : [...disabled, key];
+    await updateDoc(doc(db, 'config', 'settings'), {
+      disabledApifyKeys: newDisabled
+    });
   };
 
   useEffect(() => {
@@ -4813,10 +4903,15 @@ const AdminPanel = ({
   const [repairing, setRepairing] = useState(false);
 
   const handleRepairMetrics = async () => {
+    const key = window.prompt('Digite a Master Admin Key para autorizar esta ação:');
+    if (!key || key.trim() !== settings.masterKey) {
+      alert('Chave incorreta. Operação abortada.');
+      return;
+    }
     setRepairing(true);
     try {
       const res = await repairAllUserMetrics(true);
-      alert(`á¢Ã…â€œââ‚¬Â¦ Reparo concluído!\n\nUsuários processados: ${res.total}\nSucesso: ${res.success}\nErros: ${res.error}`);
+      alert(`✅ Reparo concluído!\n\nUsuários processados: ${res.total}\nSucesso: ${res.success}\nErros: ${res.error}`);
     } catch (error: any) {
       alert(`Erro no reparo: ${error.message}`);
     } finally {
@@ -4824,8 +4919,20 @@ const AdminPanel = ({
     }
   };
 
+  const getActiveApifyKeys = () => {
+    const rawKeys = settings.apifyKeys && settings.apifyKeys.length > 0 ? settings.apifyKeys : [apifyKey];
+    return rawKeys.filter(k => !(settings.disabledApifyKeys || []).includes(k)).filter(Boolean);
+  };
+
+  const getActiveApifyKeysSync = () => {
+    const rawKeys = settings.apifyKeysSync && settings.apifyKeysSync.length > 0 
+      ? settings.apifyKeysSync 
+      : (settings.apifyKeys && settings.apifyKeys.length > 0 ? settings.apifyKeys : [apifyKey]);
+    return rawKeys.filter(k => !(settings.disabledApifyKeys || []).includes(k)).filter(Boolean);
+  };
+
   const handleSync = async () => {
-    const keys = settings.apifyKeys && settings.apifyKeys.length > 0 ? settings.apifyKeys : [apifyKey];
+    const keys = getActiveApifyKeysSync();
     if (keys.length === 0 || !keys[0]) {
       alert('Por favor, insira sua chave Apify para sincronizar.');
       return;
@@ -4848,7 +4955,7 @@ const AdminPanel = ({
   };
 
   const handleSingleSync = async (post: Post) => {
-    const keys = settings.apifyKeys && settings.apifyKeys.length > 0 ? settings.apifyKeys : [apifyKey];
+    const keys = getActiveApifyKeys();
     if (keys.length === 0 || !keys[0]) {
       alert('Por favor, insira sua chave Apify para sincronizar.');
       return;
@@ -4865,24 +4972,25 @@ const AdminPanel = ({
     }
   };
 
-  const handleSyncApprovedSequentially = async () => {
-    // Prioriza chaves exclusivas de sincronização se fornecidas
-    const keys = (settings.apifyKeysSync && settings.apifyKeysSync.length > 0)
-      ? settings.apifyKeysSync 
-      : (settings.apifyKeys && settings.apifyKeys.length > 0 ? settings.apifyKeys : [apifyKey]);
+  const handleSyncApprovedSequentially = async (compId?: string) => {
+    const keys = getActiveApifyKeysSync();
 
     if (keys.length === 0 || !keys[0]) {
       alert('Configurações de API ausentes.');
       return;
     }
 
-    const approvedPosts = posts.filter(p => p.status === 'approved');
+    const approvedPosts = posts.filter(p => p.status === 'approved' && (!compId || p.competitionId === compId));
     if (approvedPosts.length === 0) {
       alert('Nenhum vídeo aprovado para sincronizar.');
       return;
     }
 
     setSyncing(true);
+    setSyncPaused(false);
+    if (compId) setSyncingCompId(compId);
+    if (syncPausedRef) syncPausedRef.current = false;
+    if (cancelSyncRef) cancelSyncRef.current = false;
     setSyncTotal(approvedPosts.length);
     setSyncProgress(0);
     setSessionSyncedIds([]);
@@ -4890,9 +4998,24 @@ const AdminPanel = ({
     let completed = 0;
     try {
       for (const post of approvedPosts) {
+        while (syncPausedRef.current && !cancelSyncRef.current) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        if (cancelSyncRef.current) break;
         setSyncingPostId(post.id);
-        await syncSinglePostWithApify(keys, post, false);
-        await updateDoc(doc(db, 'posts', post.id), { status: 'synced' });
+        
+        try {
+          await syncSinglePostWithApify(keys, post, false, syncPausedRef, cancelSyncRef);
+          await updateDoc(doc(db, 'posts', post.id), { status: 'synced' });
+        } catch (err: any) {
+          const msg = err.message || '';
+          if (msg.includes('cancelada') || msg.includes('token') || msg.includes('credit') || msg.includes('Todas as')) {
+            throw err; // Fatal error
+          }
+          console.warn(`Erro não fatal no post ${post.id}: ${msg}`);
+          await updateDoc(doc(db, 'posts', post.id), { status: 'synced' }); // Move queue forward
+        }
+        
         await updateUserMetrics(post.userId);
         completed++;
         setSyncProgress(completed);
@@ -4905,28 +5028,31 @@ const AdminPanel = ({
     } finally {
       setSyncing(false);
       setSyncingPostId(null);
+      setSyncingCompId(null);
       setSyncProgress(0);
       setSyncTotal(0);
     }
   };
 
-  const handleSyncApprovedParallel = async () => {
-    const syncKeys = settings.apifyKeysSync && settings.apifyKeysSync.length > 0 
-      ? settings.apifyKeysSync 
-      : (settings.apifyKeys || []);
+  const handleSyncApprovedParallel = async (compId?: string) => {
+    const syncKeys = getActiveApifyKeysSync();
       
     if (syncKeys.length < 1) {
       alert('Por favor, configure pelo menos uma chave Apify (Rede Social) para sincronização.');
       return;
     }
 
-    const approvedPosts = posts.filter(p => p.status === 'approved');
+    const approvedPosts = posts.filter(p => p.status === 'approved' && (!compId || p.competitionId === compId));
     if (approvedPosts.length === 0) {
       alert('Nenhum vídeo aprovado para sincronizar.');
       return;
     }
 
     setSyncing(true);
+    setSyncPaused(false);
+    if (compId) setSyncingCompId(compId);
+    if (syncPausedRef) syncPausedRef.current = false;
+    if (cancelSyncRef) cancelSyncRef.current = false;
     setSyncTotal(approvedPosts.length);
     setSyncProgress(0);
     setSessionSyncedIds([]);
@@ -4939,16 +5065,27 @@ const AdminPanel = ({
     let completed = 0;
     const worker = async (group: Post[], key: string) => {
       for (const post of group) {
+        while (syncPausedRef.current && !cancelSyncRef.current) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        if (cancelSyncRef.current) break;
         try {
           setSyncingPostId(post.id);
-          await syncSinglePostWithApify([key], post, false);
+          await syncSinglePostWithApify([key], post, false, syncPausedRef, cancelSyncRef);
           await updateDoc(doc(db, 'posts', post.id), { status: 'synced' });
           await updateUserMetrics(post.userId);
           completed++;
           setSyncProgress(completed);
           setSessionSyncedIds((prev: string[]) => [...prev, post.id]);
-        } catch (err) {
-          console.error(`Erro no worker com chave ${key}:`, err);
+        } catch (err: any) {
+          const msg = err.message || '';
+          if (msg.includes('cancelada') || msg.includes('token') || msg.includes('credit') || msg.includes('Todas as')) {
+            throw err; // Re-throw fatal errors to reject the promise
+          }
+          console.warn(`Erro não fatal no worker com chave ${key} para post ${post.id}:`, err);
+          await updateDoc(doc(db, 'posts', post.id), { status: 'synced' }); // Move queue forward
+          completed++;
+          setSyncProgress(completed);
         }
       }
     };
@@ -4962,6 +5099,7 @@ const AdminPanel = ({
     } finally {
       setSyncing(false);
       setSyncingPostId(null);
+      setSyncingCompId(null);
       setSyncProgress(0);
       setSyncTotal(0);
     }
@@ -4987,7 +5125,7 @@ const AdminPanel = ({
   };
 
   const handleSyncAllSequentially = async () => {
-    const keys = settings.apifyKeys && settings.apifyKeys.length > 0 ? settings.apifyKeys : [apifyKey];
+    const keys = getActiveApifyKeys();
     if (keys.length === 0 || !keys[0]) {
       alert('Por favor, insira sua chave Apify para sincronizar.');
       return;
@@ -5033,7 +5171,7 @@ const AdminPanel = ({
   };
 
   const handleSyncAllParallel = async () => {
-    const keys = settings.apifyKeys && settings.apifyKeys.length > 0 ? settings.apifyKeys : [apifyKey];
+    const keys = getActiveApifyKeys();
     if (keys.length < 1) {
       alert('Configure pelo menos uma chave de API nas Configurações.');
       return;
@@ -5094,7 +5232,7 @@ const AdminPanel = ({
   };
 
   const handleSyncCompetitionSequentially = async (compId: string) => {
-    const keys = settings.apifyKeys && settings.apifyKeys.length > 0 ? settings.apifyKeys : [apifyKey];
+    const keys = getActiveApifyKeys();
     if (keys.length === 0 || !keys[0]) {
       alert('Por favor, insira sua chave Apify para sincronizar.');
       return;
@@ -5116,14 +5254,21 @@ const AdminPanel = ({
     }
 
     setSyncing(true);
+    setSyncPaused(false);
+    if (syncPausedRef) syncPausedRef.current = false;
+    if (cancelSyncRef) cancelSyncRef.current = false;
     setSyncingCompId(compId);
     let current = sessionSyncedIds.length;
     setSyncProgress(current);
     setSyncTotal(allCompPosts.length);
     try {
       for (const post of compPosts) {
+        while (syncPausedRef.current && !cancelSyncRef.current) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        if (cancelSyncRef.current) break;
         setSyncingPostId(post.id);
-        await syncSinglePostWithApify(keys, post, false);
+        await syncSinglePostWithApify(keys, post, false, syncPausedRef, cancelSyncRef);
         setSessionSyncedIds((prev: string[]) => [...prev, post.id]);
         current++;
         setSyncProgress(current);
@@ -5139,7 +5284,7 @@ const AdminPanel = ({
   };
 
   const handleSyncCompetitionParallel = async (compId: string) => {
-    const keys = settings.apifyKeys && settings.apifyKeys.length > 0 ? settings.apifyKeys : [apifyKey];
+    const keys = getActiveApifyKeys();
     if (keys.length < 1) {
       alert('Configure pelo menos uma chave de API nas Configurações.');
       return;
@@ -5161,6 +5306,9 @@ const AdminPanel = ({
     }
 
     setSyncing(true);
+    setSyncPaused(false);
+    if (syncPausedRef) syncPausedRef.current = false;
+    if (cancelSyncRef) cancelSyncRef.current = false;
     setSyncingCompId(compId);
     let completed = sessionSyncedIds.length;
     setSyncProgress(completed);
@@ -5168,9 +5316,14 @@ const AdminPanel = ({
 
     const worker = async (list: Post[], key: string) => {
       for (const post of list) {
+        while (syncPausedRef.current && !cancelSyncRef.current) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        if (cancelSyncRef.current) break;
+        
         setSyncingPostId(post.id);
         try {
-          await syncSinglePostWithApify([key], post, false);
+          await syncSinglePostWithApify([key], post, false, syncPausedRef, cancelSyncRef);
           setSessionSyncedIds((prev: string[]) => [...prev, post.id]);
           completed++;
           setSyncProgress(completed);
@@ -5195,6 +5348,17 @@ const AdminPanel = ({
       setSyncing(false);
       setSyncingCompId(null);
       setSyncingPostId(null);
+    }
+  };
+  
+  const handleClearSyncSession = () => {
+    if (window.confirm('Deseja limpar o progresso salvo desta sessão? Isso fará a sincronização começar do zero.')) {
+      if (cancelSyncRef) cancelSyncRef.current = true;
+      setSessionSyncedIds([]);
+      setSyncProgress(0);
+      setSyncTotal(0);
+      setSyncPaused(false);
+      localStorage.removeItem('metarayx_sync_session');
     }
   };
 
@@ -5288,7 +5452,7 @@ const AdminPanel = ({
 
   const handleBulkSyncSelected = async () => {
     if (selectedResyncPostIds.length === 0) return;
-    const keys = settings.apifyKeys && settings.apifyKeys.length > 0 ? settings.apifyKeys : [apifyKey];
+    const keys = getActiveApifyKeysSync();
     if (keys.length < 1) {
       alert('Configure pelo menos uma chave de API.');
       return;
@@ -5331,7 +5495,7 @@ const AdminPanel = ({
 
   const handleBulkSyncSelectedApproved = async () => {
     if (selectedSyncPostIds.length === 0) return;
-    const keys = settings.apifyKeys && settings.apifyKeys.length > 0 ? settings.apifyKeys : [apifyKeySync];
+    const keys = getActiveApifyKeysSync();
     if (keys.length < 1) {
       alert('Configure pelo menos uma chave de API.');
       return;
@@ -5357,8 +5521,15 @@ const AdminPanel = ({
             await updateUserMetrics(post.userId);
             completed++;
             setSyncProgress(completed);
-          } catch (e) {
-            console.error(`Erro no Bulk Sync (Approved) para o post ${post.id}:`, e);
+          } catch (err: any) {
+            const msg = err.message || '';
+            if (msg.includes('cancelada') || msg.includes('token') || msg.includes('credit') || msg.includes('Todas as')) {
+              throw err; // Re-throw fatal errors
+            }
+            console.warn(`Erro no Bulk Sync (Approved) para o post ${post.id}:`, msg);
+            await updateDoc(doc(db, 'posts', post.id), { status: 'synced' });
+            completed++;
+            setSyncProgress(completed);
           }
         }
       };
@@ -5383,7 +5554,7 @@ const AdminPanel = ({
     try {
       await updateDoc(doc(db, 'posts', post.id), { forceMonthly: !isAlreadyForced, forceDaily: false });
       await updateUserMetrics(post.userId);
-      alert(isAlreadyForced ? 'Revertido! Link voltou ao comportamento normal.' : 'á¢Ã…â€œââ‚¬Â¦ Link forçado para o Mensal! Stats diários removidos.');
+      alert(isAlreadyForced ? 'Revertido! Link voltou ao comportamento normal.' : '✅ Link forçado para o Mensal! Stats diários removidos.');
     } catch(e: any) { alert('Erro: ' + e.message); }
   };
 
@@ -5400,7 +5571,7 @@ const AdminPanel = ({
     try {
       await updateDoc(doc(db, 'posts', post.id), { forceDaily: !isAlreadyForcedDaily, forceMonthly: false });
       await updateUserMetrics(post.userId);
-      alert(isAlreadyForcedDaily ? 'Revertido! Link voltou ao comportamento normal.' : 'á¢Ã…â€œââ‚¬Â¦ Link forçado para o Diário! Stats integrados imediatamente.');
+      alert(isAlreadyForcedDaily ? 'Revertido! Link voltou ao comportamento normal.' : '✅ Link forçado para o Diário! Stats integrados imediatamente.');
     } catch(e: any) { alert('Erro: ' + e.message); }
   };
 
@@ -5426,10 +5597,22 @@ const AdminPanel = ({
     try {
       setSyncingPostId(post.id);
       await syncSinglePostWithApify(keys, post, false);
+      await updateDoc(doc(db, 'posts', post.id), { status: 'synced' });
       setSessionSyncedIds((prev: string[]) => [...prev, post.id]);
       alert('Sincronização individual concluída!');
-    } catch (e: any) { alert('Erro: ' + e.message); }
-    finally { setSyncingPostId(null); }
+    } catch (err: any) {
+      const msg = err.message || '';
+      if (msg.includes('cancelada') || msg.includes('token') || msg.includes('credit') || msg.includes('Todas as')) {
+        alert('Erro Fatal: ' + msg);
+        return;
+      }
+      console.warn(`Erro isolado no post ${post.id}: ${msg}`);
+      // Mover para a próxima aba mesmo com erro (pode ser link apagado etc.)
+      await updateDoc(doc(db, 'posts', post.id), { status: 'synced' });
+      alert('Vídeo não encontrado ou link quebrado. O post foi movido para a Ressincronização (0 views).');
+    } finally {
+      setSyncingPostId(null);
+    }
   };
 
   const handleBulkRevertToPending = async () => {
@@ -5522,164 +5705,6 @@ const AdminPanel = ({
           <p className="text-zinc-500 font-bold text-xs uppercase tracking-widest">Controle de Acesso e Sincronização</p>
         </div>
 
-        {userRole === 'admin' && (
-          <div className="flex flex-wrap items-center gap-6 bg-zinc-900/50 p-6 rounded-[32px] border border-zinc-800/50">
-            {/* CONFIGURAÇÃO DA CHAVE API GERAL */}
-            <div className="flex flex-col gap-4 flex-1 min-w-[300px]">
-              <div className="flex flex-col gap-2">
-                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-2">
-                  Chaves Gerais (Ressincronização)
-                  <InfoTooltip text="Chaves usadas para a atualização periódica de todos os vídeos já auditados." />
-                </label>
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1 group">
-                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none group-focus-within:text-amber-500 transition-colors" />
-                    <input
-                      type="text"
-                      value={apifyKey}
-                      onChange={(e) => setApifyKey(e.target.value)}
-                      placeholder="Adicionar chave..."
-                      className="w-full bg-black border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-xs font-bold focus:border-amber-500 outline-none transition-all placeholder:text-zinc-700"
-                    />
-                  </div>
-                  <button
-                    onClick={handleSaveApiKey}
-                    className="px-6 py-3 bg-zinc-800 text-zinc-300 font-black rounded-xl hover:bg-zinc-700 active:scale-95 transition-all text-[10px] uppercase whitespace-nowrap"
-                  >
-                    Salvar
-                  </button>
-                </div>
-              </div>
-
-              {settings.apifyKeys && settings.apifyKeys.length > 0 && (
-                <div className="flex flex-wrap gap-2 max-h-[80px] overflow-y-auto pr-2 custom-scrollbar">
-                  {settings.apifyKeys.map((key, idx) => (
-                    <div key={idx} className="flex items-center gap-2 bg-black/40 border border-zinc-800/50 px-3 py-1.5 rounded-lg group">
-                      <code className="text-[9px] text-zinc-500 font-mono truncate max-w-[80px]">
-                        {key.substring(0, 6)}...{key.substring(key.length - 4)}
-                      </code>
-                      <button 
-                        onClick={() => handleDeleteApiKey(key)}
-                        className="text-zinc-600 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
-                        title="Remover Chave"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* CONFIGURAÇÃO DA CHAVE API EXCLUSIVA PARA SINCRONISMO */}
-            <div className="flex flex-col gap-4 flex-1 min-w-[300px] border-l border-zinc-800/50 pl-6">
-              <div className="flex flex-col gap-2">
-                <label className="text-[10px] font-black text-amber-500 uppercase tracking-widest ml-1 flex items-center gap-2">
-                  <Zap className="w-3 h-3 fill-current" /> Chaves Sincronismo Inicial
-                  <InfoTooltip text="Chaves usadas exclusivamente para a primeira validação de links aprovados. Recomendado usar chaves diferentes das gerais." />
-                </label>
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1 group">
-                    <Zap className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none group-focus-within:text-amber-500 transition-colors" />
-                    <input
-                      type="text"
-                      value={apifyKeySync}
-                      onChange={(e) => setApifyKeySync(e.target.value)}
-                      placeholder="Adicionar chave sync..."
-                      className="w-full bg-black border border-amber-500/20 rounded-xl py-3 pl-12 pr-4 text-xs font-bold focus:border-amber-500 outline-none transition-all placeholder:text-zinc-700"
-                    />
-                  </div>
-                  <button
-                    onClick={handleSaveSyncKey}
-                    className="px-6 py-3 gold-bg text-black font-black rounded-xl hover:scale-105 active:scale-95 transition-all shadow-lg shadow-amber-500/20 text-[10px] uppercase whitespace-nowrap"
-                  >
-                    Adicionar
-                  </button>
-                </div>
-              </div>
-
-              {settings.apifyKeysSync && settings.apifyKeysSync.length > 0 && (
-                <div className="flex flex-wrap gap-2 max-h-[80px] overflow-y-auto pr-2 custom-scrollbar">
-                  {settings.apifyKeysSync.map((key, idx) => (
-                    <div key={idx} className="flex items-center gap-2 bg-amber-500/5 border border-amber-500/20 px-3 py-1.5 rounded-lg group">
-                      <code className="text-[9px] text-zinc-400 font-mono truncate max-w-[80px]">
-                        {key.substring(0, 6)}...{key.substring(key.length - 4)}
-                      </code>
-                      <button 
-                        onClick={() => handleDeleteSyncKey(key)}
-                        className="text-zinc-600 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
-                        title="Remover Chave"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* RESET DIÁRIO */}
-            <div className="flex flex-col gap-2 min-w-[240px]">
-              <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Zerar Ranking Diário</label>
-              <div className="flex items-center gap-2">
-                <select
-                  value={selectedResetCompId}
-                  onChange={(e) => setSelectedResetCompId(e.target.value)}
-                  className="bg-black border border-zinc-800 rounded-xl py-3 px-4 text-[10px] font-bold focus:border-amber-500 outline-none transition-all text-white flex-1"
-                >
-                  <option value="">Selecione Competição</option>
-                  {competitions.filter(c => c.isActive).map(comp => (
-                    <option key={comp.id} value={comp.id}>{comp.title}</option>
-                  ))}
-                </select>
-                <button
-                  onClick={() => handleResetDailyRanking(selectedResetCompId)}
-                  disabled={!selectedResetCompId}
-                  className="p-3 bg-red-500/10 text-red-500 font-black rounded-xl hover:bg-red-500 hover:text-black transition-all shadow-lg shadow-red-500/10 disabled:opacity-30 flex items-center justify-center"
-                  title="Zerar Diário (Com Premiação)"
-                >
-                  <Trash2 className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={() => handleResetRankingSimple(selectedResetCompId)}
-                  disabled={!selectedResetCompId}
-                  className="p-3 bg-amber-500/10 text-amber-500 font-black rounded-xl hover:bg-amber-500 hover:text-white transition-all shadow-lg shadow-amber-500/10 disabled:opacity-30 flex items-center justify-center"
-                  title="Limpar Tudo (Preparar Ressincronização)"
-                >
-                  <RefreshCw className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* AÇÕES DE SISTEMA */}
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                onClick={handleRepairMetrics}
-                disabled={repairing}
-                className="flex items-center justify-center gap-2 px-6 py-3 bg-amber-500/10 text-amber-500 font-black rounded-xl hover:bg-amber-500 hover:text-black transition-all shadow-lg shadow-amber-500/10 disabled:opacity-50 text-[10px] uppercase"
-              >
-                {repairing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                Reparar Rankings
-              </button>
-
-              <button
-                onClick={handleRankingResetOnly}
-                className="flex items-center justify-center gap-2 px-6 py-3 bg-amber-500/20 text-amber-500 font-black rounded-xl hover:bg-amber-500 hover:text-white transition-all shadow-lg shadow-amber-500/20 text-[10px] uppercase"
-              >
-                <RefreshCw className="w-4 h-4" />
-                Zerar Geral (Resync)
-              </button>
-
-              <button
-                onClick={handleSystemCleanup}
-                className="flex items-center justify-center gap-2 px-6 py-3 bg-red-600/20 text-red-600 font-black rounded-xl hover:bg-red-600 hover:text-white transition-all shadow-lg shadow-red-600/20 text-[10px] uppercase"
-              >
-                <Shield className="w-4 h-4" />
-                Factory Reset
-              </button>
-            </div>
-          </div>
-        )}
       </div>
 
       <div className="flex flex-wrap p-1 bg-zinc-900 rounded-2xl w-fit gap-1">
@@ -5846,6 +5871,14 @@ const AdminPanel = ({
             className={`px-6 py-2 rounded-xl font-bold text-xs transition-all ${tab === 'REMOVED_POSTS' ? 'bg-red-500 text-white shadow-lg shadow-red-500/20' : 'text-zinc-500 hover:text-zinc-300'}`}
           >
             REMOVIDOS ({posts.filter(p => p.status === 'rejected' || p.status === 'banned' || p.status === 'deleted').length})
+          </button>
+        )}
+        {userRole === 'admin' && (
+          <button
+            onClick={() => { setTab('APIS'); setAuditUserId(null); setSelectedCompId(null); setSyncDetailCompId(null); }}
+            className={`px-6 py-2 rounded-xl font-bold text-xs transition-all flex items-center gap-2 ${tab === 'APIS' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/20' : 'text-zinc-500 hover:text-zinc-300'}`}
+          >
+            <Key className="w-4 h-4" /> APIs
           </button>
         )}
       </div>
@@ -6538,7 +6571,7 @@ const AdminPanel = ({
                               <Zap className="w-6 h-6" />
                             </div>
                             <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-1 flex items-center">
-                              PROJEÇÃO DE SAáDA (PENDENTE) <InfoTooltip text="Total acumulado nos saldos dos usuários aguardando pagamento ou saque." />
+                              PROJEÇÃO DE SAÍDA (PENDENTE) <InfoTooltip text="Total acumulado nos saldos dos usuários aguardando pagamento ou saque." />
                             </p>
                             <h4 className="text-3xl font-black text-amber-500 tracking-tight">R$ {totalPendingGlobal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h4>
                           </div>
@@ -6870,11 +6903,14 @@ const AdminPanel = ({
             syncingPostId={syncingPostId}
             setSyncingPostId={setSyncingPostId}
             syncing={syncing}
+            syncingCompId={syncingCompId}
+            syncProgress={syncProgress}
+            syncTotal={syncTotal}
+            sessionSyncedIds={sessionSyncedIds}
             settings={settings}
             handleSyncApprovedParallel={handleSyncApprovedParallel}
             handleSyncApprovedSequentially={handleSyncApprovedSequentially}
             onSingleSync={onSingleSync}
-            onUpdateMasterKey={handleUpdateMasterKey}
             formatLastSyncDate={formatLastSyncDate ?? ((d: any) => d?.toString())}
             handleMovePostToCompetition={handleMovePostToCompetition}
             pendingMoves={pendingMoves}
@@ -6894,6 +6930,9 @@ const AdminPanel = ({
             syncingCompId={syncingCompId}
             sessionSyncedIds={sessionSyncedIds}
             setSessionSyncedIds={setSessionSyncedIds}
+            syncPaused={syncPaused}
+            setSyncPaused={setSyncPaused}
+            handleClearSyncSession={handleClearSyncSession}
             syncingPostId={syncingPostId}
             setSyncingPostId={setSyncingPostId}
             syncProgress={syncProgress}
@@ -6908,10 +6947,6 @@ const AdminPanel = ({
             handleBulkForceDaily={handleBulkForceDaily}
             handleBulkResetMetrics={handleBulkResetMetrics}
             handleBulkSyncSelected={handleBulkSyncSelected}
-            apifyKey={apifyKey}
-            setApifyKey={setApifyKey}
-            handleSaveApiKey={handleSaveApiKey}
-            handleDeleteApiKey={handleDeleteApiKey}
             onForceMonthly={onForceMonthly}
             onForceDaily={onForceDaily}
             onResetToSync={onResetToSync}
@@ -7064,7 +7099,7 @@ const AdminPanel = ({
                                   <span className={`text-xl font-black mt-0.5 ${isSelected ? 'text-amber-500' : 'text-white'}`}>{dayPosts.length}</span>
                                   <div className="flex items-center gap-2 mt-1">
                                     {approved > 0 && <span className="text-[8px] font-black text-emerald-500">{approved}✓</span>}
-                                    {pending > 0 && <span className="text-[8px] font-black text-amber-400">{pending}á¢Ã‚ÂÃ‚Â³</span>}
+                                    {pending > 0 && <span className="text-[8px] font-black text-amber-400">{pending}⏳</span>}
                                     {rejected > 0 && <span className="text-[8px] font-black text-red-500">{rejected}✕</span>}
                                   </div>
                                 </button>
@@ -7214,7 +7249,7 @@ const AdminPanel = ({
                         <option value="administrativo">ADMINISTRATIVO á¢ââ€šÂ¬ââ‚¬Â FINANCEIRO + COMPETIÇÕES</option>
                         <option value="admin">ADMINISTRADOR (DIRETORIA) á¢ââ€šÂ¬ââ‚¬Â ACESSO TOTAL</option>
                       </select>
-                      <p className="text-[9px] text-zinc-600 font-bold ml-1">á¢Ã…Â¡Ã‚Â á¯Ã‚Â¸Ã‚Â Alterar a função afeta imediatamente o acesso do usuário</p>
+                      <p className="text-[9px] text-zinc-600 font-bold ml-1">⚠️ Alterar a função afeta imediatamente o acesso do usuário</p>
                     </div>
                     <div className="space-y-2">
                       <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Nova Senha (opcional)</label>
@@ -7493,7 +7528,7 @@ const AdminPanel = ({
                           <h5 className="text-xs font-black uppercase tracking-widest text-zinc-400">Tabela de Premiação</h5>
                         </div>
                         <div className="grid grid-cols-1 gap-2">
-                          {/* BÀÃ‚Â destaque especial */}
+                          {/* destaque especial */}
                           {(comp as any).viewBonus > 0 && (
                             <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 to-transparent border border-amber-500/30 flex items-center gap-3">
                               <Eye className="w-5 h-5 text-amber-500 shrink-0" />
@@ -8332,48 +8367,6 @@ const AdminPanel = ({
               </div>
             </div>
           </div>
-        ) : (tab as any) === 'RESSINCRONIZACAO' ? (
-          <RessincronizacaoTab 
-            posts={posts}
-            competitions={competitions}
-            settings={settings}
-            syncDetailCompId={syncDetailCompId}
-            setSyncDetailCompId={setSyncDetailCompId}
-            syncing={syncing}
-            syncingCompId={syncingCompId}
-            sessionSyncedIds={sessionSyncedIds}
-            setSessionSyncedIds={setSessionSyncedIds}
-            syncingPostId={syncingPostId}
-            setSyncingPostId={setSyncingPostId}
-            syncProgress={syncProgress}
-            syncTotal={syncTotal}
-            selectedResyncPostIds={selectedResyncPostIds}
-            setSelectedResyncPostIds={setSelectedResyncPostIds}
-            handleSyncCompetitionSequentially={handleSyncCompetitionSequentially}
-            handleSyncCompetitionParallel={handleSyncCompetitionParallel}
-            handleSyncAllSequentially={handleSyncAllSequentially}
-            handleSyncAllParallel={handleSyncAllParallel}
-            handleBulkForceMonthly={handleBulkForceMonthly}
-            handleBulkForceDaily={handleBulkForceDaily}
-            handleBulkResetMetrics={handleBulkResetMetrics}
-            handleBulkSyncSelected={handleBulkSyncSelected}
-            apifyKey={apifyKey}
-            setApifyKey={setApifyKey}
-            handleSaveApiKey={handleSaveApiKey}
-            handleDeleteApiKey={handleDeleteApiKey}
-            onForceMonthly={onForceMonthly}
-            onForceDaily={onForceDaily}
-            onResetToSync={onResetToSync}
-            onSingleSync={onSingleSync}
-            setRejectionReason={setRejectionReason}
-            setRejectionModal={setRejectionModal}
-            handleMovePostToCompetition={handleMovePostToCompetition}
-            pendingMoves={pendingMoves}
-            setPendingMoves={setPendingMoves}
-            selectedAdminHandle={selectedNetworkUserId}
-            setSelectedAdminHandle={setSelectedNetworkUserId}
-            adminHandles={Array.from(new Set(posts.map(p => p.accountHandle).filter(Boolean) as string[]))}
-          />
         ) : tab === 'SUGESTOES' ? (
           <div className="space-y-6">
             <h3 className="text-xl font-black uppercase tracking-tight">Sugestões dos Usuários</h3>
@@ -8735,6 +8728,31 @@ const AdminPanel = ({
               </div>
             </div>
           </div>
+        ) : tab === 'APIS' && userRole === 'admin' ? (
+          <ConfiguracoesApiTab 
+            settings={settings}
+            apifyKey={apifyKey}
+            setApifyKey={setApifyKey}
+            handleSaveApiKey={handleSaveApiKey}
+            handleDeleteApiKey={handleDeleteApiKey}
+            handleUpdateMasterKey={handleUpdateMasterKey}
+            // Novas props para migração do topo
+            apifyKeySync={apifyKeySync}
+            setApifyKeySync={setApifyKeySync}
+            handleSaveSyncKey={handleSaveSyncKey}
+            handleDeleteSyncKey={handleDeleteSyncKey}
+            selectedResetCompId={selectedResetCompId}
+            setSelectedResetCompId={setSelectedResetCompId}
+            handleResetDailyRanking={handleResetDailyRanking}
+            handleResetRankingSimple={handleResetRankingSimple}
+            handleRankingResetOnly={handleRankingResetOnly}
+            handleSystemCleanup={handleSystemCleanup}
+            repairing={repairing}
+            handleRepairMetrics={handleRepairMetrics}
+            competitions={competitions}
+            handleMoveApiKey={handleMoveApiKey}
+            handleToggleApiKey={handleToggleApiKey}
+          />
         ) : null}
       </div>
       <AdminRoleChallengeModal
