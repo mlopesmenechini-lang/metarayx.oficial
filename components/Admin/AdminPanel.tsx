@@ -96,6 +96,11 @@ interface AdminPanelProps {
   onResetToSync: (post: Post) => Promise<void>;
   setRejectionReason: (val: string) => void;
   setRejectionModal: (val: { isOpen: boolean; postId: string; status: any }) => void;
+  syncPausedRef: React.MutableRefObject<boolean>;
+  cancelSyncRef: React.MutableRefObject<boolean>;
+  syncPaused: boolean;
+  setSyncPaused: (val: boolean) => void;
+  handleClearSyncSession: () => void;
   
   // Handlers - Financeiro
   financeTab: 'RESUMO' | 'PENDING' | 'REALIZED';
@@ -236,6 +241,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onResetToSync,
   setRejectionReason,
   setRejectionModal,
+  syncPausedRef,
+  cancelSyncRef,
+  syncPaused,
+  setSyncPaused,
+  handleClearSyncSession,
   financeTab, setFinanceTab, financeCompId, setFinanceCompId, financeDateFilter, setFinanceDateFilter,
   handleMarkPaid, handleToggleManualPostValidation, validatedPostsLocal, setValidatedPostsLocal, onUpdatePixKey,
   handleExportExcel, handleDeleteSuggestion, handleUpdateSuggestionStatus, handleUpdateSuggestionResponse, handleUpdateUserRole,
@@ -535,10 +545,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             handleBulkForceMonthly={handleBulkForceMonthly} handleBulkForceDaily={handleBulkForceDaily} handleBulkResetMetrics={handleBulkResetMetrics}
             handleBulkSyncSelected={handleBulkSyncSelected} syncing={syncing} syncingCompId={syncingCompId} syncProgress={syncProgress} syncTotal={syncTotal}
             sessionSyncedIds={sessionSyncedIds} setSessionSyncedIds={setSessionSyncedIds} syncingPostId={syncingPostId} setSyncingPostId={setSyncingPostId}
-            apifyKey={apifyKey} setApifyKey={setApifyKey} handleSaveApiKey={handleSaveApiKey} handleDeleteApiKey={handleDeleteApiKey}
             onForceMonthly={onForceMonthly} onForceDaily={onForceDaily} onResetToSync={onResetToSync} onSingleSync={onSingleSync}
             setRejectionReason={setRejectionReason}
             setRejectionModal={setRejectionModal}
+            syncPausedRef={syncPausedRef} cancelSyncRef={cancelSyncRef}
+            syncPaused={syncPaused} setSyncPaused={setSyncPaused} handleClearSyncSession={handleClearSyncSession}
             handleMovePostToCompetition={handleMovePostToCompetition}
             pendingMoves={pendingMoves}
             setPendingMoves={setPendingMoves}

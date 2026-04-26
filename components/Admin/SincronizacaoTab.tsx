@@ -289,7 +289,7 @@ export const SincronizacaoTab: React.FC<SincronizacaoTabProps> = ({
             </div>
             <div className="flex flex-wrap items-center gap-4">
               <button
-                onClick={handleSyncApprovedSequentially}
+                onClick={() => handleSyncApprovedSequentially()}
                 disabled={syncing}
                 className="px-8 py-5 bg-zinc-800 text-zinc-400 font-black rounded-2xl border border-zinc-700 hover:bg-zinc-700 hover:text-white transition-all flex items-center justify-center gap-3 disabled:opacity-50"
               >
@@ -298,7 +298,7 @@ export const SincronizacaoTab: React.FC<SincronizacaoTabProps> = ({
               </button>
 
               <button
-                onClick={handleSyncApprovedParallel}
+                onClick={() => handleSyncApprovedParallel()}
                 disabled={syncing}
                 className="px-10 py-5 gold-bg text-black font-black rounded-2xl hover:scale-[1.02] transition-all flex items-center justify-center gap-3 shadow-2xl shadow-amber-500/20 disabled:opacity-50"
               >

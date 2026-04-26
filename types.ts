@@ -198,4 +198,5 @@ export interface Settings {
   lastSync?: string;
   lastResync?: string;
   masterAdminKey?: string;
+  masterKey?: string;
 }

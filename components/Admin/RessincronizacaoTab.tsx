@@ -49,6 +49,7 @@ interface RessincronizacaoTabProps {
   syncPaused: boolean;
   setSyncPaused: (val: boolean) => void;
   syncPausedRef: React.MutableRefObject<boolean>;
+  cancelSyncRef: React.MutableRefObject<boolean>;
   handleClearSyncSession: () => void;
   // Handlers needed for individual post actions
   onForceMonthly: (post: Post) => Promise<void>;

@@ -139,8 +139,19 @@ const App: React.FC = () => {
   });
   const [syncing, setSyncing] = useState(false);
   const [syncPaused, setSyncPaused] = useState(false);
-  const syncPausedRef = useRef(false);
-  const cancelSyncRef = useRef(false);
+  const syncPausedRef = useRef<boolean>(false);
+  const cancelSyncRef = useRef<boolean>(false);
+
+  const handleClearSyncSession = () => {
+    if (window.confirm('Deseja limpar o progresso salvo desta sessão? Isso fará a sincronização começar do zero.')) {
+      if (cancelSyncRef) cancelSyncRef.current = true;
+      setSessionSyncedIds([]);
+      setSyncProgress(0);
+      setSyncTotal(0);
+      setSyncPaused(false);
+      localStorage.removeItem('metarayx_sync_session');
+    }
+  };
 
   useEffect(() => {
     syncPausedRef.current = syncPaused;
@@ -1199,18 +1210,18 @@ const App: React.FC = () => {
           batch.update(doc(db, 'competitions', cid), { lastDailyReset: resetTime });
 
           await batch.commit();
-          if (Object.keys(balanceIncrements).length === 0) {
+          if (Object.keys(userIncrements).length === 0) {
             const msg = dailyViewWinners.length === 0 
                 ? 'Nenhum usuário com visualizações diárias registradas.' 
                 : 'Nenhum prêmio configurado nesta competição.';
             alert(`⚠️ Reset realizado sem premiações:\n\n${msg}\n\nEstatísticas diárias foram zeradas mesmo assim.`);
           } else {
-            const auditMsg = Object.entries(balanceIncrements)
-              .map(([uid, data]) => {
+            const auditMsg = Object.entries(userIncrements)
+              .map(([uid, amount]) => {
                 const u = approvedUsers.find(au => au.uid === uid);
-                return `- ${u?.displayName || uid}: R$ ${data.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+                return `- ${u?.displayName || uid}: R$ ${amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
               }).join('\n');
-            alert(`✅ Ranking resetado!\n\n${Object.keys(balanceIncrements).length} usuário(s) premiados:\n${auditMsg}`);
+            alert(`✅ Ranking resetado!\n\n${Object.keys(userIncrements).length} usuário(s) premiados:\n${auditMsg}`);
           }
         } catch (error) {
           console.error('Error resetting rankings:', error);
@@ -2337,6 +2348,7 @@ const App: React.FC = () => {
                     setGlobalSelectedCompId={setSelectedActiveCompId}
                     syncPaused={syncPaused}
                     setSyncPaused={setSyncPaused}
+                    handleClearSyncSession={handleClearSyncSession}
                     syncPausedRef={syncPausedRef}
                     cancelSyncRef={cancelSyncRef}
                   />
@@ -4028,7 +4040,7 @@ const TabBadge = ({ count }: { count: number }) => {
   );
 };
 
-const AdminPanel = ({
+function AdminPanel({
   userRole,
   posts,
   pendingUsers,
@@ -4181,7 +4193,8 @@ const AdminPanel = ({
   syncPaused,
   setSyncPaused,
   syncPausedRef,
-  cancelSyncRef
+  cancelSyncRef,
+  handleClearSyncSession
 }: {
   userRole: UserRole;
   posts: Post[];
@@ -4336,7 +4349,8 @@ const AdminPanel = ({
   setSyncPaused: (v: boolean) => void;
   syncPausedRef: React.MutableRefObject<boolean>;
   cancelSyncRef: React.MutableRefObject<boolean>;
-}) => {
+  handleClearSyncSession: () => void;
+}) {
   const [tab, setTab] = useState<AdminTab>('VISAO_GERAL');
   const [selectedSyncCompId, setSelectedSyncCompId] = useState<string>('ALL');
   const [selectedResetCompId, setSelectedResetCompId] = useState<string>('');
@@ -5351,16 +5365,7 @@ const AdminPanel = ({
     }
   };
   
-  const handleClearSyncSession = () => {
-    if (window.confirm('Deseja limpar o progresso salvo desta sessão? Isso fará a sincronização começar do zero.')) {
-      if (cancelSyncRef) cancelSyncRef.current = true;
-      setSessionSyncedIds([]);
-      setSyncProgress(0);
-      setSyncTotal(0);
-      setSyncPaused(false);
-      localStorage.removeItem('metarayx_sync_session');
-    }
-  };
+;
 
   const handleBulkForceMonthly = async () => {
     if (selectedResyncPostIds.length === 0) return;
@@ -6953,6 +6958,8 @@ const AdminPanel = ({
             onSingleSync={onSingleSync}
             setRejectionReason={setRejectionReason}
             setRejectionModal={setRejectionModal}
+            syncPausedRef={syncPausedRef}
+            cancelSyncRef={cancelSyncRef}
             handleMovePostToCompetition={handleMovePostToCompetition}
             pendingMoves={pendingMoves}
             setPendingMoves={setPendingMoves}
